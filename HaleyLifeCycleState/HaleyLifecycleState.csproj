@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Library</OutputType>
     <RootNamespace>Haley</RootNamespace>
-    <AssemblyName>Haley.LifeCycle</AssemblyName>
+    <AssemblyName>Haley.LifeCycle.State</AssemblyName>
     <Authors>TheHaleyProject</Authors>
     <Company>TheHaleyProject</Company>
     <Copyright>Haley 2025</Copyright>
@@ -19,8 +19,8 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageReleaseNotes>Pilot release</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/TheHaleyProject/Haley.Lifecycle</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/TheHaleyProject/Haley.Lifecycle</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/TheHaleyProject/HaleyLifeCycle.State</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/TheHaleyProject/HaleyLifeCycle.State</RepositoryUrl>
     <OpenApiGenerateDocuments>false</OpenApiGenerateDocuments>
     <Description>A Simple State Machine from Haley Libraries</Description>
     <RepositoryType>git</RepositoryType>
