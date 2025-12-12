@@ -71,9 +71,9 @@ CREATE TABLE IF NOT EXISTS `def_version` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `version` int(11) NOT NULL DEFAULT 1,
-  `parent` int(11) NOT NULL,
   `created` datetime NOT NULL DEFAULT utc_timestamp(),
   `modified` datetime NOT NULL DEFAULT utc_timestamp(),
+  `parent` int(11) NOT NULL,
   `data` longtext NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_def_version` (`parent`,`version`),
@@ -90,10 +90,11 @@ CREATE TABLE IF NOT EXISTS `def_version` (
 CREATE TABLE IF NOT EXISTS `events` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(120) NOT NULL,
+  `code` int(11) NOT NULL,
   `name` varchar(120) GENERATED ALWAYS AS (lcase(`display_name`)) VIRTUAL,
   `def_version` int(11) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unq_events` (`def_version`,`name`),
+  UNIQUE KEY `unq_events` (`def_version`,`code`,`name`),
   CONSTRAINT `fk_events_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -106,8 +107,8 @@ CREATE TABLE IF NOT EXISTS `instance` (
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'active =1,\nsuspended =2 ,\ncompleted = 4,\nfailed = 8, \narchive = 16',
-  `external_ref` char(36) DEFAULT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
   `def_version` int(11) NOT NULL,
+  `external_ref` char(36) DEFAULT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
   `created` datetime NOT NULL DEFAULT utc_timestamp(),
   `modified` datetime NOT NULL DEFAULT utc_timestamp(),
   PRIMARY KEY (`id`),
@@ -133,11 +134,16 @@ CREATE TABLE IF NOT EXISTS `state` (
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'is_initial = 1\nis_final = 2\nis_system = 4\nis_error = 8',
   `created` datetime NOT NULL DEFAULT utc_timestamp(),
   `def_version` int(11) NOT NULL,
+  `timeout` varchar(20) DEFAULT NULL,
+  `timeout_mode` int(11) NOT NULL DEFAULT 0 COMMENT '0 = Once\n1 = Repeat',
+  `timeout_event` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_state` (`def_version`,`name`),
   KEY `fk_state_category` (`category`),
+  KEY `fk_state_events` (`timeout_event`),
   CONSTRAINT `fk_state_category` FOREIGN KEY (`category`) REFERENCES `category` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fk_state_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `fk_state_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_state_events` FOREIGN KEY (`timeout_event`) REFERENCES `events` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=2014 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Dumping data for table lifecycle_state.state: ~0 rows (approximately)
@@ -147,8 +153,6 @@ CREATE TABLE IF NOT EXISTS `transition` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `from_state` int(11) NOT NULL,
   `to_state` int(11) NOT NULL,
-  `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'is_auto = 1\nneeds_approval = 2\ncan_retry = 4\nis_critical = 8',
-  `guard_key` varchar(200) DEFAULT NULL,
   `created` datetime DEFAULT utc_timestamp(),
   `def_version` int(11) NOT NULL,
   `event` int(11) NOT NULL,
@@ -183,7 +187,6 @@ CREATE TABLE IF NOT EXISTS `transition_log` (
   `from_state` int(11) NOT NULL,
   `to_state` int(11) NOT NULL,
   `event` int(11) NOT NULL,
-  `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'is_system = 1,\nis_manual = 2,\nis_retry = 4,\nis_rollback = 8',
   `created` datetime NOT NULL DEFAULT utc_timestamp(),
   PRIMARY KEY (`id`),
   KEY `fk_transition_log_instance` (`instance_id`),

@@ -7,8 +7,6 @@ namespace Haley.Models {
         public int FromState { get; set; }
         public int ToState { get; set; }
         public int Event { get; set; }
-        public LifeCycleTransitionFlag Flags { get; set; }
-        public string? GuardCondition { get; set; }
         public DateTime Created { get; set; }
         public int DefinitionVersion { get; set; }
     }

@@ -1,0 +1,36 @@
+{
+  "definition": {
+    "name": "VendorRegistrationState",
+    "version": "1.0",
+    "description": "Lifecycle definition for new vendor registration, validation, and vendor ID generation."
+  },
+  "states": [
+    { "name": "RegistrationStarted", "is_initial": true, "category": "system" },
+    { "name": "Submitted", "category": "business" },
+    { "name": "DuplicateCheck", "category": "system" },
+    { "name": "PendingValidation", "category": "business" },
+    { "name": "CompanyValidation", "category": "business" },
+    { "name": "Rejected", "is_final": true, "category": "error" },
+    { "name": "Registered", "is_final": true, "category": "system" }
+  ],
+  "events": [
+    { "code": 1000, "name": "Submit" },
+    { "code": 1001, "name": "CheckDuplicate" },
+    { "code": 1002, "name": "AlreadyRegistered" },
+    { "code": 1003, "name": "NotRegistered" },
+    { "code": 1004, "name": "RequestWithin12Months" },
+    { "code": 1005, "name": "ValidateCompany" },
+    { "code": 1006, "name": "InvalidCompany" },
+    { "code": 1007, "name": "ValidCompany" }
+  ],
+  "transitions": [
+    { "event": 1000, "from": "RegistrationStarted", "to": "Submitted" },
+    { "event": 1001, "from": "Submitted", "to": "DuplicateCheck" },
+    { "event": 1002, "from": "DuplicateCheck", "to": "Rejected" },
+    { "event": 1003, "from": "DuplicateCheck", "to": "PendingValidation" },
+    { "event": 1004, "from": "PendingValidation", "to": "Rejected" },
+    { "event": 1005, "from": "PendingValidation", "to": "CompanyValidation" },
+    { "event": 1006, "from": "CompanyValidation", "to": "Rejected" },
+    { "event": 1007, "from": "CompanyValidation", "to": "Registered" }
+  ]
+}

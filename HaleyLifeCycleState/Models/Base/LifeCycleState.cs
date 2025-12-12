@@ -10,5 +10,8 @@ namespace Haley.Models {
         public int Category { get; set; }
         public int DefinitionVersion { get; set; }
         public DateTime Created { get; set; }
+        public string TimeOut { get; set; }
+        public LifeCycleStateTimeOut TimeOutMode { get; set; }
+        public int TimeOutEvent { get; set; }
     }
 }
