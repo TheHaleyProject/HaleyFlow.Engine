@@ -1,19 +1,16 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Internal;
 using Haley.Models;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using static Haley.Internal.QueryFields;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMariaDB {
+
         // Keep PurgeOldLogs using NonQuery (rows affected). If you add NonQueryCountAsync, swap it in.
         public async Task<IFeedback<int>> PurgeOldLogs(int daysToKeep) {
             var fb = new Feedback<int>();
-            var res = await _agw.NonQuery(new AdapterArgs(_key) { Query = QRY_MAINTENANCE.PURGE_OLD_LOGS }, (FLAGS, daysToKeep));
+            var res = await _agw.NonQuery(new AdapterArgs(_key) { Query = QRY_MAINTENANCE.PURGE_OLD_LOGS }, (RETENTION_DAYS, daysToKeep));
             if (res is int n) return fb.SetStatus(true).SetResult(n);
             return fb.SetMessage("PurgeOldLogs operation did not return a valid deleted count.");
         }

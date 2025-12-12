@@ -8,7 +8,6 @@ namespace Haley.Models {
         public int LastEvent { get; set; }
         public int CurrentState { get; set; }
         public string? ExternalRef { get; set; }   // e.g. "wf-182"
-        public string? ExternalType { get; set; }  // e.g. "workflow", "submission"
         public LifeCycleInstanceFlag Flags { get; set; }
         public DateTime Created { get; set; }
         public DateTime Modified { get; set; }

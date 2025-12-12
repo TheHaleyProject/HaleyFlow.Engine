@@ -1,4 +1,4 @@
-﻿using Haley.Models;
+using Haley.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -9,7 +9,7 @@ namespace Haley.Abstractions {
     /// <summary>
     /// Repository abstraction for managing Lifecycle / State Machine entities.
     /// Provides CRUD, audit, and maintenance operations for definitions, states,
-    /// events, transitions, instances, and transition logs.
+    /// events, transitions, instances, transition logs, acknowledgements, and categories.
     /// </summary>
     public interface ILifeCycleStateRepository {
         bool ThrowExceptions { get; }
@@ -17,8 +17,8 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // DEFINITION & VERSION MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<long>> RegisterDefinition(string displayName, string description, int env);
-        Task<IFeedback<long>> RegisterDefinitionVersion(long parentId, int version, string jsonData);
+        Task<IFeedback<Dictionary<string, object>>> RegisterDefinition(string displayName, string description, int env);
+        Task<IFeedback<Dictionary<string, object>>> RegisterDefinitionVersion(long parentId, int version, string jsonData);
         Task<IFeedback<List<Dictionary<string, object>>>> GetAllDefinitions();
         Task<IFeedback<Dictionary<string, object>>> GetDefinitionById(long id);
         Task<IFeedback<List<Dictionary<string, object>>>> GetVersionsByDefinition(long definitionId);
@@ -30,7 +30,7 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // STATE MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<long>> RegisterState(string displayName, int defVersion, LifeCycleStateFlag flags, int category = 0);
+        Task<IFeedback<Dictionary<string, object>>> RegisterState(string displayName, int defVersion, LifeCycleStateFlag flags, int category = 0);
         Task<IFeedback<List<Dictionary<string, object>>>> GetStatesByVersion(int defVersion);
         Task<IFeedback<Dictionary<string, object>>> GetStateByName(int defVersion, string name);
         Task<IFeedback<Dictionary<string, object>>> GetInitialState(int defVersion);
@@ -41,7 +41,7 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // EVENT MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<long>> RegisterEvent(string displayName, int defVersion);
+        Task<IFeedback<Dictionary<string, object>>> RegisterEvent(string displayName, int defVersion);
         Task<IFeedback<List<Dictionary<string, object>>>> GetEventsByVersion(int defVersion);
         Task<IFeedback<Dictionary<string, object>>> GetEventByName(int defVersion, string name);
         Task<IFeedback<bool>> DeleteEvent(int eventId);
@@ -49,7 +49,7 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // TRANSITION MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<long>> RegisterTransition(int fromState, int toState, int eventId, int defVersion, LifeCycleTransitionFlag flags, string guardCondition = null);
+        Task<IFeedback<Dictionary<string, object>>> RegisterTransition(int fromState, int toState, int eventId, int defVersion, LifeCycleTransitionFlag flags, string guardCondition = null);
         Task<IFeedback<List<Dictionary<string, object>>>> GetTransitionsByVersion(int defVersion);
         Task<IFeedback<Dictionary<string, object>>> GetTransition(int fromState, int eventId, int defVersion);
         Task<IFeedback<List<Dictionary<string, object>>>> GetOutgoingTransitions(int fromState, int defVersion);
@@ -58,12 +58,12 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // INSTANCE MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<Dictionary<string,object>>> RegisterInstance(long defVersion, int currentState, int lastEvent, string externalRef, LifeCycleInstanceFlag flags);
+        Task<IFeedback<Dictionary<string, object>>> RegisterInstance(long defVersion, int currentState, int lastEvent, string externalRef, LifeCycleInstanceFlag flags);
         Task<IFeedback<Dictionary<string, object>>> GetInstanceById(long id);
         Task<IFeedback<Dictionary<string, object>>> GetInstanceByGuid(string guid);
         Task<IFeedback<List<Dictionary<string, object>>>> GetInstancesByRef(string externalRef);
-        Task<IFeedback<List<Dictionary<string, object>>>> GetInstancesByState(int stateId);
-        Task<IFeedback<List<Dictionary<string, object>>>> GetInstancesByFlags(LifeCycleInstanceFlag flags);
+        Task<IFeedback<List<Dictionary<string, object>>>> GetInstancesByState(int defVersion, int stateId);
+        Task<IFeedback<List<Dictionary<string, object>>>> GetInstancesByFlags(int defVersion, LifeCycleInstanceFlag flags);
         Task<IFeedback<bool>> UpdateInstanceState(long instanceId, int newState, int lastEvent, LifeCycleInstanceFlag flags);
         Task<IFeedback<bool>> MarkInstanceCompleted(long instanceId);
         Task<IFeedback<bool>> DeleteInstance(long instanceId);
@@ -88,17 +88,23 @@ namespace Haley.Abstractions {
         Task<IFeedback> RebuildIndexes();
 
         // ----------------------------------------------------------
-        // ACKNOLWEDGEMENT LOG
+        // ACKNOWLEDGEMENT LOG
         // ----------------------------------------------------------
-        Task<IFeedback<long>> Ack_Insert(string messageId, long transitionLogId);
-        Task<IFeedback<bool>> Ack_MarkReceived(string messageId);
-        Task<IFeedback<List<Dictionary<string, object>>>> Ack_GetPending(int retryAfterMinutes);
-        Task<IFeedback<bool>> Ack_Bump(long ackId);
+        Task<IFeedback<Dictionary<string, object>>> Ack_Insert(long transitionLogId, int consumer, int ackStatus = 1);
+        Task<IFeedback<Dictionary<string, object>>> Ack_InsertWithMessage(long transitionLogId, int consumer, string messageId, int ackStatus = 1);
+        Task<IFeedback<bool>> Ack_MarkDeliveredByMessage(string messageId);
+        Task<IFeedback<bool>> Ack_MarkProcessedByMessage(string messageId);
+        Task<IFeedback<bool>> Ack_MarkFailedByMessage(string messageId);
+        Task<IFeedback<bool>> Ack_MarkDelivered(long transitionLogId, int consumer);
+        Task<IFeedback<bool>> Ack_MarkProcessed(long transitionLogId, int consumer);
+        Task<IFeedback<bool>> Ack_MarkFailed(long transitionLogId, int consumer);
+        Task<IFeedback<List<Dictionary<string, object>>>> Ack_GetDueForRetry(int maxRetry, int retryAfterMinutes);
+        Task<IFeedback<bool>> Ack_BumpRetry(long ackId);
 
         // ----------------------------------------------------------
         // CATEGORY
         // ----------------------------------------------------------
-        Task<IFeedback<long>> InsertCategoryAsync(string displayName);
+        Task<IFeedback<Dictionary<string, object>>> InsertCategoryAsync(string displayName);
         Task<IFeedback<List<Dictionary<string, object>>>> GetAllCategoriesAsync();
         Task<IFeedback<Dictionary<string, object>>> GetCategoryByNameAsync(string name);
     }

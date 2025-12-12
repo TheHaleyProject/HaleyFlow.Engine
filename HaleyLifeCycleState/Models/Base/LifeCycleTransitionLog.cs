@@ -8,9 +8,7 @@ namespace Haley.Models {
         public int FromState { get; set; }
         public int ToState { get; set; }
         public int Event { get; set; }
-        public string? Actor { get; set; }
         public LifeCycleTransitionLogFlag Flags { get; set; }
-        public string? Metadata { get; set; } // JSON
         public DateTime Created { get; set; }
     }
 }

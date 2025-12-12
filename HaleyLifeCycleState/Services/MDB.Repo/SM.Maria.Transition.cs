@@ -1,18 +1,22 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Internal;
 using Haley.Models;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using static Haley.Internal.QueryFields;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMariaDB {
-        public Task<IFeedback<long>> RegisterTransition(int fromState, int toState, int eventId, int defVersion, LifeCycleTransitionFlag flags, string guardCondition = null) =>
-         _agw.ScalarAsync<long>(_key, QRY_TRANSITION.INSERT, (FROM_STATE, fromState), (TO_STATE, toState), (EVENT, eventId), (FLAGS, (int)flags), (GUARD_KEY, guardCondition ?? string.Empty), (DEF_VERSION, defVersion));
+
+        public Task<IFeedback<Dictionary<string, object>>> RegisterTransition(int fromState, int toState, int eventId, int defVersion, LifeCycleTransitionFlag flags, string guardCondition = null) =>
+            _agw.ReadSingleAsync(_key, QRY_TRANSITION.INSERT,
+                (FROM_STATE, fromState),
+                (TO_STATE, toState),
+                (EVENT, eventId),
+                (FLAGS, (int)flags),
+                (GUARD_KEY, guardCondition ?? string.Empty),
+                (DEF_VERSION, defVersion));
 
         public Task<IFeedback<List<Dictionary<string, object>>>> GetTransitionsByVersion(int defVersion) =>
             _agw.ReadAsync(_key, QRY_TRANSITION.GET_BY_VERSION, (DEF_VERSION, defVersion));

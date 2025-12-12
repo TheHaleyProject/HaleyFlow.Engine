@@ -1,34 +1,38 @@
-﻿using Haley.Enums;
+using Haley.Enums;
+using Haley.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Haley.Models;
 
 namespace Haley.Abstractions {
 
     public interface ILifeCycleStateMachine {
-        Task<LifeCycleInstance?> GetInstanceAsync(string externalRefType, Guid externalRefId);
-        Task<LifeCycleInstance?> GetInstanceAsync<TEntity>(Guid externalRefId);
 
-        Task InitializeAsync(string externalRefType, Guid externalRefId, int definitionVersion);
-        Task InitializeAsync<TEntity>(Guid externalRefId, int definitionVersion);
+        // Instance identity is: (def_version + external_ref)
+        Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, string externalRef);
+        Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, Guid externalRefId);
 
-        Task<bool> TriggerAsync(string externalRefType, Guid externalRefId, Guid toStateId, string comment = null,object ? context = null);
-        Task<bool> TriggerAsync<TEntity>(Guid externalRefId, Guid toStateId, string? comment = null, object? context = null);
+        Task InitializeAsync(int definitionVersion, string externalRef, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active);
+        Task InitializeAsync(int definitionVersion, Guid externalRefId, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active);
 
-        Task<bool> ValidateTransitionAsync(Guid fromStateId, Guid toStateId);
+        // Trigger a transition to a target state.
+        // actor/metadata are stored in transition_data (not transition / transition_log).
+        Task<bool> TriggerAsync(int definitionVersion, string externalRef, int toStateId, string? comment = null, string? actor = null, object? context = null, LifeCycleTransitionLogFlag flags = LifeCycleTransitionLogFlag.Manual);
+        Task<bool> TriggerAsync(int definitionVersion, Guid externalRefId, int toStateId, string? comment = null, string? actor = null, object? context = null, LifeCycleTransitionLogFlag flags = LifeCycleTransitionLogFlag.Manual);
 
-        Task<LifeCycleState> GetCurrentStateAsync(string externalRefType, Guid externalRefId);
-        Task<LifeCycleState> GetCurrentStateAsync<TEntity>(Guid externalRefId);
+        Task<bool> ValidateTransitionAsync(int definitionVersion, int fromStateId, int toStateId);
 
-        Task<IReadOnlyList<LifeCycleTransitionLog?>> GetTransitionHistoryAsync(string externalRefType, Guid externalRefId);
-        Task<IReadOnlyList<LifeCycleTransitionLog?>> GetTransitionHistoryAsync<TEntity>(Guid externalRefId);
+        Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, string externalRef);
+        Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, Guid externalRefId);
 
-        Task ForceUpdateStateAsync(string externalRefType, Guid externalRefId, Guid newStateId, LifeCycleTransitionLogFlag flags = LifeCycleTransitionLogFlag.System);
-        Task ForceUpdateStateAsync<TEntity>(Guid externalRefId, Guid newStateId, LifeCycleTransitionLogFlag flags = LifeCycleTransitionLogFlag.System);
+        Task<IReadOnlyList<LifeCycleTransitionLog?>> GetTransitionHistoryAsync(int definitionVersion, string externalRef);
+        Task<IReadOnlyList<LifeCycleTransitionLog?>> GetTransitionHistoryAsync(int definitionVersion, Guid externalRefId);
 
-        Task<bool> IsFinalStateAsync(Guid stateId);
-        Task<bool> IsInitialStateAsync(Guid stateId);
+        Task ForceUpdateStateAsync(int definitionVersion, string externalRef, int newStateId, LifeCycleTransitionLogFlag flags = LifeCycleTransitionLogFlag.System, string? actor = null, string? metadata = null);
+        Task ForceUpdateStateAsync(int definitionVersion, Guid externalRefId, int newStateId, LifeCycleTransitionLogFlag flags = LifeCycleTransitionLogFlag.System, string? actor = null, string? metadata = null);
+
+        Task<bool> IsFinalStateAsync(int definitionVersion, int stateId);
+        Task<bool> IsInitialStateAsync(int definitionVersion, int stateId);
 
         Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath);
         Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json);

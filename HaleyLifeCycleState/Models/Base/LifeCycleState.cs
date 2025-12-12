@@ -7,7 +7,7 @@ namespace Haley.Models {
         public string DisplayName { get; set; } = default!;
         public string Name { get; set; } = default!;
         public LifeCycleStateFlag Flags { get; set; }
-        public string? Category { get; set; }
+        public int Category { get; set; }
         public int DefinitionVersion { get; set; }
         public DateTime Created { get; set; }
     }

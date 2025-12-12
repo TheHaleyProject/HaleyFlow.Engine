@@ -1,20 +1,18 @@
-﻿using Haley.Abstractions;
-using Haley.Enums;
+using Haley.Abstractions;
 using Haley.Internal;
 using Haley.Models;
-using Microsoft.Extensions.Logging;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using static Haley.Internal.QueryFields;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMariaDB {
-        public Task<IFeedback<long>> RegisterDefinition(string displayName, string description, int env) =>
-          _agw.ScalarAsync<long>(_key, QRY_DEFINITION.INSERT, (DISPLAY_NAME, displayName), (DESCRIPTION, description), (ENV, env));
 
-        public Task<IFeedback<long>> RegisterDefinitionVersion(long parentId, int version, string jsonData) =>
-            _agw.ScalarAsync<long>(_key, QRY_DEF_VERSION.INSERT, (PARENT, parentId), (VERSION, version), (DATA, jsonData));
+        public Task<IFeedback<Dictionary<string, object>>> RegisterDefinition(string displayName, string description, int env) =>
+            _agw.ReadSingleAsync(_key, QRY_DEFINITION.INSERT, (DISPLAY_NAME, displayName), (DESCRIPTION, description), (ENV, env));
+
+        public Task<IFeedback<Dictionary<string, object>>> RegisterDefinitionVersion(long parentId, int version, string jsonData) =>
+            _agw.ReadSingleAsync(_key, QRY_DEF_VERSION.INSERT, (PARENT, parentId), (VERSION, version), (DATA, jsonData));
 
         public Task<IFeedback<List<Dictionary<string, object>>>> GetAllDefinitions() =>
             _agw.ReadAsync(_key, QRY_DEFINITION.GET_ALL);
@@ -29,8 +27,8 @@ namespace Haley.Services {
             _agw.ReadSingleAsync(_key, QRY_DEF_VERSION.GET_LATEST, (PARENT, definitionId));
 
         public async Task<IFeedback<bool>> DefinitionExists(string displayName, int env) {
-            var sc = await _agw.ScalarAsync<object>(_key, QRY_DEFINITION.GET_BY_NAME, (DISPLAY_NAME, displayName.ToLower()), (ENV, env));
-            return new Feedback<bool>().SetStatus(true).SetResult(sc.Status && sc.Result != null);
+            var res = await _agw.ReadSingleAsync(_key, QRY_DEFINITION.GET_BY_NAME, (ENV, env), (NAME, displayName));
+            return new Feedback<bool>().SetStatus(true).SetResult(res.Status && res.Result != null);
         }
 
         public Task<IFeedback<bool>> UpdateDefinitionDescription(long definitionId, string newDescription) =>
