@@ -5,128 +5,122 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMachine {
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-        static string NormalizeExternalRef(string externalRef) =>
-            string.IsNullOrWhiteSpace(externalRef) ? string.Empty : externalRef.Trim().ToLowerInvariant();
+        private static string NormalizeExternalRef(string externalRef) {
+            return externalRef?.Trim() ?? string.Empty;
+        }
 
-        static int ToInt(object? v) => v == null ? 0 : Convert.ToInt32(v);
-        static long ToLong(object? v) => v == null ? 0L : Convert.ToInt64(v);
-        static string? ToStr(object? v) => v?.ToString();
+        private static int GetInt(IDictionary<string, object> row, string key) {
+            if (row == null) throw new ArgumentNullException(nameof(row));
+            if (!row.TryGetValue(key, out var value) || value == null) return 0;
+            if (value is int i) return i;
+            if (value is long l) return (int)l;
+            if (value is short s) return s;
+            if (int.TryParse(Convert.ToString(value), out var parsed)) return parsed;
+            return 0;
+        }
 
-        static int ToInt(Dictionary<string, object> row, string key) =>
-            row.TryGetValue(key, out var v) ? Convert.ToInt32(v) : 0;
+        private static long GetLong(IDictionary<string, object> row, string key) {
+            if (row == null) throw new ArgumentNullException(nameof(row));
+            if (!row.TryGetValue(key, out var value) || value == null) return 0L;
+            if (value is long l) return l;
+            if (value is int i) return i;
+            if (long.TryParse(Convert.ToString(value), out var parsed)) return parsed;
+            return 0L;
+        }
 
-        static long ToLong(Dictionary<string, object> row, string key) =>
-            row.TryGetValue(key, out var v) ? Convert.ToInt64(v) : 0L;
+        private static string? GetString(IDictionary<string, object> row, string key) {
+            if (row == null) throw new ArgumentNullException(nameof(row));
+            if (!row.TryGetValue(key, out var value) || value == null) return null;
+            return Convert.ToString(value);
+        }
 
-        static string? GetStr(Dictionary<string, object> row, string key) =>
-            row.TryGetValue(key, out var v) ? v?.ToString() : null;
+        private static LifeCycleState MapState(IDictionary<string, object> row) {
+            return new LifeCycleState { 
+                Id = GetInt(row, "id"), 
+                DisplayName = GetString(row, "display_name") ?? string.Empty, 
+                DefinitionVersion = GetInt(row, "def_version"), 
+                Category = GetInt(row, "category"), 
+                Flags = (LifeCycleStateFlag)GetInt(row, "flags"), 
+                Created = DateTime.UtcNow };
+        }
 
-        static LifeCycleState MapState(Dictionary<string, object> row) => new LifeCycleState {
-            Id = ToInt(row["id"]),
-            DisplayName = ToStr(row["display_name"]),
-            Flags = (LifeCycleStateFlag)ToInt(row["flags"]),
-            DefinitionVersion = ToInt(row["def_version"]),
-            Category = ToInt(row["category"])
-        };
+        private static LifeCycleInstance MapInstance(IDictionary<string, object> row) {
+            return new LifeCycleInstance { 
+                Id = GetLong(row, "id"),
+                DefinitionVersion = GetInt(row, "def_version"), 
+                CurrentState = GetInt(row, "current_state"), 
+                LastEvent = GetInt(row, "last_event"), 
+                ExternalRef = GetString(row, "external_ref") ?? string.Empty, 
+                Flags = (LifeCycleInstanceFlag)GetInt(row, "flags"), 
+                Created = DateTime.UtcNow };
+        }
 
-        static LifeCycleInstance MapInstance(Dictionary<string, object> row) => new LifeCycleInstance {
-            Id = ToLong(row["id"]),
-            Guid = Guid.TryParse(ToStr(row["guid"]), out var g) ? g : Guid.Empty,
-            CurrentState = ToInt(row["current_state"]),
-            LastEvent = ToInt(row["last_event"]),
-            ExternalRef = ToStr(row["external_ref"]),
-            DefinitionVersion = ToInt(row["def_version"]),
-            Flags = (LifeCycleInstanceFlag)ToInt(row["flags"])
-        };
+        private static string BuildMetadata(string? comment, object? context) {
+            if (comment == null && context == null) return string.Empty;
+            var payload = new Dictionary<string, object?> { 
+                ["comment"] = comment, 
+                ["context"] = context };
+            return JsonSerializer.Serialize(payload, JsonOptions);
+        }
 
-        async Task ThrowIfFailed<T>(IFeedback<T> feedback, string context) {
-            if (feedback == null || !feedback.Status) {
-                if (_repo.ThrowExceptions)
-                    throw new InvalidOperationException($"{context} failed: {feedback?.Message}");
+        private static void NormalizeDefinitionJson(LifeCycleDefinitionJson spec) {
+            if (spec == null) throw new ArgumentNullException(nameof(spec));
+            spec.Definition ??= new DefinitionBlock();
+            spec.States ??= new List<StateBlock>();
+            spec.Events ??= new List<EventBlock>();
+            spec.Transitions ??= new List<TransitionBlock>();
+
+            spec.Definition.Name = spec.Definition.Name?.Trim() ?? string.Empty;
+            spec.Definition.Version = spec.Definition.Version?.Trim() ?? "1.0.0";
+            spec.Definition.Description = spec.Definition.Description?.Trim();
+            spec.Definition.Environment = spec.Definition.Environment?.Trim();
+
+            foreach (var s in spec.States) {
+                s.Name = s.Name?.Trim() ?? string.Empty;
+                s.Category = s.Category?.Trim() ?? "business";
+                s.Timeout = s.Timeout?.Trim();
+                s.TimeoutMode = s.TimeoutMode?.Trim();
             }
-        }
 
-        async Task RaiseAsync(Func<TransitionEventArgs, Task>? handler, LifeCycleTransitionLog? log = null, Exception? ex = null) {
-            if (handler != null) await handler(new TransitionEventArgs(log, ex));
-        }
-
-        static readonly JsonSerializerOptions _jsonOptions = new() {
-            PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-
-        static string? BuildMetadata(string? comment, object? context) {
-            if (context == null) return string.IsNullOrWhiteSpace(comment) ? null : comment;
-
-            // If caller passed a raw string context and no comment, keep it simple.
-            if (string.IsNullOrWhiteSpace(comment) && context is string s) return s;
-
-            try {
-                return JsonSerializer.Serialize(new { comment, context }, _jsonOptions);
-            } catch {
-                // Fall back: avoid throwing from logging.
-                return string.IsNullOrWhiteSpace(comment) ? context.ToString() : comment;
+            foreach (var e in spec.Events) {
+                e.Name = e.Name?.Trim() ?? string.Empty;
+                e.DisplayName = string.IsNullOrWhiteSpace(e.DisplayName) ? e.Name : e.DisplayName!.Trim();
             }
+
+            foreach (var t in spec.Transitions) {
+                t.From = t.From?.Trim() ?? string.Empty;
+                t.To = t.To?.Trim() ?? string.Empty;
+            }
+
+            if (!spec.States.Any(s => s.IsInitial) && spec.States.Count > 0) spec.States[0].IsInitial = true;
         }
 
-        static void NormalizeSpec(DefinitionJson s) {
-            if (s.Environment == null) s.Environment = "Development";
-            if (s.Definition == null) throw new InvalidOperationException("Missing 'definition' block.");
-            if (string.IsNullOrWhiteSpace(s.Definition.Name)) throw new InvalidOperationException("definition.name is required.");
-            if (s.States == null || s.States.Count == 0) throw new InvalidOperationException("At least one state required.");
-            if (!s.States.Any(x => x.IsInitial)) s.States[0].IsInitial = true;
-            if (s.Transitions == null) s.Transitions = new();
-        }
+        private static LifeCycleStateFlag BuildStateFlags(StateBlock block) {
+            var result = LifeCycleStateFlag.None;
+            if (block == null) return result;
+            if (block.IsInitial) result |= LifeCycleStateFlag.IsInitial;
+            if (block.IsFinal) result |= LifeCycleStateFlag.IsFinal;
 
-        static int ResolveEnvironment(string? env) {
-            if (string.IsNullOrWhiteSpace(env)) return 0;
-            if (int.TryParse(env, out var n)) return n;
-            return env.Trim().ToLowerInvariant() switch {
-                "dev" or "development" => 0,
-                "test" or "qa" or "staging" => 1,
-                "prod" or "production" => 2,
-                _ => 0
-            };
-        }
-
-        static int ParseVersionInt(string? versionLabel, int? versionCode) {
-            if (versionCode.HasValue && versionCode.Value > 0) return versionCode.Value;
-            if (string.IsNullOrWhiteSpace(versionLabel)) return 10000;
-            var p = versionLabel.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            int x = p.Length > 0 && int.TryParse(p[0], out var a) ? a : 1;
-            int y = p.Length > 1 && int.TryParse(p[1], out var b) ? b : 0;
-            int z = p.Length > 2 && int.TryParse(p[2], out var c) ? c : 0;
-            return x * 10000 + y * 100 + z;
-        }
-
-        static LifeCycleStateFlag BuildStateFlags(StateSpec s) {
-            var f = LifeCycleStateFlag.None;
-            if (s.IsInitial) f |= LifeCycleStateFlag.IsInitial;
-            if (s.IsFinal) f |= LifeCycleStateFlag.IsFinal;
-            if (!string.IsNullOrWhiteSpace(s.Category) && s.Category.Equals("error", StringComparison.OrdinalIgnoreCase))
-                f |= LifeCycleStateFlag.IsError;
-            if (s.Flags != null) {
-                foreach (var token in s.Flags) {
-                    if (Enum.TryParse<LifeCycleStateFlag>(token, true, out var add)) f |= add;
+            if (block.Flags != null) {
+                foreach (var f in block.Flags) {
+                    if (string.IsNullOrWhiteSpace(f)) continue;
+                    if (Enum.TryParse<LifeCycleStateFlag>(f.Trim(), true, out var parsed)) result |= parsed;
                 }
             }
-            return f;
+
+            return result;
         }
 
-        static LifeCycleTransitionFlag BuildTransitionFlags(TransitionSpec t) {
-            var f = LifeCycleTransitionFlag.None;
-            if (t.Flags != null) {
-                foreach (var token in t.Flags) {
-                    if (Enum.TryParse<LifeCycleTransitionFlag>(token, true, out var add)) f |= add;
-                }
-            }
-            return f;
+        private void EnsureSuccess<T>(IFeedback<T> feedback, string context) {
+            if (feedback == null) throw new InvalidOperationException($"{context} returned null feedback.");
+            if (feedback.Status) return;
+            var message = string.IsNullOrWhiteSpace(feedback.Message) ? $"Operation '{context}' failed." : feedback.Message;
+            if (ThrowExceptions || Repository.ThrowExceptions) throw new InvalidOperationException(message);
         }
     }
 }

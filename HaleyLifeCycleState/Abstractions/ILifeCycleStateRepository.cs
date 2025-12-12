@@ -30,7 +30,7 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // STATE MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<Dictionary<string, object>>> RegisterState(string displayName, int defVersion, LifeCycleStateFlag flags, int category = 0);
+        Task<IFeedback<Dictionary<string, object>>> RegisterState(string displayName, int defVersion, LifeCycleStateFlag flags, int category = 0, string? timeout = null, int timeoutMode = 0, int timeoutEventId = 0);
         Task<IFeedback<List<Dictionary<string, object>>>> GetStatesByVersion(int defVersion);
         Task<IFeedback<Dictionary<string, object>>> GetStateByName(int defVersion, string name);
         Task<IFeedback<Dictionary<string, object>>> GetInitialState(int defVersion);
@@ -41,15 +41,16 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // EVENT MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<Dictionary<string, object>>> RegisterEvent(string displayName, int defVersion);
+        Task<IFeedback<Dictionary<string, object>>> RegisterEvent(string displayName, int code, int defVersion);
         Task<IFeedback<List<Dictionary<string, object>>>> GetEventsByVersion(int defVersion);
         Task<IFeedback<Dictionary<string, object>>> GetEventByName(int defVersion, string name);
+        Task<IFeedback<Dictionary<string, object>>> GetEventByCode(int defVersion, int code);
         Task<IFeedback<bool>> DeleteEvent(int eventId);
 
         // ----------------------------------------------------------
         // TRANSITION MANAGEMENT
         // ----------------------------------------------------------
-        Task<IFeedback<Dictionary<string, object>>> RegisterTransition(int fromState, int toState, int eventId, int defVersion, LifeCycleTransitionFlag flags, string guardCondition = null);
+        Task<IFeedback<Dictionary<string, object>>> RegisterTransition(int fromState, int toState, int eventId, int defVersion);
         Task<IFeedback<List<Dictionary<string, object>>>> GetTransitionsByVersion(int defVersion);
         Task<IFeedback<Dictionary<string, object>>> GetTransition(int fromState, int eventId, int defVersion);
         Task<IFeedback<List<Dictionary<string, object>>>> GetOutgoingTransitions(int fromState, int defVersion);
@@ -74,7 +75,7 @@ namespace Haley.Abstractions {
         // ----------------------------------------------------------
         // TRANSITION LOG / AUDIT
         // ----------------------------------------------------------
-        Task<IFeedback<long>> LogTransition(long instanceId, int fromState, int toState, int eventId, string actor, LifeCycleTransitionLogFlag flags, string metadata = null);
+        Task<IFeedback<long>> LogTransition(long instanceId, int fromState, int toState, int eventId, string? actor = null, string? metadata = null);
         Task<IFeedback<List<Dictionary<string, object>>>> GetLogsByInstance(long instanceId);
         Task<IFeedback<List<Dictionary<string, object>>>> GetLogsByStateChange(int fromState, int toState);
         Task<IFeedback<List<Dictionary<string, object>>>> GetLogsByDateRange(DateTime from, DateTime to);

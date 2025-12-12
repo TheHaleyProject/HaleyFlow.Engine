@@ -2,16 +2,16 @@
 using System;
 
 namespace Haley.Models {
-    public class LifeCycleState {
+    public sealed class LifeCycleState {
         public int Id { get; set; }
-        public string DisplayName { get; set; } = default!;
-        public string Name { get; set; } = default!;
+        public int DefinitionVersion { get; set; } // def_version
+        public string DisplayName { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int Category { get; set; }          // category id
         public LifeCycleStateFlag Flags { get; set; }
-        public int Category { get; set; }
-        public int DefinitionVersion { get; set; }
+        public int? Timeout { get; set; }          // seconds (recommended) OR string if you chose ISO in DB
+        public int TimeoutMode { get; set; }       // 0=once,1=repeat
+        public int? TimeoutEvent { get; set; }     // event id
         public DateTime Created { get; set; }
-        public string TimeOut { get; set; }
-        public LifeCycleStateTimeOut TimeOutMode { get; set; }
-        public int TimeOutEvent { get; set; }
     }
 }

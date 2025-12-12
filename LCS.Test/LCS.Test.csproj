@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Import Project="$(SolutionDir)ProjectReferences_$(SolutionName).txt" Condition="Exists('$(SolutionDir)ProjectReferences_$(SolutionName).txt')" />
+
+  <Choose>
+    <When Condition="Exists($(HaleyLifeCycleState))">
+      <ItemGroup>
+        <ProjectReference Include="$(HaleyLifeCycleState)\HaleyLifeCycleState.csproj">
+          <Name>HaleyLifeCycleState</Name>
+        </ProjectReference>
+      </ItemGroup>
+    </When>
+    <Otherwise>
+      <ItemGroup>
+        <PackageReference Include="Haley.LifeCycle.State" Version="0.0.1" />
+      </ItemGroup>
+    </Otherwise>
+  </Choose>
+
+  
+</Project>

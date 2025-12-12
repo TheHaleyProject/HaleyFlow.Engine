@@ -1,5 +1,4 @@
 using Haley.Abstractions;
-using Haley.Enums;
 using Haley.Models;
 using System;
 using System.Collections.Generic;
@@ -10,166 +9,128 @@ using System.Threading.Tasks;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMachine {
-
-        public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath) =>
-            await ImportDefinitionFromJsonAsync(await File.ReadAllTextAsync(filePath));
+        public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath) {
+            if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentNullException(nameof(filePath));
+            if (!File.Exists(filePath)) throw new FileNotFoundException("Definition file not found.", filePath);
+            var json = await File.ReadAllTextAsync(filePath).ConfigureAwait(false);
+            return await ImportDefinitionFromJsonAsync(json).ConfigureAwait(false);
+        }
 
         public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json) {
             var fb = new Feedback<DefinitionLoadResult>();
 
             try {
-                var spec = JsonSerializer.Deserialize<DefinitionJson>(json, _jsonOptions) ?? throw new InvalidOperationException("Invalid JSON.");
-                NormalizeSpec(spec);
-
-                int env = ResolveEnvironment(spec.Environment);
-
-                // -------------------------
-                // Definition
-                // -------------------------
-                long definitionId;
-
-                var exists = await _repo.DefinitionExists(spec.Definition.Name, env);
-                if (exists.Status && exists.Result) {
-                    var defs = await _repo.GetAllDefinitions();
-                    var match = defs.Status
-                        ? defs.Result?.FirstOrDefault(d =>
-                            string.Equals(GetStr(d, "display_name"), spec.Definition.Name, StringComparison.OrdinalIgnoreCase) &&
-                            ToInt(d, "env") == env)
-                        : null;
-
-                    if (match is null) {
-                        var defReg = await _repo.RegisterDefinition(spec.Definition.Name, spec.Definition.Description ?? "", env);
-                        if (!defReg.Status || defReg.Result == null) return fb.SetMessage(defReg.Message);
-                        definitionId = ToLong(defReg.Result, "id");
-                    } else {
-                        definitionId = ToLong(match, "id");
-                    }
-                } else {
-                    var defReg = await _repo.RegisterDefinition(spec.Definition.Name, spec.Definition.Description ?? "", env);
-                    if (!defReg.Status || defReg.Result == null) return fb.SetMessage(defReg.Message);
-                    definitionId = ToLong(defReg.Result, "id");
+                if (string.IsNullOrWhiteSpace(json)) {
+                    fb.SetMessage("JSON is empty.");
+                    return fb;
                 }
 
-                // -------------------------
-                // Definition Version
-                // -------------------------
-                int versionCode = ParseVersionInt(spec.Definition.Version, spec.Definition.VersionCode);
-
-                var verReg = await _repo.RegisterDefinitionVersion(definitionId, versionCode, json);
-                if (!verReg.Status || verReg.Result == null) return fb.SetMessage(verReg.Message);
-
-                int defVersionId = ToInt(verReg.Result, "id");
-
-                // -------------------------
-                // Categories
-                // -------------------------
-                var categoryNameToId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var catName in spec.States.Select(s => s.Category).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.OrdinalIgnoreCase)) {
-                    var catGet = await _repo.GetCategoryByNameAsync(catName!);
-                    if (catGet.Status && catGet.Result != null) {
-                        categoryNameToId[catName!] = ToInt(catGet.Result, "id");
-                    } else {
-                        var catIns = await _repo.InsertCategoryAsync(catName!);
-                        if (!catIns.Status || catIns.Result == null) return fb.SetMessage(catIns.Message);
-                        categoryNameToId[catName!] = ToInt(catIns.Result, "id");
-                    }
+                var spec = JsonSerializer.Deserialize<LifeCycleDefinitionJson>(json, JsonOptions);
+                if (spec == null) {
+                    fb.SetMessage("Failed to deserialize JSON into LifeCycleDefinitionJson.");
+                    return fb;
                 }
 
-                // -------------------------
-                // States
-                // -------------------------
-                var stateNameToId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                NormalizeDefinitionJson(spec);
+
+                var env = 0;
+                var displayName = spec.Definition.Name;
+                var description = spec.Definition.Description ?? string.Empty;
+
+                var existsFb = await Repository.DefinitionExists(displayName, env).ConfigureAwait(false);
+                EnsureSuccess(existsFb, "DefinitionExists");
+
+                if (!existsFb.Result) {
+                    var regDefFb = await Repository.RegisterDefinition(displayName, description, env).ConfigureAwait(false);
+                    EnsureSuccess(regDefFb, "RegisterDefinition");
+                }
+
+                var defsFb = await Repository.GetAllDefinitions().ConfigureAwait(false);
+                EnsureSuccess(defsFb, "GetAllDefinitions");
+                var defRows = defsFb.Result ?? new List<Dictionary<string, object>>();
+
+                var defRow = defRows.FirstOrDefault(r => string.Equals(GetString(r, "display_name"), displayName, StringComparison.OrdinalIgnoreCase));
+                if (defRow == null) throw new InvalidOperationException($"Definition '{displayName}' not found after registration.");
+
+                var defId = GetLong(defRow, "id");
+
+                var versionString = spec.Definition.Version;
+                if (!int.TryParse(versionString, out var versionNumber)) versionNumber = 1;
+
+                var regVerFb = await Repository.RegisterDefinitionVersion(defId, versionNumber, json).ConfigureAwait(false);
+                EnsureSuccess(regVerFb, "RegisterDefinitionVersion");
+
+                var latestFb = await Repository.GetLatestDefinitionVersion(defId).ConfigureAwait(false);
+                EnsureSuccess(latestFb, "GetLatestDefinitionVersion");
+                var verRow = latestFb.Result ?? throw new InvalidOperationException("Latest definition version row is null.");
+                var defVersionId = (int)GetLong(verRow, "id");
+
+                var catFb = await Repository.GetAllCategoriesAsync().ConfigureAwait(false);
+                EnsureSuccess(catFb, "GetAllCategoriesAsync");
+                var catRows = catFb.Result ?? new List<Dictionary<string, object>>();
+
+                var categoryByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var c in catRows) {
+                    var name = GetString(c, "display_name") ?? GetString(c, "name") ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    categoryByName[name] = GetInt(c, "id");
+                }
+
+                int ResolveCategoryId(string? category) {
+                    var name = string.IsNullOrWhiteSpace(category) ? "business" : category.Trim();
+                    if (categoryByName.TryGetValue(name, out var id)) return id;
+                    var insertFb = Repository.InsertCategoryAsync(name).GetAwaiter().GetResult();
+                    EnsureSuccess(insertFb, "InsertCategoryAsync");
+                    var row = insertFb.Result ?? throw new InvalidOperationException("InsertCategoryAsync returned null row.");
+                    var newId = GetInt(row, "id");
+                    categoryByName[name] = newId;
+                    return newId;
+                }
+
+                var stateIdByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var eventIdByCode = new Dictionary<int, int>();
+                var eventCodeById = new Dictionary<int, int>();
+                var eventNameById = new Dictionary<int, string>();
 
                 foreach (var s in spec.States) {
                     var flags = BuildStateFlags(s);
-                    int categoryId = (s.Category != null && categoryNameToId.TryGetValue(s.Category, out var cid)) ? cid : 0;
-
-                    var get = await _repo.GetStateByName(defVersionId, s.Name);
-                    int stateId;
-
-                    if (get.Status && get.Result != null) {
-                        stateId = ToInt(get.Result, "id");
-                    } else {
-                        var ins = await _repo.RegisterState(s.Name, defVersionId, flags, categoryId);
-                        if (!ins.Status || ins.Result == null) return fb.SetMessage(ins.Message);
-                        stateId = ToInt(ins.Result, "id");
-                    }
-
-                    stateNameToId[s.Name] = stateId;
+                    var categoryId = ResolveCategoryId(s.Category);
+                    var stateFb = await Repository.RegisterState(s.Name, defVersionId, flags, categoryId).ConfigureAwait(false);
+                    EnsureSuccess(stateFb, "RegisterState");
+                    var row = stateFb.Result ?? throw new InvalidOperationException("RegisterState returned null row.");
+                    var stateId = GetInt(row, "id");
+                    stateIdByName[s.Name] = stateId;
                 }
 
-                // -------------------------
-                // Events (union)
-                // -------------------------
-                var eventNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                if (spec.Events != null) {
-                    foreach (var e in spec.Events.Where(e => !string.IsNullOrWhiteSpace(e)))
-                        eventNames.Add(e!);
+                foreach (var e in spec.Events) {
+                    var display = string.IsNullOrWhiteSpace(e.DisplayName) ? e.Name : e.DisplayName;
+                    var evFb = await Repository.RegisterEvent(display,e.Code, defVersionId).ConfigureAwait(false);
+                    EnsureSuccess(evFb, "RegisterEvent");
+                    var row = evFb.Result ?? throw new InvalidOperationException("RegisterEvent returned null row.");
+                    var eventId = GetInt(row, "id");
+                    var code = e.Code != 0 ? e.Code : eventId;
+                    eventIdByCode[code] = eventId;
+                    eventCodeById[eventId] = code;
+                    eventNameById[eventId] = display ?? e.Name;
                 }
 
                 foreach (var t in spec.Transitions) {
-                    if (!string.IsNullOrWhiteSpace(t.Event))
-                        eventNames.Add(t.Event!);
+                    if (!stateIdByName.TryGetValue(t.From, out var fromStateId)) throw new InvalidOperationException($"Unknown state in transition 'from': '{t.From}'.");
+                    if (!stateIdByName.TryGetValue(t.To, out var toStateId)) throw new InvalidOperationException($"Unknown state in transition 'to': '{t.To}'.");
+                    if (!eventIdByCode.TryGetValue(t.Event, out var eventId)) throw new InvalidOperationException($"Unknown event code '{t.Event}' in transition.");
+
+                    var trFb = await Repository.RegisterTransition(fromStateId, toStateId, eventId, defVersionId).ConfigureAwait(false);
+                    EnsureSuccess(trFb, "RegisterTransition");
                 }
 
-                var eventNameToId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var ev in eventNames) {
-                    var existing = await _repo.GetEventByName(defVersionId, ev);
-                    if (existing.Status && existing.Result != null) {
-                        eventNameToId[ev] = ToInt(existing.Result, "id");
-                    } else {
-                        var ins = await _repo.RegisterEvent(ev, defVersionId);
-                        if (!ins.Status || ins.Result == null) return fb.SetMessage(ins.Message);
-                        eventNameToId[ev] = ToInt(ins.Result, "id");
-                    }
-                }
-
-                // -------------------------
-                // Transitions
-                // -------------------------
-                var createdTransitions = 0;
-
-                foreach (var t in spec.Transitions) {
-                    if (!stateNameToId.TryGetValue(t.From, out var fromId))
-                        return fb.SetMessage($"Transition 'from' state '{t.From}' not found.");
-
-                    if (!stateNameToId.TryGetValue(t.To, out var toId))
-                        return fb.SetMessage($"Transition 'to' state '{t.To}' not found.");
-
-                    if (string.IsNullOrWhiteSpace(t.Event))
-                        return fb.SetMessage($"Transition from '{t.From}' is missing 'event'.");
-
-                    if (!eventNameToId.TryGetValue(t.Event!, out var evId))
-                        return fb.SetMessage($"Transition event '{t.Event}' not found.");
-
-                    var flags = BuildTransitionFlags(t);
-
-                    var existing = await _repo.GetTransition(fromId, evId, defVersionId);
-                    if (existing.Status && existing.Result != null) continue;
-
-                    var ins = await _repo.RegisterTransition(fromId, toId, evId, defVersionId, flags, t.Guard ?? "");
-                    if (!ins.Status) return fb.SetMessage(ins.Message);
-
-                    createdTransitions++;
-                }
-
-                return fb.SetStatus(true).SetResult(new DefinitionLoadResult {
-                    DefinitionId = definitionId,
-                    DefinitionVersionId = defVersionId,
-                    Environment = spec.Environment!,
-                    VersionCode = versionCode,
-                    StateCount = stateNameToId.Count,
-                    EventCount = eventNameToId.Count,
-                    TransitionCount = createdTransitions
-                });
-
+                var result = new DefinitionLoadResult { DefinitionId = defId, DefinitionVersionId = defVersionId, StateCount = spec.States.Count, EventCount = spec.Events.Count, TransitionCount = spec.Transitions.Count };
+                fb.SetStatus(true).SetResult(result);
             } catch (Exception ex) {
-                if (_repo.ThrowExceptions) throw;
-                return fb.SetMessage(ex.Message);
+                fb.SetMessage(ex.Message).SetTrace(ex.StackTrace);
+                if (ThrowExceptions || Repository.ThrowExceptions) throw;
             }
+
+            return fb;
         }
     }
 }
