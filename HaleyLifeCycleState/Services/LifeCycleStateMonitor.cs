@@ -73,7 +73,7 @@ namespace Haley.Services {
 
                 try {
                     // Load transition_log + data + instance + event
-                    var logFb = await _repo.GetLatestLogForInstanceByLogId(transitionLogId).ConfigureAwait(false); // you can implement or reuse existing queries
+                    var logFb = await _repo.GetLogById(transitionLogId).ConfigureAwait(false);
                     if (logFb == null || !logFb.Status || logFb.Result == null) continue;
                     var logRow = logFb.Result;
 
@@ -125,6 +125,7 @@ namespace Haley.Services {
                 }
             }
         }
+
 
         public void Dispose() {
             Stop();
