@@ -29,11 +29,11 @@ namespace Haley.Abstractions {
         Task<bool> ForceUpdateStateAsync(int definitionVersion, LifeCycleKey instanceKey, int newStateId, string? actor = null, string? metadata = null);
 
         // Definition import
-        Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json);
-        Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath);
+        Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json, string environmentName = "default", int envCode = 0);
+        Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath,string environmentName = "default", int envCode =0);
 
         // Ack pass-through
-        Task<IFeedback<Dictionary<string, object>>> Ack_Insert(long transitionLogId, int consumer, int ackStatus = 1, string? messageId = null);
-        Task<IFeedback<bool>> Ack_Mark(LifeCycleKey key, LifeCycleAckStatus status);
+        Task<IFeedback<Dictionary<string, object>>> InsertAck(long transitionLogId, int consumer, int ackStatus = 1, string? messageId = null);
+        Task<IFeedback<bool>> MarkAck(LifeCycleKey key, LifeCycleAckStatus status);
     }
 }

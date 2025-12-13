@@ -151,13 +151,13 @@ namespace Haley.Services {
             if (work == null) return;
 
             try {
-                await _sm.Ack_Mark(ackKey, LifeCycleAckStatus.Delivered).ConfigureAwait(false);
+                await _sm.MarkAck(ackKey, LifeCycleAckStatus.Delivered).ConfigureAwait(false);
                 await _ackHandler(work).ConfigureAwait(false);
-                await _sm.Ack_Mark(ackKey, LifeCycleAckStatus.Processed).ConfigureAwait(false);
+                await _sm.MarkAck(ackKey, LifeCycleAckStatus.Processed).ConfigureAwait(false);
             } catch {
                 // Only mark permanently failed when retries are exhausted
                 if (retryCount + 1 >= maxRetry)
-                    await _sm.Ack_Mark(ackKey, LifeCycleAckStatus.Failed).ConfigureAwait(false);
+                    await _sm.MarkAck(ackKey, LifeCycleAckStatus.Failed).ConfigureAwait(false);
 
                 if (_repo.ThrowExceptions) throw;
             }

@@ -11,24 +11,15 @@ using System.Threading.Tasks;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMachine {
-        private static int StableCode(string name, long seed = 2166136261) {
-            if (string.IsNullOrWhiteSpace(name)) return 0;
-            unchecked {
-                uint hash = (uint)seed;
-                var s = name.Trim().ToLowerInvariant();
-                for (int i = 0; i < s.Length; i++) { hash ^= s[i]; hash *= 16777619; }
-                return (int)(hash & 0x7fffffff);
-            }
-        }
 
-        public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath) {
+        public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath,string environmentName = "default", int envCode = 0) {
             if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentNullException(nameof(filePath));
             if (!File.Exists(filePath)) throw new FileNotFoundException("Definition file not found.", filePath);
             var json = await File.ReadAllTextAsync(filePath);
-            return await ImportDefinitionFromJsonAsync(json);
+            return await ImportDefinitionFromJsonAsync(json, environmentName,envCode);
         }
 
-        public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json) {
+        public async Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json, string environmentName = "default", int envCode = 0) {
             var fb = new Feedback<DefinitionLoadResult>();
 
             try {
@@ -42,10 +33,10 @@ namespace Haley.Services {
                 var defDisplay = spec.Definition.Name;
                 var description = spec.Definition.Description ?? string.Empty;
 
-                var envName = string.IsNullOrWhiteSpace(spec.Definition.Environment) ? "default" : spec.Definition.Environment.Trim();
-                var envCode = int.TryParse(envName, out var n) ? n : StableCode(envName, seed: 2166136261);
+                spec.Definition.Environment = string.IsNullOrWhiteSpace(environmentName) ? "default" : environmentName.Trim();
+                spec.Definition.EnvironmentCode = envCode;
 
-                var envFb = await Repository.UpsertEnvironment(envName, envCode);
+                var envFb = await Repository.UpsertEnvironment(spec.Definition.Environment, envCode);
                 EnsureSuccess(envFb, "Environment_Upsert");
                 var envId = envFb.Result!.GetInt("id");
 
@@ -79,7 +70,7 @@ namespace Haley.Services {
                 var eventIdByCode = new Dictionary<int, int>();
                 foreach (var e in spec.Events) {
                     var display = string.IsNullOrWhiteSpace(e.DisplayName) ? e.Name : e.DisplayName;
-                    var code = e.Code > 0 ? e.Code : StableCode(e.Name, seed: 16777619);
+                    var code = e.Code > 0 ? e.Code : 0;
                     var evFb = await Repository.UpsertEvent(display!, code, defVersionId);
                     EnsureSuccess(evFb, "Event_Upsert");
                     eventIdByCode[code] = evFb.Result!.GetInt("id");

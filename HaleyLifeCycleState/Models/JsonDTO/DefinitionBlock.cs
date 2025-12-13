@@ -9,6 +9,7 @@ namespace Haley.Models {
         public string Name { get; set; } = string.Empty;
         public string Version { get; set; } = "1.0.0";
         public string? Description { get; set; }
-        public string? Environment { get; set; } // optional if you want
+        public string? Environment { get; set; }
+        public int EnvironmentCode { get; set; } = 0;
     }
 }
