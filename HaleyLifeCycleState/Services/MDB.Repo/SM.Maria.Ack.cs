@@ -21,11 +21,8 @@ namespace Haley.Services {
             return await _agw.ReadSingleAsync(_key, QRY_ACK_LOG.INSERT, (TRANSITION_LOG, transitionLogId), (CONSUMER, consumer), (ACK_STATUS, ackStatus)).ConfigureAwait(false);
         }
 
-        public Task<IFeedback<bool>> MarkAck(LifeCycleKey key, LifeCycleAckStatus status) {
-            var v = status switch { LifeCycleAckStatus.Delivered => 2, LifeCycleAckStatus.Processed => 3, LifeCycleAckStatus.Failed => 4, _ => 0 };
-            return key.Type == LifeCycleKeyType.Name
-                ? _agw.NonQueryAsync(_key, QRY_ACK_LOG.MARK_BY_MESSAGE, (MESSAGE_ID, (string)key.A), (ACK_STATUS, v))
-                : _agw.NonQueryAsync(_key, QRY_ACK_LOG.MARK, (TRANSITION_LOG, (long)key.A), (CONSUMER, Convert.ToInt32(key.B!)), (ACK_STATUS, v));
+        public Task<IFeedback<bool>> MarkAck(string messageId, int ackStatus) {
+            return _agw.NonQueryAsync(_key, QRY_ACK_LOG.MARK_BY_MESSAGE, (MESSAGE_ID, messageId), (ACK_STATUS, ackStatus));
         }
 
         public Task<IFeedback<List<Dictionary<string, object>>>> GetAck(LifeCycleAckFetchMode mode, int maxRetry, int retryAfterMinutes, int skip = 0, int limit = 200) =>

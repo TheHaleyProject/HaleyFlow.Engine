@@ -19,32 +19,18 @@ namespace Haley.Services {
             }
         }
 
-        public async Task<bool> CanTransitionAsync(int definitionVersion, int fromStateId, int eventCode) {
-            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            if (fromStateId <= 0) throw new ArgumentOutOfRangeException(nameof(fromStateId));
-
-            var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, definitionVersion, eventCode));
-            if (evFb == null || !evFb.Status || evFb.Result == null || evFb.Result.Count == 0) return false;
-
-            var eventId = evFb.Result.GetInt("id");
-            var trFb = await Repository.GetTransition(fromStateId, eventId, definitionVersion);
-            return trFb != null && trFb.Status && trFb.Result != null && trFb.Result.Count > 0;
-        }
-
-        public async Task<bool> TriggerAsync(int definitionVersion, LifeCycleKey instanceKey, int eventCode, string? actor = null, string? comment = null, object? context = null) {
-            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-
+        public async Task<bool> TriggerAsync(LifeCycleKey instanceKey, int eventCode, string? actor = null, string? comment = null, object? context = null) {
             try {
-                var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+                var instance = await GetInstanceWithTransitionAsync(instanceKey);
                 if (instance == null) throw new InvalidOperationException("Instance not found.");
-
-                var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, definitionVersion, eventCode));
+                var input = ParseInstanceKey(instanceKey);
+                var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventCode));
                 EnsureSuccess(evFb, "Get(Event by code)");
                 if (evFb.Result == null || evFb.Result.Count == 0) throw new InvalidOperationException($"Event code={eventCode} not found.");
 
                 var evResult = MapEvent(evFb.Result);
 
-                var trFb = await Repository.GetTransition(instance.CurrentState, evResult.Id, definitionVersion);
+                var trFb = await Repository.GetTransition(instance.CurrentState, evResult.Id, input.definitionVersion);
                 EnsureSuccess(trFb, "Transition_Get");
                 if (trFb.Result == null || trFb.Result.Count == 0) throw new InvalidOperationException($"No transition for state={instance.CurrentState}, eventId={evResult.Id}.");
 
@@ -65,6 +51,7 @@ namespace Haley.Services {
                 EnsureSuccess(ackFb, "Ack_Insert");
 
                 var occurred = new TransitionOccurred {
+                    MessageId = ackFb.Result.GetString("message_id"),
                     TransitionLogId = logId,
                     InstanceId = instance.Id,
                     DefinitionVersion = instance.DefinitionVersion,
@@ -87,18 +74,17 @@ namespace Haley.Services {
             }
         }
 
-        public async Task<bool> TriggerByNameAsync(int definitionVersion, LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null) {
-            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
+        public async Task<bool> TriggerAsync(LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null) {
             if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentNullException(nameof(eventName));
-
+            var input = ParseInstanceKey(instanceKey);
             try {
-                var fb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, definitionVersion, eventName.Trim()));
+                var fb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventName.Trim()));
                 EnsureSuccess(fb, "Get(Event by name)");
                 if (fb.Result == null || fb.Result.Count == 0) throw new InvalidOperationException($"Event '{eventName}' not found.");
 
                 var code = fb.Result.GetInt("code");
-                if (code <= 0) code = fb.Result.GetInt("id");
-                return await TriggerAsync(definitionVersion, instanceKey, code, actor, comment, context);
+                if (code <= 0) throw new ArgumentException("Invalid event code retrieved. Code needs to be a valid positive number");
+                return await TriggerAsync(instanceKey, code, actor, comment, context);
             } catch {
                 if (ThrowExceptions || Repository.ThrowExceptions) throw;
                 return false;

@@ -66,7 +66,7 @@ namespace Haley.Abstractions {
         #region Acknowledgement
         Task<IFeedback<Dictionary<string, object>>> InsertAck(long transitionLogId, int consumer, int ackStatus = 1, string? messageId = null);
         // key: LifeCycleKey(Name, messageId) OR LifeCycleKey(Composite, transitionLogId, consumer)
-        Task<IFeedback<bool>> MarkAck(LifeCycleKey key, LifeCycleAckStatus status);
+        Task<IFeedback<bool>> MarkAck(string messageId, int ackStatus);
         Task<IFeedback<List<Dictionary<string, object>>>> GetAck(LifeCycleAckFetchMode mode, int maxRetry, int retryAfterMinutes, int skip = 0, int limit = 200);
         Task<IFeedback<bool>> RetryAck(long ackId);
 

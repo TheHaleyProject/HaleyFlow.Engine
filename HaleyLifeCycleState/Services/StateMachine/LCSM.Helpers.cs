@@ -11,6 +11,12 @@ namespace Haley.Services {
 
         private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+        static (int definitionVersion, string externalRef) ParseInstanceKey(LifeCycleKey key) {
+            var defVersion = key.A is int dv ? dv : int.Parse(key.A?.ToString() ?? "0");
+            var externalRef = key.B?.ToString() ?? string.Empty;
+            return (defVersion, externalRef);
+        }
+
         private static string BuildMetadata(string? comment, object? context) {
             if (comment == null && context == null) return string.Empty;
             var payload = new Dictionary<string, object?> { ["comment"] = comment, ["context"] = context };
@@ -26,25 +32,6 @@ namespace Haley.Services {
             } else {
                 Console.WriteLine(message);
             }
-        }
-
-        private static string NormalizeRef(string s) => (s ?? string.Empty).Trim().ToLowerInvariant();
-
-        private static string InstanceKeyToExternalRef(LifeCycleKey key) {
-            return key.Type switch {
-                LifeCycleKeyType.Guid => ((Guid)key.A).ToString("D"),
-                LifeCycleKeyType.Name => NormalizeRef((string)key.A),
-                _ => throw new NotSupportedException("Instance external_ref requires LifeCycleKeyType.Name or Guid.")
-            };
-        }
-
-        private static LifeCycleKey ToRepoInstanceKey(int defVersion, LifeCycleKey instanceKey) {
-            return instanceKey.Type switch {
-                LifeCycleKeyType.Id => instanceKey,
-                LifeCycleKeyType.Guid => instanceKey,
-                LifeCycleKeyType.Name => new LifeCycleKey(LifeCycleKeyType.Composite, defVersion, InstanceKeyToExternalRef(instanceKey)),
-                _ => throw new NotSupportedException($"Unsupported instance key type: {instanceKey.Type}")
-            };
         }
 
         private static void NormalizeDefinitionJson(LifeCycleDefinitionJson spec) {

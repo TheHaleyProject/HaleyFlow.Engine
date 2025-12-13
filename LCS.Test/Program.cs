@@ -41,7 +41,7 @@ sm.TransitionRaised += async occurred => {
     Console.WriteLine($"[TRN] ext={occurred.ExternalRef} {occurred.FromStateId}->{occurred.ToStateId} event={occurred.EventCode} {occurred.EventName}");
 
     // Each consumer creates its own ack row (unique by transition_log + consumer)
-    var ackInsert = await sm.InsertAck(occurred.TransitionLogId, consumer: monitorOptions.ConsumerId, ackStatus: 1, messageId: Guid.NewGuid().ToString("D"));
+    var ackInsert = await sm.MarkAck(occurred.MessageId, LifeCycleAckStatus.Delivered);
     if (!ackInsert.Status) Console.WriteLine($"[ACK-INSERT] failed: {ackInsert.Message}");
 };
 
@@ -64,20 +64,20 @@ Console.WriteLine($"Imported def_version={defVersionId} (states={import.Result.S
 
 //Trigger sample workflow.
 var externalRef = Guid.NewGuid().ToString();
-var instanceKey = new LifeCycleKey(LifeCycleKeyType.Name, externalRef);
+var instanceKey = LifeCycleKeys.Instance(defVersionId, externalRef);
 
-await sm.InitializeAsync(defVersionId, instanceKey, LifeCycleInstanceFlag.Active);
+await sm.InitializeAsync(instanceKey, LifeCycleInstanceFlag.Active);
 
 // Start monitor AFTER listener is attached
 //monitor.Start();
 Console.WriteLine("Monitor started.");
 
 // Trigger vendor registration path:
-await sm.TriggerAsync(defVersionId, instanceKey, 1000, actor: "console", comment: "Submit");          // RegistrationStarted -> Submitted
-await sm.TriggerAsync(defVersionId, instanceKey, 1001, actor: "console", comment: "CheckDuplicate");  // Submitted -> DuplicateCheck
-await sm.TriggerAsync(defVersionId, instanceKey, 1003, actor: "console", comment: "NotRegistered");   // DuplicateCheck -> PendingValidation
-await sm.TriggerAsync(defVersionId, instanceKey, 1005, actor: "console", comment: "ValidateCompany"); // PendingValidation -> CompanyValidation
-await sm.TriggerAsync(defVersionId, instanceKey, 1007, actor: "console", comment: "ValidCompany");    // CompanyValidation -> Registered
+await sm.TriggerAsync(instanceKey, 1000, actor: "console", comment: "Submit");          // RegistrationStarted -> Submitted
+await sm.TriggerAsync(instanceKey, 1001, actor: "console", comment: "CheckDuplicate");  // Submitted -> DuplicateCheck
+await sm.TriggerAsync(instanceKey, 1003, actor: "console", comment: "NotRegistered");   // DuplicateCheck -> PendingValidation
+await sm.TriggerAsync(instanceKey, 1005, actor: "console", comment: "ValidateCompany"); // PendingValidation -> CompanyValidation
+await sm.TriggerAsync(instanceKey, 1007, actor: "console", comment: "ValidCompany");    // CompanyValidation -> Registered
 
 // -------------------------
 // 7) Interactive loop
@@ -88,7 +88,7 @@ while (true) {
     if (string.Equals(line, "q", StringComparison.OrdinalIgnoreCase)) break;
     if (!int.TryParse(line, out var code)) continue;
 
-    await sm.TriggerAsync(defVersionId, instanceKey, code, actor: "console", comment: $"Manual trigger {code}");
+    await sm.TriggerAsync(instanceKey, code, actor: "console", comment: $"Manual trigger {code}");
 }
 
 monitor.Dispose();

@@ -27,11 +27,9 @@ namespace Haley.Services {
             return flags.HasFlag(LifeCycleStateFlag.IsFinal);
         }
 
-        public async Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, LifeCycleKey instanceKey) {
-            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+        public async Task<LifeCycleState> GetCurrentStateAsync(LifeCycleKey instanceKey) {
+            var instance = await GetInstanceWithTransitionAsync(instanceKey);
             if (instance == null) throw new InvalidOperationException("Instance not found.");
-
             var stFb = await Repository.Get(LifeCycleEntity.State, new LifeCycleKey(LifeCycleKeyType.Id, instance.CurrentState));
             EnsureSuccess(stFb, "Get(State)");
             if (stFb.Result == null || stFb.Result.Count == 0) throw new InvalidOperationException($"State id={instance.CurrentState} not found.");

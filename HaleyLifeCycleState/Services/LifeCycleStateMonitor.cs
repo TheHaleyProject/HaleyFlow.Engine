@@ -57,11 +57,11 @@ namespace Haley.Services {
 
             try {
                 LastError = null;
-                await ProcessTimeoutsAsync().ConfigureAwait(false);
-                await ProcessDueAcksAsync().ConfigureAwait(false);
+                await ProcessTimeoutsAsync();
+                await ProcessDueAcksAsync();
 
                 if (_failedAckHandler != null)
-                    await ProcessFailedAcksAsync().ConfigureAwait(false);
+                    await ProcessFailedAcksAsync();
 
                 LastRunUtc = DateTime.UtcNow;
             } catch (Exception ex) {
@@ -73,7 +73,7 @@ namespace Haley.Services {
         }
 
         private async Task ProcessTimeoutsAsync() {
-            var fb = await _repo.GetInstancesWithExpiredTimeouts(_options.TimeoutBatchSize).ConfigureAwait(false);
+            var fb = await _repo.GetInstancesWithExpiredTimeouts(_options.TimeoutBatchSize);
             if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) return;
 
             foreach (var row in fb.Result) {
@@ -84,8 +84,8 @@ namespace Haley.Services {
 
                     if (defVersion <= 0 || string.IsNullOrWhiteSpace(externalRef) || eventCode <= 0) continue;
 
-                    var instanceKey = new LifeCycleKey(LifeCycleKeyType.Name, externalRef);
-                    await _sm.TriggerAsync(defVersion, instanceKey, eventCode, "system_timeout", "Timeout event", null).ConfigureAwait(false);
+                    var instanceKey = LifeCycleKeys.Instance(defVersion, externalRef);
+                    await _sm.TriggerAsync(instanceKey, eventCode, "system_timeout", "Timeout event", null);
                 } catch {
                     if (_repo.ThrowExceptions) throw;
                 }
@@ -97,11 +97,11 @@ namespace Haley.Services {
             var limit = _options.AckBatchSize <= 0 ? 200 : _options.AckBatchSize;
 
             while (true) {
-                var fb = await _repo.GetAck(LifeCycleAckFetchMode.DueForRetry, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit).ConfigureAwait(false);
+                var fb = await _repo.GetAck(LifeCycleAckFetchMode.DueForRetry, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit);
                 if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) break;
 
                 foreach (var ackRow in fb.Result) {
-                    await ProcessOneAckAsync(ackRow, _options.AckMaxRetry).ConfigureAwait(false);
+                    await ProcessOneAckAsync(ackRow, _options.AckMaxRetry);
                 }
 
                 if (fb.Result.Count < limit) break;
@@ -114,15 +114,15 @@ namespace Haley.Services {
             var limit = _options.AckBatchSize <= 0 ? 200 : _options.AckBatchSize;
 
             while (true) {
-                var fb = await _repo.GetAck(LifeCycleAckFetchMode.Failed, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit).ConfigureAwait(false);
+                var fb = await _repo.GetAck(LifeCycleAckFetchMode.Failed, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit);
                 if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) break;
 
                 foreach (var ackRow in fb.Result) {
-                    var work = await BuildWorkItemAsync(ackRow).ConfigureAwait(false);
+                    var work = await BuildWorkItemAsync(ackRow);
                     if (work == null) continue;
 
                     try {
-                        await _failedAckHandler!(work).ConfigureAwait(false);
+                        await _failedAckHandler!(work);
                     } catch {
                         if (_repo.ThrowExceptions) throw;
                     }
@@ -143,21 +143,20 @@ namespace Haley.Services {
             if (ackId <= 0 || transitionLogId <= 0) return;
 
             // bump first (prevents tight re-pick by another monitor instance)
-            var bump = await _repo.RetryAck(ackId).ConfigureAwait(false);
+            var bump = await _repo.RetryAck(ackId);
             if (bump == null || !bump.Status) return;
 
-            var ackKey = BuildAckKey(messageId, transitionLogId, consumer);
-            var work = await BuildWorkItemAsync(ackRow).ConfigureAwait(false);
+            var work = await BuildWorkItemAsync(ackRow);
             if (work == null) return;
 
             try {
-                await _sm.MarkAck(ackKey, LifeCycleAckStatus.Delivered).ConfigureAwait(false);
-                await _ackHandler(work).ConfigureAwait(false);
-                await _sm.MarkAck(ackKey, LifeCycleAckStatus.Processed).ConfigureAwait(false);
+                await _sm.MarkAck(messageId, LifeCycleAckStatus.Delivered);
+                await _ackHandler(work);
+                await _sm.MarkAck(messageId, LifeCycleAckStatus.Processed);
             } catch {
                 // Only mark permanently failed when retries are exhausted
                 if (retryCount + 1 >= maxRetry)
-                    await _sm.MarkAck(ackKey, LifeCycleAckStatus.Failed).ConfigureAwait(false);
+                    await _sm.MarkAck(messageId, LifeCycleAckStatus.Failed);
 
                 if (_repo.ThrowExceptions) throw;
             }
@@ -168,7 +167,7 @@ namespace Haley.Services {
             var transitionLogId = ackRow.GetLong("transition_log");
             var messageId = ackRow.GetString("message_id") ?? string.Empty;
 
-            var logFb = await _repo.GetTransitionLog(new LifeCycleKey(LifeCycleKeyType.Id, transitionLogId)).ConfigureAwait(false);
+            var logFb = await _repo.GetTransitionLog(new LifeCycleKey(LifeCycleKeyType.Id, transitionLogId));
             if (logFb == null || !logFb.Status || logFb.Result == null) return null;
             var logRow = logFb.Result;
 
@@ -179,14 +178,14 @@ namespace Haley.Services {
             var actor = logRow.GetString("actor") ?? string.Empty;
             var metadataJson = logRow.GetString("metadata") ?? string.Empty;
 
-            var instFb = await _repo.Get(LifeCycleEntity.Instance, new LifeCycleKey(LifeCycleKeyType.Id, instanceId)).ConfigureAwait(false);
+            var instFb = await _repo.Get(LifeCycleEntity.Instance, new LifeCycleKey(LifeCycleKeyType.Id, instanceId));
             if (instFb == null || !instFb.Status || instFb.Result == null) return null;
             var instRow = instFb.Result;
 
             var defVersion = instRow.GetInt("def_version");
             var externalRef = instRow.GetString("external_ref") ?? string.Empty;
 
-            var evFb = await _repo.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Id, eventId)).ConfigureAwait(false);
+            var evFb = await _repo.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Id, eventId));
             if (evFb == null || !evFb.Status || evFb.Result == null) return null;
             var evRow = evFb.Result;
 
@@ -209,13 +208,6 @@ namespace Haley.Services {
                 Actor = actor,
                 MetadataJson = metadataJson
             };
-        }
-
-        private static LifeCycleKey BuildAckKey(string messageId, long transitionLogId, int consumer) {
-            if (!string.IsNullOrWhiteSpace(messageId))
-                return new LifeCycleKey(LifeCycleKeyType.Name, messageId);
-
-            return new LifeCycleKey(LifeCycleKeyType.Composite, transitionLogId, consumer);
         }
 
         public void Dispose() => Stop();
