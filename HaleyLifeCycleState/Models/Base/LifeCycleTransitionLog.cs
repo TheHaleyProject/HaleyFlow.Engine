@@ -9,5 +9,7 @@ namespace Haley.Models {
         public int ToState { get; set; }
         public int Event { get; set; }
         public DateTime Created { get; set; }
+        public string? Metadata { get; set; } // JSON
+        public string? Actor { get; set; }
     }
 }

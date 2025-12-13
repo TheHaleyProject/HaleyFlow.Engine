@@ -11,25 +11,6 @@ namespace Haley.Services {
 
         private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-        private static LifeCycleState MapState(IDictionary<string, object> row) => new() {
-            Id = row.GetInt("id"),
-            DisplayName = row.GetString("display_name") ?? string.Empty,
-            DefinitionVersion = row.GetInt("def_version"),
-            Category = row.GetInt("category"),
-            Flags = (LifeCycleStateFlag)row.GetInt("flags"),
-            Created = DateTime.UtcNow
-        };
-
-        private static LifeCycleInstance MapInstance(IDictionary<string, object> row) => new() {
-            Id = row.GetLong("id"),
-            DefinitionVersion = row.GetInt("def_version"),
-            CurrentState = row.GetInt("current_state"),
-            LastEvent = row.GetInt("last_event"),
-            ExternalRef = row.GetString("external_ref") ?? string.Empty,
-            Flags = (LifeCycleInstanceFlag)row.GetInt("flags"),
-            Created = DateTime.UtcNow
-        };
-
         private static string BuildMetadata(string? comment, object? context) {
             if (comment == null && context == null) return string.Empty;
             var payload = new Dictionary<string, object?> { ["comment"] = comment, ["context"] = context };

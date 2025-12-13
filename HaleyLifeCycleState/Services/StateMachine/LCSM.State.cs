@@ -26,5 +26,16 @@ namespace Haley.Services {
             var flags = (LifeCycleStateFlag)fb.Result.GetInt("flags");
             return flags.HasFlag(LifeCycleStateFlag.IsFinal);
         }
+
+        public async Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, LifeCycleKey instanceKey) {
+            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
+            var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+            if (instance == null) throw new InvalidOperationException("Instance not found.");
+
+            var stFb = await Repository.Get(LifeCycleEntity.State, new LifeCycleKey(LifeCycleKeyType.Id, instance.CurrentState));
+            EnsureSuccess(stFb, "Get(State)");
+            if (stFb.Result == null || stFb.Result.Count == 0) throw new InvalidOperationException($"State id={instance.CurrentState} not found.");
+            return MapState(stFb.Result);
+        }
     }
 }

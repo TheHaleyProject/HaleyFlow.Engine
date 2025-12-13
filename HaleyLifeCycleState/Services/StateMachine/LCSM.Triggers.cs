@@ -42,24 +42,22 @@ namespace Haley.Services {
                 EnsureSuccess(evFb, "Get(Event by code)");
                 if (evFb.Result == null || evFb.Result.Count == 0) throw new InvalidOperationException($"Event code={eventCode} not found.");
 
-                var eventId = evFb.Result.GetInt("id");
-                var eventName = evFb.Result.GetString("display_name") ?? evFb.Result.GetString("name") ?? eventCode.ToString();
+                var evResult = MapEvent(evFb.Result);
 
-                var trFb = await Repository.GetTransition(instance.CurrentState, eventId, definitionVersion);
+                var trFb = await Repository.GetTransition(instance.CurrentState, evResult.Id, definitionVersion);
                 EnsureSuccess(trFb, "Transition_Get");
-                if (trFb.Result == null || trFb.Result.Count == 0) throw new InvalidOperationException($"No transition for state={instance.CurrentState}, eventId={eventId}.");
+                if (trFb.Result == null || trFb.Result.Count == 0) throw new InvalidOperationException($"No transition for state={instance.CurrentState}, eventId={evResult.Id}.");
 
-                var fromStateId = trFb.Result.GetInt("from_state");
-                var toStateId = trFb.Result.GetInt("to_state");
+                var trResult = MapTransition(trFb.Result);  
 
                 var actorValue = string.IsNullOrWhiteSpace(actor) ? "system" : actor.Trim();
                 var metadata = BuildMetadata(comment, context);
 
-                var logIdFb = await Repository.AppendTransitionLog(instance.Id, fromStateId, toStateId, eventId, actorValue, metadata);
+                var logIdFb = await Repository.AppendTransitionLog(instance.Id, trResult.FromState, trResult.ToState, evResult.Id, actorValue, metadata);
                 EnsureSuccess(logIdFb, "TransitionLog_Append");
                 var logId = logIdFb.Result;
 
-                var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), toStateId, eventId, instance.Flags);
+                var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), trResult.ToState, evResult.Id, instance.Flags);
                 EnsureSuccess(updFb, "Instance_UpdateState");
 
                 var msgId = Guid.NewGuid().ToString("N");
@@ -71,11 +69,11 @@ namespace Haley.Services {
                     InstanceId = instance.Id,
                     DefinitionVersion = instance.DefinitionVersion,
                     ExternalRef = instance.ExternalRef ?? string.Empty,
-                    FromStateId = fromStateId,
-                    ToStateId = toStateId,
-                    EventId = eventId,
+                    FromStateId = trResult.FromState,
+                    ToStateId = trResult.ToState,
+                    EventId = evResult.Id,
                     EventCode = eventCode,
-                    EventName = eventName,
+                    EventName = evResult.DisplayName,
                     Actor = actorValue,
                     Metadata = metadata,
                     Created = DateTime.UtcNow

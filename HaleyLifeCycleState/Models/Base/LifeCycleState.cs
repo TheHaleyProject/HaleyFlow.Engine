@@ -9,9 +9,10 @@ namespace Haley.Models {
         public string Name { get; set; } = "";
         public int Category { get; set; }          // category id
         public LifeCycleStateFlag Flags { get; set; }
-        public int? TimeoutMinues { get; set; }          // minutes
+        public int? TimeoutMinutes { get; set; }          // minutes
         public int TimeoutMode { get; set; }       // 0=once,1=repeat
         public int? TimeoutEvent { get; set; }     // event id
         public DateTime Created { get; set; }
+        public DateTime Modified { get; set; }
     }
 }

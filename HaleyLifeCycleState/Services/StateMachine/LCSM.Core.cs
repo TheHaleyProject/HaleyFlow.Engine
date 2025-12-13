@@ -36,16 +36,7 @@ namespace Haley.Services {
             return true;
         }
 
-        public async Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, LifeCycleKey instanceKey) {
-            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            var instance = await GetInstanceAsync(definitionVersion, instanceKey);
-            if (instance == null) throw new InvalidOperationException("Instance not found.");
-
-            var stFb = await Repository.Get(LifeCycleEntity.State, new LifeCycleKey(LifeCycleKeyType.Id, instance.CurrentState));
-            EnsureSuccess(stFb, "Get(State)");
-            if (stFb.Result == null || stFb.Result.Count == 0) throw new InvalidOperationException($"State id={instance.CurrentState} not found.");
-            return MapState(stFb.Result);
-        }
+      
 
         public async Task<IReadOnlyList<LifeCycleTransitionLog>> GetTransitionHistoryAsync(int definitionVersion, LifeCycleKey instanceKey, int skip = 0, int limit = 200) {
             if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
@@ -59,14 +50,7 @@ namespace Haley.Services {
 
             var list = new List<LifeCycleTransitionLog>(rows.Count);
             foreach (var r in rows) {
-                list.Add(new LifeCycleTransitionLog {
-                    Id = r.GetLong("id"),
-                    InstanceId = r.GetLong("instance_id"),
-                    FromState = r.GetInt("from_state"),
-                    ToState = r.GetInt("to_state"),
-                    Event = r.GetInt("event"),
-                    Created = DateTime.UtcNow
-                });
+                list.Add(MapTransitionLog(r));
             }
 
             return list;

@@ -7,7 +7,8 @@ namespace Haley.Models {
         public string DisplayName { get; set; } = default!;
         public string Name { get; set; } = default!;
         public string? Description { get; set; }
-        public int Env { get; set; }  // 0=Dev,1=Test,2=UAT,3=Prod
+        public int EnvironmentId { get; set; }  
+        public int EnvironmentCode { get; set; }  
         public DateTime Created { get; set; }
     }
 }
