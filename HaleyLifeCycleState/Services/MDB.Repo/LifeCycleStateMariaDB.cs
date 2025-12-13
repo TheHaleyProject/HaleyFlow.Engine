@@ -18,9 +18,10 @@ namespace Haley.Services {
         readonly ILogger _logger;
         readonly string _key;
         readonly bool _throwExceptions;
-        readonly ConcurrentDictionary<string, (ITransactionHandler handler, DateTime created)> _handlers = new();
+        readonly ConcurrentDictionary<string, (ITransactionHandler handler, DateTime created)> _handlers = new(); //In case we decide to use any transactions inside, we can track them here and then later, after all transaction operations are completed, we can finally commit them in one place. We use the string (preferably a GUID) as the key to identify the transaction.
 
         public bool ThrowExceptions => _throwExceptions;
+        static object DbNull(object? v) => v ?? DBNull.Value;
 
         public LifeCycleStateMariaDB(IAdapterGateway agw, string key, ILogger logger, bool throwExceptions = false) {
             _agw = agw;

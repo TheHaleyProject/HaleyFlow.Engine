@@ -1,98 +1,76 @@
-using System;
-using System.Collections.Generic;
-using System.Text.Json;
-using System.Threading.Tasks;
-using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMachine {
+
         private async Task RaiseTransitionAsync(TransitionOccurred occurred) {
             var handler = TransitionRaised;
             if (handler == null) return;
-            var delegates = handler.GetInvocationList();
-            foreach (var d in delegates) {
+            foreach (var d in handler.GetInvocationList()) {
                 try {
-                    if (d is Func<TransitionOccurred, Task> asyncHandler) await asyncHandler(occurred).ConfigureAwait(false);
+                    if (d is Func<TransitionOccurred, Task> asyncHandler) await asyncHandler(occurred);
                     else d.DynamicInvoke(occurred);
-                } catch {
-                    // Swallow handler exceptions to avoid breaking SM flow; 
-                }
+                } catch { }
             }
         }
 
-        public async Task<bool> TriggerAsync(int definitionVersion, string externalRef, int eventCode, string? actor = null, string? comment = null, object? context = null) {
+        public async Task<bool> CanTransitionAsync(int definitionVersion, int fromStateId, int eventCode) {
             if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            var normalizedRef = externalRef.Normalize();
-            if (string.IsNullOrWhiteSpace(normalizedRef)) throw new ArgumentNullException(nameof(externalRef));
+            if (fromStateId <= 0) throw new ArgumentOutOfRangeException(nameof(fromStateId));
+
+            var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, definitionVersion, eventCode));
+            if (evFb == null || !evFb.Status || evFb.Result == null || evFb.Result.Count == 0) return false;
+
+            var eventId = evFb.Result.GetInt("id");
+            var trFb = await Repository.GetTransition(fromStateId, eventId, definitionVersion);
+            return trFb != null && trFb.Status && trFb.Result != null && trFb.Result.Count > 0;
+        }
+
+        public async Task<bool> TriggerAsync(int definitionVersion, LifeCycleKey instanceKey, int eventCode, string? actor = null, string? comment = null, object? context = null) {
+            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
 
             try {
-                // 1) Load instance by def_version + external_ref
-                var instFb = await Repository.GetInstancesByRef(normalizedRef).ConfigureAwait(false);
-                EnsureSuccess(instFb, "GetInstancesByRef");
-                var instRows = instFb.Result ?? new List<Dictionary<string, object>>();
-                var instRow = instRows.Find(r => r.GetLong("def_version") == definitionVersion);
-                if (instRow == null) throw new InvalidOperationException($"Instance not found for def_version={definitionVersion}, externalRef='{normalizedRef}'.");
+                var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+                if (instance == null) throw new InvalidOperationException("Instance not found.");
 
-                var instance = new LifeCycleInstance {
-                    Id = instRow.GetLong("id"),
-                    DefinitionVersion = instRow.GetInt("def_version"),
-                    CurrentState = instRow.GetInt("current_state"),
-                    LastEvent = instRow.GetInt("last_event"),
-                    ExternalRef = instRow.GetString("external_ref") ?? normalizedRef,
-                    Flags = (LifeCycleInstanceFlag)instRow.GetInt("flags"),
-                    Created = DateTime.UtcNow
-                };
+                var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, definitionVersion, eventCode));
+                EnsureSuccess(evFb, "Get(Event by code)");
+                if (evFb.Result == null || evFb.Result.Count == 0) throw new InvalidOperationException($"Event code={eventCode} not found.");
 
-                // 2) Resolve event by code for this definition version
-                var evFb = await Repository.GetEventsByVersion(definitionVersion).ConfigureAwait(false);
-                EnsureSuccess(evFb, "GetEventsByVersion");
-                var evRows = evFb.Result ?? new List<Dictionary<string, object>>();
-                var evRow = evRows.Find(r => r.GetInt("code") == eventCode);
-                if (evRow == null) throw new InvalidOperationException($"Event with code {eventCode} not found for def_version={definitionVersion}.");
+                var eventId = evFb.Result.GetInt("id");
+                var eventName = evFb.Result.GetString("display_name") ?? evFb.Result.GetString("name") ?? eventCode.ToString();
 
-                var eventId = evRow.GetInt( "id");
-                var eventName = evRow.GetString( "display_name") ?? evRow.GetString("name") ?? eventCode.ToString();
+                var trFb = await Repository.GetTransition(instance.CurrentState, eventId, definitionVersion);
+                EnsureSuccess(trFb, "Transition_Get");
+                if (trFb.Result == null || trFb.Result.Count == 0) throw new InvalidOperationException($"No transition for state={instance.CurrentState}, eventId={eventId}.");
 
-                // 3) Resolve transition: current_state + eventId -> next state
-                var trFb = await Repository.GetOutgoingTransitions(instance.CurrentState, definitionVersion).ConfigureAwait(false);
-                EnsureSuccess(trFb, "GetOutgoingTransitions");
-                var trRows = trFb.Result ?? new List<Dictionary<string, object>>();
-                var candidates = trRows.FindAll(t => t.GetInt("event") == eventId);
+                var fromStateId = trFb.Result.GetInt("from_state");
+                var toStateId = trFb.Result.GetInt("to_state");
 
-                if (candidates.Count == 0) throw new InvalidOperationException($"No transition found for state={instance.CurrentState}, eventId={eventId}, def_version={definitionVersion}.");
-                if (candidates.Count > 1) throw new InvalidOperationException($"Multiple transitions found for state={instance.CurrentState}, eventId={eventId}, def_version={definitionVersion}. Guard logic not implemented.");
-
-                var trRow = candidates[0];
-                var fromStateId = trRow.GetInt("from_state");
-                var toStateId = trRow.GetInt("to_state");
-
-                // 4) Prepare log data
                 var actorValue = string.IsNullOrWhiteSpace(actor) ? "system" : actor.Trim();
                 var metadata = BuildMetadata(comment, context);
 
-                // 5) Write transition_log
-                var logFb = await Repository.LogTransition(instance.Id, fromStateId, toStateId, eventId, actorValue, metadata).ConfigureAwait(false);
-                EnsureSuccess(logFb, "LogTransition");
-                var logId = logFb.Result;
+                var logIdFb = await Repository.AppendTransitionLog(instance.Id, fromStateId, toStateId, eventId, actorValue, metadata);
+                EnsureSuccess(logIdFb, "TransitionLog_Append");
+                var logId = logIdFb.Result;
 
-                // 6) Update instance state
-                var updFb = await Repository.UpdateInstanceState(instance.Id, toStateId, eventId, instance.Flags).ConfigureAwait(false);
-                EnsureSuccess(updFb, "UpdateInstanceState");
+                var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), toStateId, eventId, instance.Flags);
+                EnsureSuccess(updFb, "Instance_UpdateState");
 
-                // 7) Insert ack row (event bus)
-                var messageId = Guid.NewGuid().ToString("N");
-                var ackFb = await Repository.Ack_InsertWithMessage(logId, 1, messageId, 1).ConfigureAwait(false); // consumer=1 for now
-                EnsureSuccess(ackFb, "Ack_InsertWithMessage");
+                var msgId = Guid.NewGuid().ToString("N");
+                var ackFb = await Repository.InsertAck(logId, consumer: 1, ackStatus: 1, messageId: msgId);
+                EnsureSuccess(ackFb, "Ack_Insert");
 
-                // 8) Raise in-process event (optional)
                 var occurred = new TransitionOccurred {
                     TransitionLogId = logId,
                     InstanceId = instance.Id,
                     DefinitionVersion = instance.DefinitionVersion,
-                    ExternalRef = instance.ExternalRef ?? normalizedRef,
+                    ExternalRef = instance.ExternalRef ?? string.Empty,
                     FromStateId = fromStateId,
                     ToStateId = toStateId,
                     EventId = eventId,
@@ -103,48 +81,30 @@ namespace Haley.Services {
                     Created = DateTime.UtcNow
                 };
 
-                await RaiseTransitionAsync(occurred).ConfigureAwait(false);
+                await RaiseTransitionAsync(occurred);
                 return true;
             } catch {
-                if (Repository.ThrowExceptions) throw;
+                if (ThrowExceptions || Repository.ThrowExceptions) throw;
                 return false;
             }
         }
 
-        public Task<bool> TriggerAsync(int definitionVersion, Guid externalRefId, int eventCode, string? actor = null, string? comment = null, object? context = null) {
-            return TriggerAsync(definitionVersion, externalRefId.ToString("D"), eventCode, actor, comment, context);
-        }
-
-        public async Task<bool> TriggerByNameAsync(int definitionVersion, string externalRef, string eventName, string? actor = null, string? comment = null, object? context = null) {
+        public async Task<bool> TriggerByNameAsync(int definitionVersion, LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null) {
             if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
             if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentNullException(nameof(eventName));
-            var normalizedRef = externalRef.Normalize();
-            if (string.IsNullOrWhiteSpace(normalizedRef)) throw new ArgumentNullException(nameof(externalRef));
-            var normalizedName = eventName.Trim();
 
             try {
-                // Find event by name or display_name
-                var evFb = await Repository.GetEventsByVersion(definitionVersion).ConfigureAwait(false);
-                EnsureSuccess(evFb, "GetEventsByVersion");
-                var evRows = evFb.Result ?? new List<Dictionary<string, object>>();
-                var evRow = evRows.Find(r =>
-                    string.Equals(r.GetString("name"), normalizedName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.GetString("display_name"), normalizedName, StringComparison.OrdinalIgnoreCase));
+                var fb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, definitionVersion, eventName.Trim()));
+                EnsureSuccess(fb, "Get(Event by name)");
+                if (fb.Result == null || fb.Result.Count == 0) throw new InvalidOperationException($"Event '{eventName}' not found.");
 
-                if (evRow == null) throw new InvalidOperationException($"Event with name '{normalizedName}' not found for def_version={definitionVersion}.");
-
-                var eventCode = evRow.GetInt("code");
-                if (eventCode == 0) eventCode = evRow.GetInt("id"); // fallback
-
-                return await TriggerAsync(definitionVersion, normalizedRef, eventCode, actor, comment, context).ConfigureAwait(false);
+                var code = fb.Result.GetInt("code");
+                if (code <= 0) code = fb.Result.GetInt("id");
+                return await TriggerAsync(definitionVersion, instanceKey, code, actor, comment, context);
             } catch {
-                if (Repository.ThrowExceptions) throw;
+                if (ThrowExceptions || Repository.ThrowExceptions) throw;
                 return false;
             }
-        }
-
-        public Task<bool> TriggerByNameAsync(int definitionVersion, Guid externalRefId, string eventName, string? actor = null, string? comment = null, object? context = null) {
-            return TriggerByNameAsync(definitionVersion, externalRefId.ToString("D"), eventName, actor, comment, context);
         }
     }
 }

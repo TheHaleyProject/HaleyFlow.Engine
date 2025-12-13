@@ -1,73 +1,93 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Haley.Enums;
 using Haley.Models;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Haley.Utils;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMachine {
-        public async Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, string externalRef) {
+
+        public async Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, LifeCycleKey instanceKey) {
             if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            var normalizedRef = externalRef.Normalize();
-            if (string.IsNullOrWhiteSpace(normalizedRef)) throw new ArgumentNullException(nameof(externalRef));
+            var key = ToRepoInstanceKey(definitionVersion, instanceKey);
 
-            var fb = await Repository.GetInstancesByRef(normalizedRef).ConfigureAwait(false);
-            if (fb == null || !fb.Status || fb.Result == null) return null;
-
-            var rows = fb.Result;
-            var row = rows.FirstOrDefault(r => r.GetInt("def_version") == definitionVersion);
-            if (row == null) return null;
-
-            return MapInstance(row);
+            var fb = await Repository.Get(LifeCycleEntity.Instance, key);
+            if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) return null;
+            return MapInstance(fb.Result);
         }
 
-        public Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, Guid externalRefId) {
-            return GetInstanceAsync(definitionVersion, externalRefId.ToString("D"));
-        }
-
-        public async Task InitializeAsync(int definitionVersion, string externalRef, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active) {
+        public async Task<bool> InitializeAsync(int definitionVersion, LifeCycleKey instanceKey, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active) {
             if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            var normalizedRef = externalRef.Normalize();
-            if (string.IsNullOrWhiteSpace(normalizedRef)) throw new ArgumentNullException(nameof(externalRef));
 
-            var existing = await GetInstanceAsync(definitionVersion, normalizedRef).ConfigureAwait(false);
-            if (existing != null) return;
+            var existing = await GetInstanceAsync(definitionVersion, instanceKey);
+            if (existing != null) return true;
 
-            var initFb = await Repository.GetInitialState(definitionVersion).ConfigureAwait(false);
-            EnsureSuccess(initFb, "GetInitialState");
-            if (initFb.Result == null) throw new InvalidOperationException($"No initial state found for definitionVersion={definitionVersion}.");
+            var initFb = await Repository.GetStateByFlags(definitionVersion, LifeCycleStateFlag.IsInitial);
+            EnsureSuccess(initFb, "State_GetByFlags(IsInitial)");
+            var initRow = (initFb.Result != null && initFb.Result.Count > 0) ? initFb.Result[0] : null;
+            if (initRow == null) throw new InvalidOperationException($"No initial state found for def_version={definitionVersion}.");
 
-            var initialRow = initFb.Result;
-            var initialStateId = initialRow.GetInt("id");
+            var initialStateId = initRow.GetInt("id");
+            var externalRef = InstanceKeyToExternalRef(instanceKey);
 
-            var regFb = await Repository.RegisterInstance(definitionVersion, initialStateId, 0, normalizedRef, flags).ConfigureAwait(false);
-            EnsureSuccess(regFb, "RegisterInstance");
+            var insFb = await Repository.UpsertInstance(definitionVersion, initialStateId, 0, externalRef, flags);
+            EnsureSuccess(insFb, "Instance_Upsert");
+            return true;
         }
 
-        public Task InitializeAsync(int definitionVersion, Guid externalRefId, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active) {
-            return InitializeAsync(definitionVersion, externalRefId.ToString("D"), flags);
-        }
-
-        public async Task<bool> ValidateTransitionAsync(int definitionVersion, int fromStateId, int eventCode) {
+        public async Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, LifeCycleKey instanceKey) {
             if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
-            if (fromStateId <= 0) throw new ArgumentOutOfRangeException(nameof(fromStateId));
+            var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+            if (instance == null) throw new InvalidOperationException("Instance not found.");
 
-            var eventsFb = await Repository.GetEventsByVersion(definitionVersion).ConfigureAwait(false);
-            EnsureSuccess(eventsFb, "GetEventsByVersion");
-            var events = eventsFb.Result ?? new List<Dictionary<string, object>>();
+            var stFb = await Repository.Get(LifeCycleEntity.State, new LifeCycleKey(LifeCycleKeyType.Id, instance.CurrentState));
+            EnsureSuccess(stFb, "Get(State)");
+            if (stFb.Result == null || stFb.Result.Count == 0) throw new InvalidOperationException($"State id={instance.CurrentState} not found.");
+            return MapState(stFb.Result);
+        }
 
-            var evtRow = events.FirstOrDefault(r => r.GetInt("code") == eventCode);
-            if (evtRow == null) return false;
+        public async Task<IReadOnlyList<LifeCycleTransitionLog>> GetTransitionHistoryAsync(int definitionVersion, LifeCycleKey instanceKey, int skip = 0, int limit = 200) {
+            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
 
-            var eventId = evtRow.GetInt("id");
+            var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+            if (instance == null) return Array.Empty<LifeCycleTransitionLog>();
 
-            var transFb = await Repository.GetOutgoingTransitions(fromStateId, definitionVersion).ConfigureAwait(false);
-            EnsureSuccess(transFb, "GetOutgoingTransitions");
-            var transitions = transFb.Result ?? new List<Dictionary<string, object>>();
+            var rowsFb = await Repository.GetTransitionLogList(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), skip, limit);
+            EnsureSuccess(rowsFb, "TransitionLog_List");
+            var rows = rowsFb.Result ?? new List<Dictionary<string, object>>();
 
-            return transitions.Any(t => t.GetInt("event") == eventId);
+            var list = new List<LifeCycleTransitionLog>(rows.Count);
+            foreach (var r in rows) {
+                list.Add(new LifeCycleTransitionLog {
+                    Id = r.GetLong("id"),
+                    InstanceId = r.GetLong("instance_id"),
+                    FromState = r.GetInt("from_state"),
+                    ToState = r.GetInt("to_state"),
+                    Event = r.GetInt("event"),
+                    Created = DateTime.UtcNow
+                });
+            }
+
+            return list;
+        }
+
+        public async Task<bool> ForceUpdateStateAsync(int definitionVersion, LifeCycleKey instanceKey, int newStateId, string? actor = null, string? metadata = null) {
+            if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
+            if (newStateId <= 0) throw new ArgumentOutOfRangeException(nameof(newStateId));
+
+            var instance = await GetInstanceAsync(definitionVersion, instanceKey);
+            if (instance == null) throw new InvalidOperationException("Instance not found.");
+
+            var actorValue = string.IsNullOrWhiteSpace(actor) ? "system" : actor.Trim();
+            var meta = metadata ?? string.Empty;
+
+            var logIdFb = await Repository.AppendTransitionLog(instance.Id, instance.CurrentState, newStateId, 0, actorValue, meta);
+            EnsureSuccess(logIdFb, "TransitionLog_Append");
+
+            var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), newStateId, 0, instance.Flags);
+            EnsureSuccess(updFb, "Instance_UpdateState");
+            return updFb.Result;
         }
     }
 }

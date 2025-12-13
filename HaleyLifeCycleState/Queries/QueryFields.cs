@@ -41,5 +41,7 @@ namespace Haley.Internal {
         public const string RETENTION_DAYS = "@RETENTION_DAYS";
         public const string MAX_BATCH = "@MAX_BATCH";
         public const string TIMEOUT_MINUTES = "@TIMEOUT_MINUTES";
+        public const string SKIP = "@SKIP";
+        public const string LIMIT = "@LIMIT";
     }
 }

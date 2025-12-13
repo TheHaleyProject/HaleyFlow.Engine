@@ -1,7 +1,7 @@
 {
   "definition": {
-    "name": "VendorPreQualificationState",
-    "version": "2.3",
+    "name": "VendorPreqStates",
+    "version": 3,
     "description": "Lifecycle definition for vendor form submission, clarification handling, and final tier approval process."
   },
   "states": [

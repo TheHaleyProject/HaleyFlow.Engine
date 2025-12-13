@@ -13,5 +13,7 @@ namespace Haley.Internal {
         public const string GET_BY_STATE_CHANGE = $"SELECT tl.*, td.actor, td.metadata FROM transition_log tl LEFT JOIN transition_data td ON td.transition_log = tl.id WHERE tl.from_state = {FROM_STATE} AND tl.to_state = {TO_STATE} ORDER BY tl.created DESC;";
         public const string GET_BY_DATE_RANGE = $"SELECT tl.*, td.actor, td.metadata FROM transition_log tl LEFT JOIN transition_data td ON td.transition_log = tl.id WHERE tl.created BETWEEN {CREATED} AND {MODIFIED} ORDER BY tl.created;";
         public const string GET_LATEST_FOR_INSTANCE = $"SELECT tl.*, td.actor, td.metadata FROM transition_log tl LEFT JOIN transition_data td ON td.transition_log = tl.id WHERE tl.instance_id = {INSTANCE_ID} ORDER BY tl.created DESC LIMIT 1;";
+
+        public const string EXISTS_LOG_BY_ID =$@"SELECT 1 FROM transition_log WHERE id = {ID} LIMIT 1;";
     }
 }

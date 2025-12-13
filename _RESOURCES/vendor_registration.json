@@ -1,7 +1,7 @@
 {
   "definition": {
-    "name": "VendorRegistrationState",
-    "version": "1.0",
+    "name": "VendorRegStates",
+    "version": 2,
     "description": "Lifecycle definition for new vendor registration, validation, and vendor ID generation."
   },
   "states": [

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <project name="lifecycle_state" database="MariaDb" id="19f578f4-fff8-4e61-ac61-4d42ca9c2334" >
-	<schema name="lifecycle_state" >
+	<schema name="lcstate" >
 		<table name="ack_log" prior="ack_l" >
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
@@ -14,16 +14,17 @@
 4 = Failed]]></comment>
 			</column>
 			<column name="last_retry" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="retry_count" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
 			<column name="message_id" prior="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
@@ -47,7 +48,7 @@
 			<index name="unq_ack_log_0" unique="UNIQUE_KEY" >
 				<column name="message_id" />
 			</index>
-			<fk name="fk_ack_log_transition_log" to_schema="lifecycle_state" to_table="transition_log" >
+			<fk name="fk_ack_log_transition_log" to_schema="lcstate" to_table="transition_log" >
 				<fk_column name="transition_log" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
@@ -58,7 +59,7 @@
 			</column>
 			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
 			<column name="name" type="VARCHAR" length="120" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(`display_name`))]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
 			</column>
 			<index name="pk_tbl" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -79,10 +80,11 @@
 				<defo><![CDATA[1]]></defo>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
 			<column name="parent" type="INT" mandatory="y" />
 			<column name="data" type="LONGTEXT" mandatory="y" />
@@ -105,7 +107,7 @@
 			<constraint name="cns_def_version_0" >
 				<string><![CDATA[json_valid(`data`)]]></string>
 			</constraint>
-			<fk name="fk_def_version_definition" to_schema="lifecycle_state" to_table="definition" >
+			<fk name="fk_def_version_definition" to_schema="lcstate" to_table="definition" >
 				<fk_column name="parent" pk="id" />
 			</fk>
 			<options><![CDATA[
@@ -115,22 +117,21 @@
 		<table name="definition" prior="definit" >
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[it should be a code provided by the user.]]></comment>
+			</column>
+			<column name="env" type="INT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
 			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(`display_name`))]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
 			</column>
 			<column name="description" type="TEXT" />
 			<column name="created" prior="created_at" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
-			</column>
-			<column name="env" type="INT" mandatory="y" >
-				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[environment code
-COMMENT '0=Dev,1=Test,2=UAT,3=Prod']]></comment>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<index name="pk_definition" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -142,8 +143,37 @@ COMMENT '0=Dev,1=Test,2=UAT,3=Prod']]></comment>
 			<index name="unq_definition_0" unique="UNIQUE_KEY" >
 				<column name="guid" />
 			</index>
+			<fk name="fk_definition_environment" to_schema="lcstate" to_table="environment" >
+				<fk_column name="env" pk="id" />
+			</fk>
 			<options><![CDATA[
  AUTO_INCREMENT 1998  ]]></options>
+		</table>
+		<table name="environment" prior="environme" >
+			<comment><![CDATA[environment code
+//Doesnt' need to be like dev/prod/test.. It can be an work-group environmetn as well..
+
+//like preq-app (is one environment), so all preq-app (wherever it runs, local, production etc) will be able to read definitions.
+
+//we can even extend it as , preq-app-dev, preq-app-prod etc.]]></comment>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
+			<column name="name" type="VARCHAR" length="120" >
+				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+			</column>
+			<column name="code" type="INT" mandatory="y" />
+			<index name="pk_environment" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="unq_environment" unique="UNIQUE_KEY" >
+				<column name="code" />
+			</index>
+			<index name="unq_environment_0" unique="UNIQUE_KEY" >
+				<column name="name" />
+			</index>
+			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="events" prior="e" >
 			<column name="id" type="INT" mandatory="y" >
@@ -152,7 +182,7 @@ COMMENT '0=Dev,1=Test,2=UAT,3=Prod']]></comment>
 			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
 			<column name="code" type="INT" mandatory="y" />
 			<column name="name" type="VARCHAR" length="120" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(`display_name`))]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
 			</column>
 			<column name="def_version" type="INT" mandatory="y" />
 			<index name="pk_events" unique="PRIMARY_KEY" >
@@ -167,7 +197,7 @@ COMMENT '0=Dev,1=Test,2=UAT,3=Prod']]></comment>
 				<column name="def_version" />
 				<column name="code" />
 			</index>
-			<fk name="fk_events_def_version" to_schema="lifecycle_state" to_table="def_version" >
+			<fk name="fk_events_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
@@ -194,10 +224,11 @@ archive = 16]]></comment>
 				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
 			<index name="pk_instance" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -221,13 +252,13 @@ archive = 16]]></comment>
 			<index name="idx_instance" unique="NORMAL" >
 				<column name="external_ref" />
 			</index>
-			<fk name="fk_instance_def_version" to_schema="lifecycle_state" to_table="def_version" >
+			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<fk name="fk_instance_state" to_schema="lifecycle_state" to_table="state" >
+			<fk name="fk_instance_state" to_schema="lcstate" to_table="state" >
 				<fk_column name="current_state" pk="id" />
 			</fk>
-			<fk name="fk_instance_events" to_schema="lifecycle_state" to_table="events" >
+			<fk name="fk_instance_events" to_schema="lcstate" to_table="events" >
 				<fk_column name="last_event" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
@@ -241,17 +272,17 @@ archive = 16]]></comment>
 			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(`display_name`))]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
-				<defo><![CDATA[0]]></defo>
+				<defo><![CDATA[1]]></defo>
 				<comment><![CDATA[is_initial = 1
 is_final = 2
 is_system = 4
 is_error = 8]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="def_version" type="INT" mandatory="y" />
 			<column name="timeout_minutes" type="INT" >
@@ -276,13 +307,13 @@ is_error = 8]]></comment>
 			<index name="fk_state_events" unique="NORMAL" >
 				<column name="timeout_event" />
 			</index>
-			<fk name="fk_state_def_version" to_schema="lifecycle_state" to_table="def_version" >
+			<fk name="fk_state_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<fk name="fk_state_category" to_schema="lifecycle_state" to_table="category" >
+			<fk name="fk_state_category" to_schema="lcstate" to_table="category" >
 				<fk_column name="category" pk="id" />
 			</fk>
-			<fk name="fk_state_events" to_schema="lifecycle_state" to_table="events" >
+			<fk name="fk_state_events" to_schema="lcstate" to_table="events" >
 				<fk_column name="timeout_event" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB
@@ -295,8 +326,8 @@ is_error = 8]]></comment>
 			</column>
 			<column name="from_state" type="INT" mandatory="y" />
 			<column name="to_state" type="INT" mandatory="y" />
-			<column name="created" type="DATETIME" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+			<column name="created" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="def_version" prior="def" type="INT" mandatory="y" />
 			<column name="event" type="INT" mandatory="y" />
@@ -318,16 +349,16 @@ is_error = 8]]></comment>
 			<index name="fk_transition_events" unique="NORMAL" >
 				<column name="event" />
 			</index>
-			<fk name="fk_transition_state" to_schema="lifecycle_state" to_table="state" >
+			<fk name="fk_transition_state" to_schema="lcstate" to_table="state" >
 				<fk_column name="from_state" pk="id" />
 			</fk>
-			<fk name="fk_transition_state_0" to_schema="lifecycle_state" to_table="state" >
+			<fk name="fk_transition_state_0" to_schema="lcstate" to_table="state" >
 				<fk_column name="to_state" pk="id" />
 			</fk>
-			<fk name="fk_transition_def_version" to_schema="lifecycle_state" to_table="def_version" >
+			<fk name="fk_transition_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<fk name="fk_transition_events" to_schema="lifecycle_state" to_table="events" >
+			<fk name="fk_transition_events" to_schema="lcstate" to_table="events" >
 				<fk_column name="event" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
@@ -341,7 +372,7 @@ is_error = 8]]></comment>
 			<index name="pk_transition_data" unique="PRIMARY_KEY" >
 				<column name="transition_log" />
 			</index>
-			<fk name="fk_transition_data_transition_log" to_schema="lifecycle_state" to_table="transition_log" >
+			<fk name="fk_transition_data_transition_log" to_schema="lcstate" to_table="transition_log" >
 				<fk_column name="transition_log" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
@@ -363,36 +394,38 @@ is_error = 8]]></comment>
 			<index name="fk_transition_log_instance" unique="NORMAL" >
 				<column name="instance_id" />
 			</index>
-			<fk name="fk_transition_log_instance" to_schema="lifecycle_state" to_table="instance" >
+			<fk name="fk_transition_log_instance" to_schema="lcstate" to_table="instance" >
 				<fk_column name="instance_id" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lifecycle_state" name="ack_log" color="FFFF00" x="247" y="190" />
-		<entity schema="lifecycle_state" name="transition_log" color="FFFF00" x="57" y="418" />
-		<entity schema="lifecycle_state" name="transition_data" color="FFFF00" x="57" y="266" />
-		<entity schema="lifecycle_state" name="definition" color="0000FF" x="741" y="627" />
-		<entity schema="lifecycle_state" name="def_version" color="0000FF" x="532" y="551" />
-		<entity schema="lifecycle_state" name="category" color="0000FF" x="722" y="95" />
-		<entity schema="lifecycle_state" name="state" color="0000FF" x="494" y="228" />
-		<entity schema="lifecycle_state" name="instance" color="FFFF00" x="247" y="437" />
-		<entity schema="lifecycle_state" name="transition" color="0000FF" x="760" y="228" />
-		<entity schema="lifecycle_state" name="events" color="0000FF" x="760" y="456" />
+		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="418" />
+		<entity schema="lcstate" name="transition_data" color="FFFF00" x="57" y="266" />
+		<entity schema="lcstate" name="category" color="0000FF" x="722" y="95" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="437" />
+		<entity schema="lcstate" name="transition" color="0000FF" x="760" y="228" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="475" y="532" />
+		<entity schema="lcstate" name="events" color="0000FF" x="760" y="456" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="627" y="627" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="798" y="646" />
+		<entity schema="lcstate" name="state" color="0000FF" x="475" y="228" />
+		<entity schema="lcstate" name="ack_log" color="FFFF00" x="247" y="190" />
 		<group name="BluePrint" color="0000FF" >
-			<entity schema="lifecycle_state" name="definition" />
-			<entity schema="lifecycle_state" name="def_version" />
-			<entity schema="lifecycle_state" name="category" />
-			<entity schema="lifecycle_state" name="state" />
-			<entity schema="lifecycle_state" name="transition" />
-			<entity schema="lifecycle_state" name="events" />
+			<entity schema="lcstate" name="category" />
+			<entity schema="lcstate" name="transition" />
+			<entity schema="lcstate" name="def_version" />
+			<entity schema="lcstate" name="events" />
+			<entity schema="lcstate" name="definition" />
+			<entity schema="lcstate" name="environment" />
+			<entity schema="lcstate" name="state" />
 		</group>
 		<group name="State Info" color="FFFF00" >
-			<entity schema="lifecycle_state" name="ack_log" />
-			<entity schema="lifecycle_state" name="transition_log" />
-			<entity schema="lifecycle_state" name="transition_data" />
-			<entity schema="lifecycle_state" name="instance" />
+			<entity schema="lcstate" name="transition_log" />
+			<entity schema="lcstate" name="transition_data" />
+			<entity schema="lcstate" name="instance" />
+			<entity schema="lcstate" name="ack_log" />
 		</group>
 	</layout>
 </project>

@@ -7,38 +7,33 @@ using Haley.Models;
 namespace Haley.Abstractions {
     public interface ILifeCycleStateMachine {
         event Func<TransitionOccurred, Task>? TransitionRaised;
-        Task<bool> TriggerAsync(int definitionVersion, string externalRef, int eventCode, string? actor = null, string? comment = null, object? context = null);
-        Task<bool> TriggerAsync(int definitionVersion, Guid externalRefId, int eventCode, string? actor = null, string? comment = null, object? context = null);
-        Task<bool> TriggerByNameAsync(int definitionVersion, string externalRef, string eventName, string? actor = null, string? comment = null, object? context = null);
-        Task<bool> TriggerByNameAsync(int definitionVersion, Guid externalRefId, string eventName, string? actor = null, string? comment = null, object? context = null);
 
-        Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, string externalRef);
-        Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, Guid externalRefId);
+        Task<bool> TriggerAsync(int definitionVersion, LifeCycleKey instanceKey, int eventCode, string? actor = null, string? comment = null, object? context = null);
+        Task<bool> TriggerByNameAsync(int definitionVersion, LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null);
 
-        Task InitializeAsync(int definitionVersion, string externalRef, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active);
-        Task InitializeAsync(int definitionVersion, Guid externalRefId, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active);
 
-        Task<bool> ValidateTransitionAsync(int definitionVersion, int fromStateId, int eventCode);
+        // Instance lifecycle
+        Task<LifeCycleInstance?> GetInstanceAsync(int definitionVersion, LifeCycleKey instanceKey);
+        Task<bool> InitializeAsync(int definitionVersion, LifeCycleKey instanceKey, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active);
+        Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, LifeCycleKey instanceKey);
 
-        Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, string externalRef);
-        Task<LifeCycleState> GetCurrentStateAsync(int definitionVersion, Guid externalRefId);
 
-        Task<IReadOnlyList<LifeCycleTransitionLog>> GetTransitionHistoryAsync(int definitionVersion, string externalRef);
-        Task<IReadOnlyList<LifeCycleTransitionLog>> GetTransitionHistoryAsync(int definitionVersion, Guid externalRefId);
-
-        Task ForceUpdateStateAsync(int definitionVersion, string externalRef, int newStateId, string? actor = null, string? metadata = null);
-        Task ForceUpdateStateAsync(int definitionVersion, Guid externalRefId, int newStateId, string? actor = null, string? metadata = null);
-
-        Task<bool> IsFinalStateAsync(int definitionVersion, int stateId);
+        // Validation / helpers
+        Task<bool> CanTransitionAsync(int definitionVersion, int fromStateId, int eventCode);
         Task<bool> IsInitialStateAsync(int definitionVersion, int stateId);
+        Task<bool> IsFinalStateAsync(int definitionVersion, int stateId);
 
-        Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath);
+        Task<IReadOnlyList<LifeCycleTransitionLog>> GetTransitionHistoryAsync(int definitionVersion, LifeCycleKey instanceKey, int skip = 0, int limit = 200);
+
+        // Admin - override
+        Task<bool> ForceUpdateStateAsync(int definitionVersion, LifeCycleKey instanceKey, int newStateId, string? actor = null, string? metadata = null);
+
+        // Definition import
         Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromJsonAsync(string json);
+        Task<IFeedback<DefinitionLoadResult>> ImportDefinitionFromFileAsync(string filePath);
 
-        Task<IFeedback<Dictionary<string, object>>> Ack_Insert(long transitionLogId, int consumer, int ackStatus = 1);
-        Task<IFeedback<Dictionary<string, object>>> Ack_InsertWithMessage(long transitionLogId, int consumer, string messageId, int ackStatus = 1);
-
-        Task<IFeedback<bool>> Ack_MarkByMessageAsync(string messageId, LifeCycleAckStatus status);
-        Task<IFeedback<bool>> Ack_MarkByTransitionAsync(long transitionLogId, int consumer, LifeCycleAckStatus status);
+        // Ack pass-through
+        Task<IFeedback<Dictionary<string, object>>> Ack_Insert(long transitionLogId, int consumer, int ackStatus = 1, string? messageId = null);
+        Task<IFeedback<bool>> Ack_Mark(LifeCycleKey key, LifeCycleAckStatus status);
     }
 }
