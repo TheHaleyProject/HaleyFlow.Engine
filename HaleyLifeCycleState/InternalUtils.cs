@@ -19,9 +19,9 @@ namespace Haley.Utils {
                 //keys[0] = definitionName:string
                 //keys[1] = externalRef:string
                 //keys[2] = environmentCode:int 
-                var defName = ToObj<string>(key.keys[0]);
-                var extRef = ToObj<string>(key.keys[1]);
-                var envCode = ToObj<int>(key.keys[2]);
+                var defName = key.keys[0]?.As<string>();
+                externalRef = key.keys[1]?.As<string>();
+                var envCode = key.keys[2].As<int>();
 
                 var latestDef = agw?.ReadSingleAsync(adapter_key, QRY_DEF_VERSION.GET_LATEST_BY_ENV, (NAME, defName), (CODE, envCode)).Result;
                 if (latestDef == null || !latestDef.Status || latestDef.Result == null || latestDef.Result.Count < 1) throw new ArgumentException($@"Err 01: Unable to fetch the latest version for the given definition {defName} and environmentCode {envCode}");
@@ -32,12 +32,5 @@ namespace Haley.Utils {
             }
             return (defVersion, externalRef);
         }
-
-        static T ToObj<T>(object? v) {
-            if (v is null) throw new ArgumentNullException(nameof(v));
-            if (v is T t) return t;
-            return (T)Convert.ChangeType(v, typeof(T));
-        }
-
     }
 }

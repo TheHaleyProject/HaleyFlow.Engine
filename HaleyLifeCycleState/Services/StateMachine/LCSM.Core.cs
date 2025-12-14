@@ -1,6 +1,7 @@
 using Haley.Enums;
 using Haley.Events;
 using Haley.Models;
+using Haley.Abstractions;
 using Haley.Utils;
 using System;
 using System.Collections.Generic;
@@ -28,8 +29,8 @@ namespace Haley.Services {
             try {
                 var existing = await GetInstanceWithTransitionAsync(instanceKey);
                 if (existing != null) return true;
-
-                var input = instanceKey.ParseInstanceKey();
+                var agwInfo = Repository.AdapterGatewayInfo;
+                var input = instanceKey.ParseInstanceKey(agwInfo.agw,agwInfo.adapterKey);
                 var initFb = await Repository.GetStateByFlags(input.definitionVersion, LifeCycleStateFlag.IsInitial);
                 EnsureSuccess(initFb, "State_GetByFlags(IsInitial)");
                 var initRow = (initFb.Result != null && initFb.Result.Count > 0) ? initFb.Result[0] : null;

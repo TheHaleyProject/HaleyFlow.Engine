@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 Console.WriteLine("App Started");
 
-var constring = $"server=127.0.0.1;port=4307;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
+var constring = $"server=127.0.0.1;port=3306;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
 //var response = await LifeCycleInitializer.InitializeAsync(new AdapterGateway(), "lcstate");
 var agw = new AdapterGateway() { LogQueryInConsole = true };
 var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, constring);

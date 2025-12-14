@@ -15,7 +15,8 @@ namespace Haley.Services {
                 var fbResult = new Feedback<StateMachineNotice>();
                 var instance = await GetInstanceWithTransitionAsync(instanceKey);
                 if (instance == null) throw new InvalidOperationException("Instance not found.");
-                var input = instanceKey.ParseInstanceKey();
+                var agwInfo = Repository.AdapterGatewayInfo;
+                var input = instanceKey.ParseInstanceKey(agwInfo.agw,agwInfo.adapterKey);
                 var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventCode));
 
                 if (!evFb.Status || evFb.Result == null || evFb.Result.Count == 0) {
@@ -96,7 +97,8 @@ namespace Haley.Services {
 
         public async Task<IFeedback<StateMachineNotice>> TriggerAsync(LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null) {
             if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentNullException(nameof(eventName));
-            var input = instanceKey.ParseInstanceKey();
+            var agwInfo = Repository.AdapterGatewayInfo;
+            var input = instanceKey.ParseInstanceKey(agwInfo.agw, agwInfo.adapterKey);
             try {
                 var fb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventName.Trim()));
                 EnsureSuccess(fb, "Get(Event by name)");
