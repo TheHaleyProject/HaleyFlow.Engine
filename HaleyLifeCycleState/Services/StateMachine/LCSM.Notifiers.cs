@@ -33,7 +33,7 @@ namespace Haley.Services {
         }
 
         void NotifyError(StateMachineError err) {
-            var handler = TransitionErrorRaised;
+            var handler = ErrorRaised;
             if (handler == null) return;
 
             foreach (var d in handler.GetInvocationList()) {
@@ -74,5 +74,23 @@ namespace Haley.Services {
             }
         }
 
+        internal void SendNotice(StateMachineNotice notice) {
+            var handler = NoticeRaised;
+            if (handler == null) return;
+
+            foreach (var d in handler.GetInvocationList()) {
+                _ = Task.Run(async () =>
+                {
+                    try {
+                        if (d is Func<StateMachineNotice, Task> asyncHandler)
+                            await asyncHandler(notice).ConfigureAwait(false);
+                        else
+                            d.DynamicInvoke(notice);
+                    } catch {
+                        // swallow: notice pipeline must never break the state machine
+                    }
+                });
+            }
+        }
     }
 }

@@ -1,6 +1,8 @@
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Tracing;
@@ -8,23 +10,43 @@ using System.Threading.Tasks;
 
 namespace Haley.Services {
     public partial class LifeCycleStateMachine {
-        public async Task<bool> TriggerAsync(LifeCycleKey instanceKey, int eventCode, string? actor = null, string? comment = null, object? context = null) {
+        public async Task<IFeedback<StateMachineNotice>> TriggerAsync(LifeCycleKey instanceKey, int eventCode, string? actor = null, string? comment = null, object? context = null) {
             try {
+                var fbResult = new Feedback<StateMachineNotice>();
                 var instance = await GetInstanceWithTransitionAsync(instanceKey);
                 if (instance == null) throw new InvalidOperationException("Instance not found.");
                 var input = ParseInstanceKey(instanceKey);
                 var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventCode));
-                EnsureSuccess(evFb, "Get(Event by code)");
-                if (evFb.Result == null || evFb.Result.Count == 0) throw new InvalidOperationException($"Event code={eventCode} not found.");
+
+                if (!evFb.Status || evFb.Result == null || evFb.Result.Count == 0) {
+                    return fbResult.SetResult(new StateMachineNotice() {
+                        Reference = instanceKey,
+                        Data = instance,
+                        CorrelationId = instance.Id,
+                        Message = $"Failed to retrieve event for code='{eventCode}'. No such event exists.",
+                        Operation = "TriggerAsync"
+                    });
+                }
 
                 var evResult = MapEvent(evFb.Result);
 
+                //If we are already in the same transition state and the application is trying to trigger the same event, we raise an error or better send a duplicate transition error.
+
+                //todo: Check if we are already in the same state, then there is not point in triggering the same event again.
+
                 var trFb = await Repository.GetTransition(instance.CurrentState, evResult.Id, input.definitionVersion);
-                EnsureSuccess(trFb, "Transition_Get");
-                if (trFb.Result == null || trFb.Result.Count == 0) throw new InvalidOperationException($"No transition for state={instance.CurrentState}, eventId={evResult.Id}.");
+                if (!trFb.Status || trFb.Result == null || trFb.Result.Count == 0) {
+                    var latestTransitionFb = await Repository.GetLatestTransitionLog(instance.Id);
+                    return fbResult.SetResult(new StateMachineNotice() {
+                        Reference = instanceKey,
+                        Data = latestTransitionFb.Result as object ?? "Latest Transition Log not found",
+                        CorrelationId = instance.Id,
+                        Message = $"Failed to retrieve transition for state='{instance.CurrentState}', eventId='{evResult.Id}'. No such transition exists. Last event for the instance is {instance.LastEvent}",
+                        Operation = "TriggerAsync"
+                    });
+                }
 
                 var trResult = MapTransition(trFb.Result);  
-
                 var actorValue = string.IsNullOrWhiteSpace(actor) ? "system" : actor.Trim();
                 var metadata = BuildMetadata(comment, context);
 
@@ -55,7 +77,12 @@ namespace Haley.Services {
                     Created = DateTime.UtcNow
                 };
                 NotifyTransition(occurred);
-                return true;
+                return fbResult.SetStatus(true).SetResult(new StateMachineNotice() {
+                    Reference = instanceKey,
+                    Data = new { eventCode, actor },
+                    CorrelationId = instance.Id,
+                    Operation = "TriggerAsync"
+                });
             } catch (Exception ex) {
                 NotifyError(new StateMachineError() {
                     Exception = ex,
@@ -63,11 +90,11 @@ namespace Haley.Services {
                     Data = new { eventCode, actor},
                     Operation = "TriggerAsync"
                 });
-                return false;
+                return await Task.FromException<IFeedback<StateMachineNotice>>(ex);
             }
         }
 
-        public async Task<bool> TriggerAsync(LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null) {
+        public async Task<IFeedback<StateMachineNotice>> TriggerAsync(LifeCycleKey instanceKey, string eventName, string? actor = null, string? comment = null, object? context = null) {
             if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentNullException(nameof(eventName));
             var input = ParseInstanceKey(instanceKey);
             try {
@@ -85,7 +112,7 @@ namespace Haley.Services {
                     Data = new { eventName, actor },
                     Operation = "TriggerAsync"
                 });
-                return false;
+                return await Task.FromException<IFeedback<StateMachineNotice>>(ex);
             }
         }
     }

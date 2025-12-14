@@ -45,6 +45,16 @@ sm.TransitionRaised += async occurred => {
     if (!ackInsert.Status) Console.WriteLine($"[ACK-INSERT] failed: {ackInsert.Message}");
 };
 
+sm.ErrorRaised += async sme => {
+    Console.WriteLine($"[ERR] {sme.Operation}: {sme.Exception.Message}");
+    await Task.CompletedTask;
+};
+
+sm.TimeoutRaised += async to => {
+    Console.WriteLine($"[TMO] ext={to.ExternalRef} inst={to.InstanceId}");
+    await Task.CompletedTask;
+};
+
 var envName = "preq-general-dev";
 var jsonPath = Path.Combine(AppContext.BaseDirectory, "vendor_registration.json");
 if (!File.Exists(jsonPath)) jsonPath = Path.Combine(Directory.GetCurrentDirectory(), "vendor_registration.json");
@@ -73,12 +83,13 @@ await sm.InitializeAsync(instanceKey, LifeCycleInstanceFlag.Active);
 Console.WriteLine("Monitor started.");
 
 // Trigger vendor registration path:
-await sm.TriggerAsync(instanceKey, 1000, actor: "console", comment: "Submit");          // RegistrationStarted -> Submitted
-await sm.TriggerAsync(instanceKey, 1001, actor: "console", comment: "CheckDuplicate");  // Submitted -> DuplicateCheck
-await sm.TriggerAsync(instanceKey, 1001, actor: "console", comment: "CheckDuplicate");  // Submitted -> DuplicateCheck
-await sm.TriggerAsync(instanceKey, 1003, actor: "console", comment: "NotRegistered");   // DuplicateCheck -> PendingValidation
-await sm.TriggerAsync(instanceKey, 1005, actor: "console", comment: "ValidateCompany"); // PendingValidation -> CompanyValidation
-await sm.TriggerAsync(instanceKey, 1007, actor: "console", comment: "ValidCompany");    // CompanyValidation -> Registered
+
+var result = await sm.TriggerAsync(instanceKey, 1000, actor: "console", comment: "Submit");          // RegistrationStarted -> Submitted
+result = await sm.TriggerAsync(instanceKey, 1001, actor: "console", comment: "CheckDuplicate");  // Submitted -> DuplicateCheck
+result = await sm.TriggerAsync(instanceKey, 1001, actor: "console", comment: "CheckDuplicate");  // Submitted -> DuplicateCheck
+result = await sm.TriggerAsync(instanceKey, 1003, actor: "console", comment: "NotRegistered");   // DuplicateCheck -> PendingValidation
+result = await sm.TriggerAsync(instanceKey, 1005, actor: "console", comment: "ValidateCompany"); // PendingValidation -> CompanyValidation
+result = await sm.TriggerAsync(instanceKey, 1007, actor: "console", comment: "ValidCompany");    // CompanyValidation -> Registered
 
 // -------------------------
 // 7) Interactive loop
@@ -89,7 +100,7 @@ while (true) {
     if (string.Equals(line, "q", StringComparison.OrdinalIgnoreCase)) break;
     if (!int.TryParse(line, out var code)) continue;
 
-    await sm.TriggerAsync(instanceKey, code, actor: "console", comment: $"Manual trigger {code}");
+    var localRes = await sm.TriggerAsync(instanceKey, code, actor: "console", comment: $"Manual trigger {code}");
 }
 
 monitor.Dispose();
