@@ -8,9 +8,9 @@
 			<column name="ack_status" type="INT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
 				<comment><![CDATA[Flag:
-1 = Pending
-2 = Delivered
-3 = Processed (Idempotent)
+1 = Pending  //We have sent to the application.. We dont' know what happened.
+2 = Delivered // Application has received and may have probably stored it in a database.
+3 = Processed (Idempotent) //Action has been taken by the client on the received information. 
 4 = Failed]]></comment>
 			</column>
 			<column name="last_retry" type="DATETIME" mandatory="y" >
@@ -409,10 +409,10 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="events" color="0000FF" x="760" y="456" />
 		<entity schema="lcstate" name="definition" color="0000FF" x="627" y="627" />
 		<entity schema="lcstate" name="environment" color="0000FF" x="798" y="646" />
-		<entity schema="lcstate" name="ack_log" color="FFFF00" x="247" y="190" />
 		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="418" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="437" />
 		<entity schema="lcstate" name="state" color="0000FF" x="475" y="228" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="437" />
+		<entity schema="lcstate" name="ack_log" color="FFFF00" x="247" y="190" />
 		<group name="BluePrint" color="0000FF" >
 			<entity schema="lcstate" name="category" />
 			<entity schema="lcstate" name="transition" />
@@ -424,9 +424,9 @@ is_error = 8]]></comment>
 		</group>
 		<group name="State Info" color="FFFF00" >
 			<entity schema="lcstate" name="transition_data" />
-			<entity schema="lcstate" name="ack_log" />
 			<entity schema="lcstate" name="transition_log" />
 			<entity schema="lcstate" name="instance" />
+			<entity schema="lcstate" name="ack_log" />
 		</group>
 	</layout>
 </project>

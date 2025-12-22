@@ -410,9 +410,9 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="definition" color="0000FF" x="627" y="627" />
 		<entity schema="lcstate" name="environment" color="0000FF" x="798" y="646" />
 		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="418" />
-		<entity schema="lcstate" name="state" color="0000FF" x="475" y="228" />
 		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="437" />
 		<entity schema="lcstate" name="ack_log" color="FFFF00" x="247" y="190" />
+		<entity schema="lcstate" name="state" color="0000FF" x="475" y="228" />
 		<group name="BluePrint" color="0000FF" >
 			<entity schema="lcstate" name="category" />
 			<entity schema="lcstate" name="transition" />
