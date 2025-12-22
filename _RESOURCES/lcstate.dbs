@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <project name="lifecycle_state" database="MariaDb" id="19f578f4-fff8-4e61-ac61-4d42ca9c2334" >
+	<schema name="lcledger" />
 	<schema name="lcstate" >
 		<table name="ack_log" prior="ack_l" >
 			<column name="id" type="BIGINT" mandatory="y" >
@@ -67,6 +68,24 @@
 			<index name="unq_category" unique="UNIQUE_KEY" >
 				<column name="name" />
 			</index>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="def_policies" prior="definition_policies" >
+			<column name="definition" type="INT" mandatory="y" />
+			<column name="policy" type="INT" mandatory="y" />
+			<column name="created" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<column name="id" type="INT" mandatory="y" />
+			<index name="pk_definition_policy" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<fk name="fk_def_policies_definition" to_schema="lcstate" to_table="definition" >
+				<fk_column name="definition" pk="id" />
+			</fk>
+			<fk name="fk_def_policies_policy" to_schema="lcstate" to_table="policy" >
+				<fk_column name="policy" pk="id" />
+			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="def_version" prior="def_versio" >
@@ -269,16 +288,37 @@ archive = 16]]></comment>
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
+		<table name="policy" prior="polic" >
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="hash" type="VARCHAR" length="48" mandatory="y" >
+				<comment><![CDATA[hash of the policy contents (states, attach modes, routes)]]></comment>
+			</column>
+			<column name="content" type="TEXT" mandatory="y" >
+				<comment><![CDATA[supposedly the policy json]]></comment>
+			</column>
+			<column name="created" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<index name="pk_policy" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="unq_policy" unique="UNIQUE_KEY" >
+				<column name="hash" />
+			</index>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
 		<table name="state" prior="tbl" >
 			<column name="category" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+			</column>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
@@ -408,24 +448,28 @@ is_error = 8]]></comment>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="transition_data" color="FFFF00" x="57" y="266" />
+		<entity schema="lcstate" name="transition_data" color="FFFF00" x="57" y="228" />
+		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="380" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="399" />
+		<entity schema="lcstate" name="ack_log" color="FFFF00" x="247" y="152" />
+		<entity schema="lcstate" name="transition" color="0000FF" x="722" y="228" />
+		<entity schema="lcstate" name="state" color="0000FF" x="475" y="190" />
 		<entity schema="lcstate" name="category" color="0000FF" x="722" y="95" />
-		<entity schema="lcstate" name="transition" color="0000FF" x="760" y="228" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="475" y="532" />
-		<entity schema="lcstate" name="events" color="0000FF" x="760" y="456" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="627" y="627" />
-		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="418" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="437" />
-		<entity schema="lcstate" name="ack_log" color="FFFF00" x="247" y="190" />
-		<entity schema="lcstate" name="state" color="0000FF" x="475" y="228" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="798" y="646" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="456" y="494" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="646" y="589" />
+		<entity schema="lcstate" name="events" color="0000FF" x="722" y="418" />
+		<entity schema="lcstate" name="def_policies" color="0000FF" x="836" y="589" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="836" y="741" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="456" y="703" />
 		<group name="BluePrint" color="0000FF" >
-			<entity schema="lcstate" name="category" />
 			<entity schema="lcstate" name="transition" />
-			<entity schema="lcstate" name="def_version" />
-			<entity schema="lcstate" name="events" />
-			<entity schema="lcstate" name="definition" />
 			<entity schema="lcstate" name="state" />
+			<entity schema="lcstate" name="category" />
+			<entity schema="lcstate" name="def_version" />
+			<entity schema="lcstate" name="definition" />
+			<entity schema="lcstate" name="events" />
+			<entity schema="lcstate" name="def_policies" />
+			<entity schema="lcstate" name="policy" />
 			<entity schema="lcstate" name="environment" />
 		</group>
 		<group name="State Info" color="FFFF00" >

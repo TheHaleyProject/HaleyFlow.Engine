@@ -22,7 +22,7 @@ USE `lcstate`;
 -- Dumping structure for table lcstate.ack_log
 CREATE TABLE IF NOT EXISTS `ack_log` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `ack_status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n1 = Pending\n2 = Delivered\n3 = Processed (Idempotent)\n4 = Failed',
+  `ack_status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n1 = Pending  //We have sent to the application.. We dont'' know what happened.\n2 = Delivered // Application has received and may have probably stored it in a database.\n3 = Processed (Idempotent) //Action has been taken by the client on the received information. \n4 = Failed',
   `last_retry` datetime NOT NULL DEFAULT current_timestamp(),
   `retry_count` int(11) NOT NULL DEFAULT 0,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
@@ -67,6 +67,21 @@ CREATE TABLE IF NOT EXISTS `definition` (
 
 -- Data exporting was unselected.
 
+-- Dumping structure for table lcstate.def_policies
+CREATE TABLE IF NOT EXISTS `def_policies` (
+  `definition` int(11) NOT NULL,
+  `policy` int(11) NOT NULL,
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `id` int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_def_policies_definition` (`definition`),
+  KEY `fk_def_policies_policy` (`policy`),
+  CONSTRAINT `fk_def_policies_definition` FOREIGN KEY (`definition`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_def_policies_policy` FOREIGN KEY (`policy`) REFERENCES `policy` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
 -- Dumping structure for table lcstate.def_version
 CREATE TABLE IF NOT EXISTS `def_version` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -93,8 +108,10 @@ CREATE TABLE IF NOT EXISTS `environment` (
   `display_name` varchar(120) NOT NULL,
   `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
   `code` int(11) NOT NULL,
+  `guid` varchar(42) NOT NULL DEFAULT uuid(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_environment` (`code`),
+  UNIQUE KEY `unq_environment_1` (`guid`),
   UNIQUE KEY `unq_environment_0` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='environment code\n//Doesnt'' need to be like dev/prod/test.. It can be an work-group environmetn as well..\n\n//like preq-app (is one environment), so all preq-app (wherever it runs, local, production etc) will be able to read definitions.\n\n//we can even extend it as , preq-app-dev, preq-app-prod etc.';
 
@@ -140,12 +157,24 @@ CREATE TABLE IF NOT EXISTS `instance` (
 
 -- Data exporting was unselected.
 
+-- Dumping structure for table lcstate.policy
+CREATE TABLE IF NOT EXISTS `policy` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `hash` varchar(48) NOT NULL COMMENT 'hash of the policy contents (states, attach modes, routes)',
+  `content` text NOT NULL COMMENT 'supposedly the policy json',
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unq_policy` (`hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
 -- Dumping structure for table lcstate.state
 CREATE TABLE IF NOT EXISTS `state` (
   `category` int(11) NOT NULL DEFAULT 0,
-  `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(200) NOT NULL,
   `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'none = 0\nis_initial = 1\nis_final = 2\nis_system = 4\nis_error = 8',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `def_version` int(11) NOT NULL,
