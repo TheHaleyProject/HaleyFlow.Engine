@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Library</OutputType>
     <RootNamespace>Haley</RootNamespace>
-    <AssemblyName>Haley.LifeCycle.State</AssemblyName>
+    <AssemblyName>Haley.LifeCycle</AssemblyName>
     <Authors>TheHaleyProject</Authors>
     <Company>TheHaleyProject</Company>
     <Copyright>Haley 2025</Copyright>
@@ -14,16 +14,16 @@
     <IsPackable>true</IsPackable>
     <AssemblyOriginatorKeyFile>..\..\HaleyProject\HaleyProject.snk</AssemblyOriginatorKeyFile>
     <PackageIcon>Haley.png</PackageIcon>
-    <Version>$(HaleyLCStateVersion)</Version>
+    <Version>$(HaleyLCVersion)</Version>
     <IncludeSymbols>True</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageReleaseNotes>Pilot release</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/TheHaleyProject/HaleyLifeCycle.State</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/TheHaleyProject/HaleyLifeCycle.State</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/TheHaleyProject/HaleyLifeCycle</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/TheHaleyProject/HaleyLifeCycle</RepositoryUrl>
     <OpenApiGenerateDocuments>false</OpenApiGenerateDocuments>
-    <Description>A Simple State Machine from Haley Libraries</Description>
+    <Description>A Simple Life Cycle Management from Haley Libraries</Description>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
   <ItemGroup>

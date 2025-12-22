@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.0.11222.15 d18.0
+VisualStudioVersion = 18.0.11222.15
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyAbstractions", "..\HaleyAbstractions\HaleyAbstractions\HaleyAbstractions.csproj", "{68B0D22B-A2D4-3C71-2F11-00A9ACB87225}"
 EndProject
@@ -26,9 +26,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		..\HaleyProject\HaleyVersion.Props = ..\HaleyProject\HaleyVersion.Props
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyLifecycleState", "HaleyLifeCycleState\HaleyLifecycleState.csproj", "{1694E87D-A94E-10CE-DC35-3678A55B9133}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LCS.Test", "LCS.Test\LCS.Test.csproj", "{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyLifeCycle", "HaleyLifeCycle\HaleyLifeCycle.csproj", "{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -68,14 +68,14 @@ Global
 		{B2CA982F-5324-FC83-38C7-77A45320C286}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2CA982F-5324-FC83-38C7-77A45320C286}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2CA982F-5324-FC83-38C7-77A45320C286}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1694E87D-A94E-10CE-DC35-3678A55B9133}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1694E87D-A94E-10CE-DC35-3678A55B9133}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1694E87D-A94E-10CE-DC35-3678A55B9133}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1694E87D-A94E-10CE-DC35-3678A55B9133}.Release|Any CPU.Build.0 = Release|Any CPU
 		{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -89,7 +89,7 @@ Global
 		{73A0203E-E97F-0B30-E1F3-F34922E6277A} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{401096D7-2E62-06A4-73F7-6A052A5F362D} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{B2CA982F-5324-FC83-38C7-77A45320C286} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{1694E87D-A94E-10CE-DC35-3678A55B9133} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{A6DD27E1-8585-9041-E22B-D90F0E52AC4E} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FB1068B8-C4A9-42A0-9A48-68064DD09F9E}
