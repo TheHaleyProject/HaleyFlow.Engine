@@ -1,0 +1,43 @@
+{
+  "policy_name": "vendorprequalification.policy",
+  "for": { "definition": "vendorprequalification", "version": 1 },
+  "policies": [
+    { "code": "POL.PREQ.FORM.TIER.CALC" },
+    { "code": "POL.PREQ.WF.SELECT" },
+    { "code": "POL.PREQ.EVAL.DECIDE", "params": { "approval": { "selector": { "mode": "role", "value": "preq_evaluators" }, "types": { "technical": { "rule": "all" }, "nontechnical": { "rule": "any" } } } } },
+    { "code": "POL.PREQ.OVERDUE" },
+    { "code": "POL.PREQ.CLARIF.REQUEST" },
+    { "code": "POL.PREQ.CLARIF.DECIDE" },
+    { "code": "POL.PREQ.WF.TYPE.DECIDE" },
+    { "code": "POL.PREQ.TECH.REVIEW", "params": { "approval": { "rule": "any", "selector": { "mode": "role", "value": "workitem_reviewers" } } } },
+    { "code": "POL.PREQ.TIER.CALC" },
+    { "code": "POL.PREQ.TIER.VALIDATE", "params": { "approval": { "rule": "any", "selector": { "mode": "role", "value": "tier_validators" } } } },
+    { "code": "POL.PREQ.TIER.CHANGE.ACK" }
+  ],
+  "routes": [
+    { "state": "FormTierCalculation", "policy": "POL.PREQ.FORM.TIER.CALC", "emit": [ { "event": "APP.PREQ.FORM.TIER.CALC", "complete": { "success": 1001 } } ] },
+    { "state": "WorkflowSelection", "policy": "POL.PREQ.WF.SELECT", "emit": [ { "event": "APP.PREQ.WF.SELECTION.REQUIRED", "complete": { "success": 1002 } } ] },
+
+    { "state": "UnderEvaluation", "policy": "POL.PREQ.EVAL.DECIDE", "emit": [ { "event": "APP.PREQ.EVAL.DECISION.REQUIRED", "complete": { "success": 1004, "failure": 1003 } } ] },
+
+    { "state": "Overdue", "via": 1006, "policy": "POL.PREQ.OVERDUE", "emit": [ { "event": "APP.PREQ.EVAL.OVERDUE.ENTER" } ] },
+    { "state": "Overdue", "via": 1007, "policy": "POL.PREQ.OVERDUE", "emit": [ { "event": "APP.PREQ.EVAL.OVERDUE.REMIND" } ] },
+
+    { "state": "PendingClarification", "policy": "POL.PREQ.CLARIF.REQUEST", "emit": [ { "event": "APP.PREQ.CLARIF.REQUESTED" } ] },
+    { "state": "PendingClarification", "auto": [ { "event": 1005 } ] },
+
+    { "state": "ClarificationCompilation", "policy": "POL.PREQ.CLARIF.DECIDE", "emit": [ { "event": "APP.PREQ.CLARIF.COMPILATION.DECIDE", "complete": { "success": 1012, "failure": 1009 } } ] },
+
+    { "state": "ReturnedToVendor", "emit": [ { "event": "APP.PREQ.VENDOR.ACTION.REQUIRED" } ] },
+
+    { "state": "ClarificationReviewed", "policy": "POL.PREQ.WF.TYPE.DECIDE", "emit": [ { "event": "APP.PREQ.WORKFLOW.TYPE.DECIDE", "complete": { "success": 1013, "failure": 1014 } } ] },
+
+    { "state": "WorkItemsReview", "policy": "POL.PREQ.TECH.REVIEW", "emit": [ { "event": "APP.PREQ.TECH.REVIEW.REQUIRED", "complete": { "success": 1015 } } ] },
+
+    { "state": "CompanyTierCalculation", "policy": "POL.PREQ.TIER.CALC", "emit": [ { "event": "APP.PREQ.TIER.CALC", "complete": { "success": 1016, "failure": 1017 } } ] },
+
+    { "state": "TierValidation", "policy": "POL.PREQ.TIER.VALIDATE", "emit": [ { "event": "APP.PREQ.TIER.VALIDATION.REQUIRED", "complete": { "success": 1018, "failure": 1019 } } ] },
+
+    { "state": "CompanyTierChanged", "policy": "POL.PREQ.TIER.CHANGE.ACK", "emit": [ { "event": "APP.PREQ.TIER.CHANGED.ACK.REQUIRED" } ] }
+  ]
+}

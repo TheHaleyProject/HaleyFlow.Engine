@@ -4,7 +4,7 @@
   "policies": [
     { "code": "POL.REG.CHECK.REGISTERED" },
     { "code": "POL.REG.CHECK.RECENT" },
-    { "code": "POL.REG.PQ.VALIDATE", "params": { "approval": { "rule": "any", "selector": { "mode": "role", "value": "pq_evaluators" } } } },
+    { "code": "POL.REG.PQ.VALIDATE", "params": { "approval": { "rule": "any", "selector": { "mode": "role", "value": "procurement" } } } },
     { "code": "POL.REG.CREATE.VENDOR" }
   ],
   "routes": [
