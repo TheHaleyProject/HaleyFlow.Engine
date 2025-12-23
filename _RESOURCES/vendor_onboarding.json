@@ -1,0 +1,22 @@
+{
+  "definition": { "name": "VendorPasswordSetupStates", "version": 1, "description": "After vendor registration: send password creation link; repeat reminder every 2 days with fresh link until password is created." },
+  "states": [
+    { "name": "OnboardingCreated", "is_initial": true, "category": "Onboarding" },
+    { "name": "AwaitPasswordCreation", "category": "PasswordSetup", "timeout": "P2D", "timeout_event": 1002, "timeout_mode": "repeat" },
+    { "name": "PasswordCreated", "is_final": true, "category": "Outcome" },
+    { "name": "Stopped", "is_final": true, "category": "Outcome" }
+  ],
+  "events": [
+    { "code": 1000, "name": "AutoStart" },
+    { "code": 1001, "name": "FirstPasswordCreated" },
+    { "code": 1002, "name": "PasswordReminderDue" },
+    { "code": 1003, "name": "StopOnboarding" }
+  ],
+  "transitions": [
+    { "event": 1000, "from": "OnboardingCreated", "to": "AwaitPasswordCreation" },
+    { "event": 1002, "from": "AwaitPasswordCreation", "to": "AwaitPasswordCreation" },
+    { "event": 1001, "from": "AwaitPasswordCreation", "to": "PasswordCreated" },
+    { "event": 1003, "from": "OnboardingCreated", "to": "Stopped" },
+    { "event": 1003, "from": "AwaitPasswordCreation", "to": "Stopped" }
+  ]
+}

@@ -1,36 +1,44 @@
 {
-  "definition": {
-    "name": "VendorRegStates",
-    "version": 2,
-    "description": "Lifecycle definition for new vendor registration, validation, and vendor ID generation."
-  },
+  "definition": { "name": "VendorRegistration", "version": 1, "description": "Registration workflow for account creation validation" },
   "states": [
-    { "name": "RegistrationStarted", "is_initial": true, "category": "system" },
-    { "name": "Submitted", "category": "business" },
-    { "name": "DuplicateCheck", "category": "system" },
-    { "name": "PendingValidation", "category": "business" },
-    { "name": "CompanyValidation", "category": "business" },
-    { "name": "Rejected", "is_final": true, "category": "error" },
-    { "name": "Registered", "is_final": true, "category": "system" }
+    { "name": "FormSubmitted", "is_initial": true, "category": "Intake" },
+    { "name": "CheckVendorRegistered", "category": "Eligibility" },
+    { "name": "CheckRecentSubmission", "category": "Eligibility" },
+    { "name": "RequestAccepted", "category": "Intake" },
+    { "name": "PendingPQValidation", "category": "Validation", "timeout": "P2D", "timeout_event": 1010 },
+    { "name": "Overdue", "category": "Validation", "timeout": "P1D", "timeout_event": 1011, "timeout_mode": "repeat" },
+    { "name": "VendorCreation", "category": "Creation" },
+    { "name": "Registered", "is_final": true, "category": "Outcome" },
+    { "name": "RejectedAlreadyRegistered", "is_final": true, "category": "Outcome" },
+    { "name": "RejectedInvalidCompany", "is_final": true, "category": "Outcome" },
+    { "name": "DuplicateWithin12Months", "is_final": true, "category": "Outcome" }
   ],
   "events": [
-    { "code": 1000, "name": "Submit" },
-    { "code": 1001, "name": "CheckDuplicate" },
-    { "code": 1002, "name": "AlreadyRegistered" },
-    { "code": 1003, "name": "NotRegistered" },
-    { "code": 1004, "name": "RequestWithin12Months" },
-    { "code": 1005, "name": "ValidateCompany" },
-    { "code": 1006, "name": "InvalidCompany" },
-    { "code": 1007, "name": "ValidCompany" }
+    { "code": 1000, "name": "AutoStart" },
+    { "code": 1001, "name": "VendorAlreadyRegistered" },
+    { "code": 1002, "name": "VendorNotRegistered" },
+    { "code": 1003, "name": "RecentRequestFound" },
+    { "code": 1004, "name": "NoRecentRequest" },
+    { "code": 1005, "name": "BeginPQValidation" },
+    { "code": 1006, "name": "CompanyValid" },
+    { "code": 1007, "name": "VendorCreated" },
+    { "code": 1008, "name": "CompanyInvalid" },
+    { "code": 1010, "name": "PQValidationTimeout" },
+    { "code": 1011, "name": "OverdueReminder" },
+    { "code": 1012, "name": "ResumeValidation" }
   ],
   "transitions": [
-    { "event": 1000, "from": "RegistrationStarted", "to": "Submitted" },
-    { "event": 1001, "from": "Submitted", "to": "DuplicateCheck" },
-    { "event": 1002, "from": "DuplicateCheck", "to": "Rejected" },
-    { "event": 1003, "from": "DuplicateCheck", "to": "PendingValidation" },
-    { "event": 1004, "from": "PendingValidation", "to": "Rejected" },
-    { "event": 1005, "from": "PendingValidation", "to": "CompanyValidation" },
-    { "event": 1006, "from": "CompanyValidation", "to": "Rejected" },
-    { "event": 1007, "from": "CompanyValidation", "to": "Registered" }
+    { "event": 1000, "from": "FormSubmitted", "to": "CheckVendorRegistered" },
+    { "event": 1001, "from": "CheckVendorRegistered", "to": "RejectedAlreadyRegistered" },
+    { "event": 1002, "from": "CheckVendorRegistered", "to": "CheckRecentSubmission" },
+    { "event": 1003, "from": "CheckRecentSubmission", "to": "DuplicateWithin12Months" },
+    { "event": 1004, "from": "CheckRecentSubmission", "to": "RequestAccepted" },
+    { "event": 1005, "from": "RequestAccepted", "to": "PendingPQValidation" },
+    { "event": 1006, "from": "PendingPQValidation", "to": "VendorCreation" },
+    { "event": 1008, "from": "PendingPQValidation", "to": "RejectedInvalidCompany" },
+    { "event": 1010, "from": "PendingPQValidation", "to": "Overdue" },
+    { "event": 1011, "from": "Overdue", "to": "Overdue" },
+    { "event": 1012, "from": "Overdue", "to": "PendingPQValidation" },
+    { "event": 1007, "from": "VendorCreation", "to": "Registered" }
   ]
 }
