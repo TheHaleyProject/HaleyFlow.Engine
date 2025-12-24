@@ -15,7 +15,7 @@ namespace Haley.Services {
             DisplayName = row.GetString("display_name") ?? string.Empty,
             DefinitionVersion = row.GetInt("def_version"),
             Category = row.GetInt("category"),
-            Flags = (LifeCycleStateFlag)row.GetInt("flags"),
+            Flags = (WorkFlowStateFlag)row.GetInt("flags"),
             TimeoutMinutes = row.GetNullableInt("timeout_minutes"),
             TimeoutMode = row.GetInt("timeout_mode"),
             TimeoutEvent = row.GetInt("timeout_event"),
@@ -29,7 +29,7 @@ namespace Haley.Services {
             CurrentState = row.GetInt("current_state"),
             LastEvent = row.GetInt("last_event"),
             ExternalRef = row.GetString("external_ref") ?? string.Empty,
-            Flags = (LifeCycleInstanceFlag)row.GetInt("flags"),
+            Flags = (WorkFlowInstanceFlag)row.GetInt("flags"),
             Created = row.GetDateTime("created") ?? DateTime.UtcNow,
             Modified = row.GetDateTime("modified") ?? DateTime.UtcNow,
             Guid = row.GetGuid("guid") ?? Guid.Empty

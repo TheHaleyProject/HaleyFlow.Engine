@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Haley.Services {
     public partial class LifeCycleProcessor {
 
-        public Task<IFeedback<Dictionary<string, object>>> InsertAck(long transitionLogId, int consumer, LifeCycleAckStatus ackStatus = LifeCycleAckStatus.Pending, string? messageId = null) {
+        public Task<IFeedback<Dictionary<string, object>>> InsertAck(long transitionLogId, int consumer, WorkFlowAckStatus ackStatus = WorkFlowAckStatus.Pending, string? messageId = null) {
             try {
                 return Repository.InsertAck(transitionLogId, consumer, (int)ackStatus, messageId);
             } catch (Exception ex) {
@@ -23,7 +23,7 @@ namespace Haley.Services {
             }
         }
 
-        public Task<IFeedback<bool>> MarkAck(string messageId, LifeCycleAckStatus status) {
+        public Task<IFeedback<bool>> MarkAck(string messageId, WorkFlowAckStatus status) {
             try {
                 return Repository.MarkAck(messageId, (int)status);
             } catch (Exception ex) {

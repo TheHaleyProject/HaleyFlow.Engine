@@ -19,8 +19,8 @@ var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, cons
 if (!response.Status) throw new ArgumentException("Unable to initialize the database for the lifecycle state machine");
 
 var logger = LogStore.GetOrAddFileLogger("lcstatelogger", "Lifecycle state logger");
-ILifeCycleStore repo = new LifeCycleStoreMaria(agw, key: response.Result, logger: logger);
-ILifeCycleProcessor sm = new LifeCycleProcessor(repo);
+IStateRepo repo = new LifeCycleStoreMaria(agw, key: response.Result, logger: logger);
+IStateMachine sm = new LifeCycleProcessor(repo);
 var monitorOptions = new LifeCycleMonitorOptions {
     PollIntervalSeconds = 10,       // demo: fast ticks
     AckRetryAfterMinutes = 0,      // demo: pick immediately
@@ -42,7 +42,7 @@ sm.TransitionRaised += async occurred => {
     Console.WriteLine($"[TRN] ext={occurred.ExternalRef} {occurred.FromStateId}->{occurred.ToStateId} event={occurred.EventCode} {occurred.EventName}");
 
     // Each consumer creates its own ack row (unique by transition_log + consumer)
-    var ackInsert = await sm.MarkAck(occurred.MessageId, LifeCycleAckStatus.Delivered);
+    var ackInsert = await sm.MarkAck(occurred.MessageId, WorkFlowAckStatus.Delivered);
     if (!ackInsert.Status) Console.WriteLine($"[ACK-INSERT] failed: {ackInsert.Message}");
 };
 
@@ -78,7 +78,7 @@ var externalRef = Guid.NewGuid().ToString();
 //var instanceKey = LifeCycleKeys.Instance(defVersionId, externalRef);
 var instanceKey = LifeCycleKeys.Instance("VendorRegStates", externalRef,0);
 
-await sm.InitializeAsync(instanceKey, LifeCycleInstanceFlag.Active);
+await sm.InitializeAsync(instanceKey, WorkFlowInstanceFlag.Active);
 
 // Start monitor AFTER listener is attached
 //monitor.Start();

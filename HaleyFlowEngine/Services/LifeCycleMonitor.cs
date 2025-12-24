@@ -11,8 +11,8 @@ using Haley.Utils;
 namespace Haley.Services {
     // Monitor is readonly. It must never call TriggerAsync/MarkAck/RetryAck/etc. Its job is: detect + notify.
     public sealed class LifeCycleMonitor : IDisposable {
-        private readonly ILifeCycleProcessor _sm;
-        private readonly ILifeCycleStore _repo;
+        private readonly IStateMachine _sm;
+        private readonly IStateRepo _repo;
         private readonly LifeCycleMonitorOptions _options;
 		private readonly Func<AckMonitorNotice, Task> _ackNoticeHandler;
 		private readonly Func<AckMonitorNotice, Task>? _failedAckNoticeHandler;
@@ -33,8 +33,8 @@ namespace Haley.Services {
         public bool IsStarted => _timer != null;
 
 		public LifeCycleMonitor(
-			ILifeCycleProcessor sm,
-			ILifeCycleStore repo,
+			IStateMachine sm,
+			IStateRepo repo,
 			LifeCycleMonitorOptions? options,
 			Func<AckMonitorNotice, Task> ackNoticeHandler,
 			Func<AckMonitorNotice, Task>? failedAckNoticeHandler = null,
@@ -101,7 +101,7 @@ namespace Haley.Services {
 					//  1) skip final states
 					//  2) read timeout_minutes + timeout_mode
 					var instKey = LifeCycleKeys.Instance(defVersion, externalRef);
-					var instFb = await _repo.Get(LifeCycleEntity.Instance, instKey);
+					var instFb = await _repo.Get(WorkFlowEntity.Instance, instKey);
 					if (instFb == null || !instFb.Status || instFb.Result == null || instFb.Result.Count == 0) continue;
 					var instRow = instFb.Result;
 					var instanceId = instRow.GetLong("id");
@@ -110,12 +110,12 @@ namespace Haley.Services {
 
 					if (instanceId <= 0 || currentStateId <= 0) continue;
 
-					var stFb = await _repo.Get(LifeCycleEntity.State, new LifeCycleKey(LifeCycleKeyType.Id, currentStateId));
+					var stFb = await _repo.Get(WorkFlowEntity.State, new LifeCycleKey(WorkFlowEntityKeyType.Id, currentStateId));
 					if (stFb == null || !stFb.Status || stFb.Result == null || stFb.Result.Count == 0) continue;
 					var stRow = stFb.Result;
 
-					var stateFlags = (LifeCycleStateFlag)stRow.GetInt("flags");
-					if (stateFlags.HasFlag(LifeCycleStateFlag.IsFinal)) continue; // spec: do nothing for final
+					var stateFlags = (WorkFlowStateFlag)stRow.GetInt("flags");
+					if (stateFlags.HasFlag(WorkFlowStateFlag.IsFinal)) continue; // spec: do nothing for final
 
 					var timeoutMinutes = stRow.GetNullableInt("timeout_minutes");
 					if (!timeoutMinutes.HasValue || timeoutMinutes.Value <= 0) continue;
@@ -155,7 +155,7 @@ namespace Haley.Services {
 			while (true) {
 				// NOTE: We reuse the existing repo query to fetch *not-processed* acks that are old enough.
 				// The monitor itself decides what is "overdue" (Pending >= 5m, Delivered >= 30m).
-				var fb = await _repo.GetAck(LifeCycleAckFetchMode.DueForRetry, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit);
+				var fb = await _repo.GetAck(WorkFlowAckFetchMode.DueForRetry, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit);
                 if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) break;
 
                 foreach (var ackRow in fb.Result) {
@@ -172,7 +172,7 @@ namespace Haley.Services {
             var limit = _options.AckBatchSize <= 0 ? 200 : _options.AckBatchSize;
 
 			while (true) {
-				var fb = await _repo.GetAck(LifeCycleAckFetchMode.Failed, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit);
+				var fb = await _repo.GetAck(WorkFlowAckFetchMode.Failed, _options.AckMaxRetry, _options.AckRetryAfterMinutes, skip, limit);
                 if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) break;
 
 				foreach (var ackRow in fb.Result) {
@@ -187,7 +187,7 @@ namespace Haley.Services {
 						var retryCount = ackRow.GetInt("retry_count");
 						await _failedAckNoticeHandler!(new AckMonitorNotice {
 							Work = work,
-							Status = LifeCycleAckStatus.Failed,
+							Status = WorkFlowAckStatus.Failed,
 							Reason = "ack_failed",
 							CreatedUtc = created,
 							ModifiedUtc = modified,
@@ -211,8 +211,8 @@ namespace Haley.Services {
 			if (ackId <= 0 || transitionLogId <= 0) return;
 
 			var statusInt = ackRow.GetInt("ack_status");
-			var status = (LifeCycleAckStatus)statusInt;
-			if (status == LifeCycleAckStatus.Processed || status == LifeCycleAckStatus.Failed) return;
+			var status = (WorkFlowAckStatus)statusInt;
+			if (status == WorkFlowAckStatus.Processed || status == WorkFlowAckStatus.Failed) return;
 
 			var now = DateTime.UtcNow;
 			var created = ackRow.GetDateTime("created") ?? now;
@@ -225,12 +225,12 @@ namespace Haley.Services {
 			TimeSpan firstThreshold;
 
 			switch (status) {
-				case LifeCycleAckStatus.Pending:
+				case WorkFlowAckStatus.Pending:
 					age = now - created;
 					reason = "ack_pending_overdue";
 					firstThreshold = AckPendingFirstThreshold;
 					break;
-				case LifeCycleAckStatus.Delivered:
+				case WorkFlowAckStatus.Delivered:
 					age = now - modified; // assume Modified is bumped when Delivered is set
 					reason = "ack_delivered_not_processed";
 					firstThreshold = AckDeliveredFirstThreshold;
@@ -276,7 +276,7 @@ namespace Haley.Services {
             var transitionLogId = ackRow.GetLong("transition_log");
             var messageId = ackRow.GetString("message_id") ?? string.Empty;
 
-            var logFb = await _repo.GetTransitionLog(new LifeCycleKey(LifeCycleKeyType.Id, transitionLogId));
+            var logFb = await _repo.GetTransitionLog(new LifeCycleKey(WorkFlowEntityKeyType.Id, transitionLogId));
             if (logFb == null || !logFb.Status || logFb.Result == null) return null;
             var logRow = logFb.Result;
 
@@ -287,14 +287,14 @@ namespace Haley.Services {
             var actor = logRow.GetString("actor") ?? string.Empty;
             var metadataJson = logRow.GetString("metadata") ?? string.Empty;
 
-            var instFb = await _repo.Get(LifeCycleEntity.Instance, new LifeCycleKey(LifeCycleKeyType.Id, instanceId));
+            var instFb = await _repo.Get(WorkFlowEntity.Instance, new LifeCycleKey(WorkFlowEntityKeyType.Id, instanceId));
             if (instFb == null || !instFb.Status || instFb.Result == null) return null;
             var instRow = instFb.Result;
 
             var defVersion = instRow.GetInt("def_version");
             var externalRef = instRow.GetString("external_ref") ?? string.Empty;
 
-            var evFb = await _repo.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Id, eventId));
+            var evFb = await _repo.Get(WorkFlowEntity.Event, new LifeCycleKey(WorkFlowEntityKeyType.Id, eventId));
             if (evFb == null || !evFb.Status || evFb.Result == null) return null;
             var evRow = evFb.Result;
 

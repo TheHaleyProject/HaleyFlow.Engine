@@ -13,7 +13,7 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 using static Haley.Internal.QueryFields;
 
 namespace Haley.Services {
-    public partial class LifeCycleStoreMaria : ILifeCycleStore {
+    public partial class LifeCycleStoreMaria : IStateRepo {
         readonly IAdapterGateway _agw;
         readonly ILogger _logger;
         readonly string _key;

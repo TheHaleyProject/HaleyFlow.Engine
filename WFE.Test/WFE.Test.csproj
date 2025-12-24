@@ -10,16 +10,16 @@
   <Import Project="$(SolutionDir)ProjectReferences_$(SolutionName).txt" Condition="Exists('$(SolutionDir)ProjectReferences_$(SolutionName).txt')" />
 
   <Choose>
-    <When Condition="Exists($(HaleyLifeCycle))">
+    <When Condition="Exists($(HaleyFlowEngine))">
       <ItemGroup>
-        <ProjectReference Include="$(HaleyLifeCycle)\HaleyLifeCycle.csproj">
-          <Name>HaleyLifeCycle</Name>
+        <ProjectReference Include="$(HaleyFlowEngine)\HaleyFlowEngine.csproj">
+          <Name>HaleyFlowEngine</Name>
         </ProjectReference>
       </ItemGroup>
     </When>
     <Otherwise>
       <ItemGroup>
-        <PackageReference Include="Haley.LifeCycle" Version="0.0.1" />
+        <PackageReference Include="Haley.Flow.Engine" Version="0.0.1" />
       </ItemGroup>
     </Otherwise>
   </Choose>

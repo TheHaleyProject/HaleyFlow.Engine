@@ -41,14 +41,14 @@ namespace Haley.Services {
             if (spec.Transitions != null) foreach (var t in spec.Transitions) { t.From = (t.From ?? string.Empty).Trim(); t.To = (t.To ?? string.Empty).Trim(); }
         }
 
-        private static LifeCycleStateFlag BuildStateFlags(StateBlock s) {
-            var f = LifeCycleStateFlag.None;
-            if (s.IsInitial) f |= LifeCycleStateFlag.IsInitial;
-            if (s.IsFinal) f |= LifeCycleStateFlag.IsFinal;
+        private static WorkFlowStateFlag BuildStateFlags(StateBlock s) {
+            var f = WorkFlowStateFlag.None;
+            if (s.IsInitial) f |= WorkFlowStateFlag.IsInitial;
+            if (s.IsFinal) f |= WorkFlowStateFlag.IsFinal;
             if (!string.IsNullOrWhiteSpace(s.Category)) {
                 var c = s.Category.Trim();
-                if (c.Equals("system", StringComparison.OrdinalIgnoreCase)) f |= LifeCycleStateFlag.IsSystem;
-                if (c.Equals("error", StringComparison.OrdinalIgnoreCase)) f |= LifeCycleStateFlag.IsError;
+                if (c.Equals("system", StringComparison.OrdinalIgnoreCase)) f |= WorkFlowStateFlag.IsSystem;
+                if (c.Equals("error", StringComparison.OrdinalIgnoreCase)) f |= WorkFlowStateFlag.IsError;
             }
             return f;
         }

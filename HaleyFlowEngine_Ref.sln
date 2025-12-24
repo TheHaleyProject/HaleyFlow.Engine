@@ -24,12 +24,12 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
 		..\HaleyProject\HaleyVersion.Props = ..\HaleyProject\HaleyVersion.Props
-		ProjectReferences_LifeCycle_Ref.txt = ProjectReferences_LifeCycle_Ref.txt
+		ProjectReferences_HaleyFlowEngine_Ref.txt = ProjectReferences_HaleyFlowEngine_Ref.txt
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LCS.Test", "LCS.Test\LCS.Test.csproj", "{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WFE.Test", "WFE.Test\WFE.Test.csproj", "{0683A6A9-AD8B-41A2-81CD-F8FE1D4EA4C1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyLifeCycle", "HaleyLifeCycle\HaleyLifeCycle.csproj", "{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyFlowEngine", "HaleyFlowEngine\HaleyFlowEngine.csproj", "{A6DD27E1-8585-9041-E22B-D90F0E52AC4E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyAbstractionsCore", "..\HaleyAbstractions.Core\HaleyAbstractionsCore\HaleyAbstractionsCore.csproj", "{04532139-F515-A77D-6BAD-E5AE4ABA8805}"
 EndProject

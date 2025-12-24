@@ -25,8 +25,8 @@ namespace Haley.Services {
             return _agw.NonQueryAsync(_key, QRY_ACK_LOG.MARK_BY_MESSAGE, (MESSAGE_ID, messageId), (ACK_STATUS, ackStatus));
         }
 
-        public Task<IFeedback<List<Dictionary<string, object>>>> GetAck(LifeCycleAckFetchMode mode, int maxRetry, int retryAfterMinutes, int skip = 0, int limit = 200) =>
-            mode == LifeCycleAckFetchMode.DueForRetry
+        public Task<IFeedback<List<Dictionary<string, object>>>> GetAck(WorkFlowAckFetchMode mode, int maxRetry, int retryAfterMinutes, int skip = 0, int limit = 200) =>
+            mode == WorkFlowAckFetchMode.DueForRetry
                 ? _agw.ReadAsync(_key, QRY_ACK_LOG.GET_DUE_FOR_RETRY, (MAX_RETRY, maxRetry), (RETRY_AFTER_MIN, retryAfterMinutes), (SKIP, skip), (LIMIT, limit))
                 : _agw.ReadAsync(_key, QRY_ACK_LOG.GET_FAILED, (SKIP, skip), (LIMIT, limit));
 

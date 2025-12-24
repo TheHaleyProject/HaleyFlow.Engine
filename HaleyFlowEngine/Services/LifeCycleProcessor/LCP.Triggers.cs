@@ -17,7 +17,7 @@ namespace Haley.Services {
                 if (instance == null) throw new InvalidOperationException("Instance not found.");
                 var agwInfo = Repository.AdapterGatewayInfo;
                 var input = instanceKey.ParseInstanceKey(agwInfo.agw,agwInfo.adapterKey);
-                var evFb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventCode));
+                var evFb = await Repository.Get(WorkFlowEntity.Event, new LifeCycleKey(WorkFlowEntityKeyType.Composite, input.definitionVersion, eventCode));
 
                 if (!evFb.Status || evFb.Result == null || evFb.Result.Count == 0) {
                     return fbResult.SetResult(new LifeCycleNotice() {
@@ -55,11 +55,11 @@ namespace Haley.Services {
                 EnsureSuccess(logIdFb, "TransitionLog_Append");
                 var logId = logIdFb.Result;
 
-                var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), trResult.ToState, evResult.Id, instance.Flags);
+                var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(WorkFlowEntityKeyType.Id, instance.Id), trResult.ToState, evResult.Id, instance.Flags);
                 EnsureSuccess(updFb, "Instance_UpdateState");
 
                 //var msgId = Guid.NewGuid().ToString(); //Let the database create the unique message Id.
-                var ackFb = await Repository.InsertAck(logId, consumer: 0, ackStatus: (int) LifeCycleAckStatus.Pending);
+                var ackFb = await Repository.InsertAck(logId, consumer: 0, ackStatus: (int) WorkFlowAckStatus.Pending);
                 EnsureSuccess(ackFb, "Ack_Insert");
 
                 var occurred = new TransitionOccurred {
@@ -100,7 +100,7 @@ namespace Haley.Services {
             var agwInfo = Repository.AdapterGatewayInfo;
             var input = instanceKey.ParseInstanceKey(agwInfo.agw, agwInfo.adapterKey);
             try {
-                var fb = await Repository.Get(LifeCycleEntity.Event, new LifeCycleKey(LifeCycleKeyType.Composite, input.definitionVersion, eventName.Trim()));
+                var fb = await Repository.Get(WorkFlowEntity.Event, new LifeCycleKey(WorkFlowEntityKeyType.Composite, input.definitionVersion, eventName.Trim()));
                 EnsureSuccess(fb, "Get(Event by name)");
                 if (fb.Result == null || fb.Result.Count == 0) throw new InvalidOperationException($"Event '{eventName}' not found.");
 

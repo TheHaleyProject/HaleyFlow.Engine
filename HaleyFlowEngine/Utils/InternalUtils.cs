@@ -14,7 +14,7 @@ namespace Haley.Utils {
         public static (int definitionVersion, string externalRef) ParseInstanceKey(this LifeCycleKey key, IAdapterGateway agw = null, string adapter_key = null) {
             int defVersion = 0;
             string externalRef = string.Empty;
-            if (key.Type == LifeCycleKeyType.Parent) {
+            if (key.Type == WorkFlowEntityKeyType.Parent) {
                 //So, try to fetch the latest version.
                 //keys[0] = definitionName:string
                 //keys[1] = externalRef:string

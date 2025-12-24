@@ -12,7 +12,7 @@ namespace Haley.Services {
     public partial class LifeCycleProcessor {
 
         public async Task<LifeCycleInstance?> GetInstanceWithTransitionAsync(LifeCycleKey key) {
-            if (key.Type != LifeCycleKeyType.Parent) {
+            if (key.Type != WorkFlowEntityKeyType.Parent) {
                 if (key.keys[0] == null || !int.TryParse(key.keys[0].ToString(), out var definitionVersion)) throw new ArgumentException("Instance key A must be a valid integer value (definitionVersionId).");
                 if (definitionVersion <= 0) throw new ArgumentOutOfRangeException(nameof(definitionVersion));
             }
@@ -20,18 +20,18 @@ namespace Haley.Services {
         }
 
         public async Task<LifeCycleInstance?> GetInstanceAsync(LifeCycleKey instanceKey) {
-            var fb = await Repository.Get(LifeCycleEntity.Instance, instanceKey);
+            var fb = await Repository.Get(WorkFlowEntity.Instance, instanceKey);
             if (fb == null || !fb.Status || fb.Result == null || fb.Result.Count == 0) return null;
             return MapInstance(fb.Result);
         }
 
-        public async Task<bool> InitializeAsync(LifeCycleKey instanceKey, LifeCycleInstanceFlag flags = LifeCycleInstanceFlag.Active) {
+        public async Task<bool> InitializeAsync(LifeCycleKey instanceKey, WorkFlowInstanceFlag flags = WorkFlowInstanceFlag.Active) {
             try {
                 var existing = await GetInstanceWithTransitionAsync(instanceKey);
                 if (existing != null) return true;
                 var agwInfo = Repository.AdapterGatewayInfo;
                 var input = instanceKey.ParseInstanceKey(agwInfo.agw,agwInfo.adapterKey);
-                var initFb = await Repository.GetStateByFlags(input.definitionVersion, LifeCycleStateFlag.IsInitial);
+                var initFb = await Repository.GetStateByFlags(input.definitionVersion, WorkFlowStateFlag.IsInitial);
                 EnsureSuccess(initFb, "State_GetByFlags(IsInitial)");
                 var initRow = (initFb.Result != null && initFb.Result.Count > 0) ? initFb.Result[0] : null;
                 if (initRow == null) throw new InvalidOperationException($"No initial state found for def_version={input.definitionVersion}.");
@@ -56,7 +56,7 @@ namespace Haley.Services {
             var instance = await GetInstanceWithTransitionAsync(instanceKey);
             if (instance == null) return Array.Empty<LifeCycleTransitionLog>();
 
-            var rowsFb = await Repository.GetTransitionLogList(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), skip, limit);
+            var rowsFb = await Repository.GetTransitionLogList(new LifeCycleKey(WorkFlowEntityKeyType.Id, instance.Id), skip, limit);
             EnsureSuccess(rowsFb, "TransitionLog_List");
             var rows = rowsFb.Result ?? new List<Dictionary<string, object>>();
 
@@ -78,7 +78,7 @@ namespace Haley.Services {
             var logIdFb = await Repository.AppendTransitionLog(instance.Id, instance.CurrentState, newStateId, 0, actorValue, meta);
             EnsureSuccess(logIdFb, "TransitionLog_Append");
 
-            var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(LifeCycleKeyType.Id, instance.Id), newStateId, 0, instance.Flags);
+            var updFb = await Repository.UpdateInstanceState(new LifeCycleKey(WorkFlowEntityKeyType.Id, instance.Id), newStateId, 0, instance.Flags);
             EnsureSuccess(updFb, "Instance_UpdateState");
             return updFb.Result;
         }
