@@ -184,6 +184,9 @@
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
+			<column name="policy_id" type="INT" >
+				<defo><![CDATA[0]]></defo>
+			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
 				<comment><![CDATA[active =1,
@@ -265,9 +268,6 @@ archive = 16]]></comment>
 			<column name="name" type="VARCHAR" length="200" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
 			</column>
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
 				<comment><![CDATA[none = 0
@@ -275,6 +275,9 @@ is_initial = 1
 is_final = 2
 is_system = 4
 is_error = 8]]></comment>
+			</column>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
@@ -448,35 +451,35 @@ is_error = 8]]></comment>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="instance" color="FFFF00" x="285" y="399" />
-		<entity schema="lcstate" name="transition" color="0000FF" x="798" y="228" />
-		<entity schema="lcstate" name="state" color="0000FF" x="551" y="190" />
-		<entity schema="lcstate" name="category" color="0000FF" x="798" y="95" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="532" y="494" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="722" y="589" />
-		<entity schema="lcstate" name="events" color="0000FF" x="798" y="418" />
-		<entity schema="lcstate" name="def_policies" color="0000FF" x="912" y="589" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="912" y="741" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="532" y="703" />
-		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="418" />
-		<entity schema="lcstate" name="transition_data" color="FFFF00" x="57" y="608" />
-		<entity schema="lcstate" name="state_ack" color="FFFF00" x="57" y="171" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="551" y="437" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="532" y="646" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="304" y="323" />
+		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="342" />
+		<entity schema="lcstate" name="state_ack" color="FFFF00" x="57" y="95" />
+		<entity schema="lcstate" name="transition_data" color="FFFF00" x="304" y="95" />
+		<entity schema="lcstate" name="category" color="0000FF" x="532" y="114" />
+		<entity schema="lcstate" name="state" color="0000FF" x="722" y="114" />
+		<entity schema="lcstate" name="transition" color="0000FF" x="988" y="171" />
+		<entity schema="lcstate" name="events" color="0000FF" x="988" y="361" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="760" y="532" />
+		<entity schema="lcstate" name="def_policies" color="0000FF" x="950" y="532" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="950" y="684" />
 		<group name="BluePrint" color="0000FF" >
-			<entity schema="lcstate" name="transition" />
-			<entity schema="lcstate" name="state" />
-			<entity schema="lcstate" name="category" />
 			<entity schema="lcstate" name="def_version" />
-			<entity schema="lcstate" name="definition" />
+			<entity schema="lcstate" name="environment" />
+			<entity schema="lcstate" name="category" />
+			<entity schema="lcstate" name="state" />
+			<entity schema="lcstate" name="transition" />
 			<entity schema="lcstate" name="events" />
+			<entity schema="lcstate" name="definition" />
 			<entity schema="lcstate" name="def_policies" />
 			<entity schema="lcstate" name="policy" />
-			<entity schema="lcstate" name="environment" />
 		</group>
 		<group name="State Info" color="FFFF00" >
 			<entity schema="lcstate" name="instance" />
 			<entity schema="lcstate" name="transition_log" />
-			<entity schema="lcstate" name="transition_data" />
 			<entity schema="lcstate" name="state_ack" />
+			<entity schema="lcstate" name="transition_data" />
 		</group>
 	</layout>
 </project>
