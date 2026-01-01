@@ -17,9 +17,6 @@
 			<column name="last_retry" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
 			<column name="retry_count" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
@@ -30,6 +27,9 @@
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
+			</column>
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
 			<column name="consumer" type="BIGINT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
@@ -52,12 +52,12 @@
 		</table>
 		<table name="activity" prior="activ" >
 			<comment><![CDATA[These are minor applicatoin managed activies which the statemachine doens't have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..]]></comment>
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
 			<column name="display_name" type="VARCHAR" length="140" mandatory="y" />
 			<column name="name" type="VARCHAR" length="140" >
 				<identity><![CDATA[GENERATED ALWAYS AS ( lower(trim(display_name)) ) PERSISTENT]]></identity>
+			</column>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
 			<index name="pk_runtime_activity" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -97,7 +97,7 @@
 		<table name="def_policies" prior="definition_policies" >
 			<column name="definition" type="INT" mandatory="y" />
 			<column name="policy" type="INT" mandatory="y" />
-			<column name="created" type="DATETIME" mandatory="y" >
+			<column name="modified" prior="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<index name="pk_definition_policy" unique="PRIMARY_KEY" >
@@ -113,14 +113,14 @@
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="def_version" prior="def_versio" >
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
 			<column name="version" type="INT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
+			</column>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
@@ -357,9 +357,6 @@ archive = 16]]></comment>
 			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<fk name="fk_instance_state_0" to_schema="lcstate" to_table="state" >
-				<fk_column name="current_state" pk="id" />
-			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="lc_ack" prior="lc_a" >
@@ -474,13 +471,13 @@ archive = 16]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="runtime_data" prior="runtime_" >
+			<column name="runtime" type="BIGINT" mandatory="y" />
 			<column name="data" type="LONGTEXT" >
 				<comment><![CDATA[data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..]]></comment>
 			</column>
 			<column name="payload" prior="metadata" type="LONGTEXT" >
 				<comment><![CDATA[Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.]]></comment>
 			</column>
-			<column name="runtime" type="BIGINT" mandatory="y" />
 			<index name="pk_runtime_data" unique="PRIMARY_KEY" >
 				<column name="runtime" />
 			</index>
@@ -589,44 +586,44 @@ is_error = 8]]></comment>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="437" y="285" />
-		<entity schema="lcstate" name="lc_data" color="FFFF00" x="627" y="285" />
-		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="247" y="285" />
-		<entity schema="lcstate" name="runtime" color="00FF00" x="475" y="817" />
-		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="247" y="456" />
-		<entity schema="lcstate" name="hook" color="FFFF00" x="437" y="475" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="1045" y="931" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="1045" y="703" />
-		<entity schema="lcstate" name="def_policies" color="0000FF" x="874" y="817" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="874" y="950" />
-		<entity schema="lcstate" name="transition" color="1A4D4D" x="1083" y="152" />
-		<entity schema="lcstate" name="events" color="1A4D4D" x="1083" y="342" />
-		<entity schema="lcstate" name="state" color="1A4D4D" x="855" y="228" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="874" y="608" />
-		<entity schema="lcstate" name="category" color="1A4D4D" x="855" y="95" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="646" y="418" />
-		<entity schema="lcstate" name="ack" color="FF00FF" x="57" y="304" />
-		<entity schema="lcstate" name="runtime_data" color="00FF00" x="304" y="912" />
-		<entity schema="lcstate" name="activity" color="00FF00" x="285" y="779" />
-		<entity schema="lcstate" name="activity_status" color="00FF00" x="665" y="893" />
+		<entity schema="lcstate" name="transition" color="1A4D4D" x="931" y="152" />
+		<entity schema="lcstate" name="events" color="1A4D4D" x="931" y="342" />
+		<entity schema="lcstate" name="state" color="1A4D4D" x="703" y="228" />
+		<entity schema="lcstate" name="category" color="1A4D4D" x="703" y="95" />
+		<entity schema="lcstate" name="hook" color="FFFF00" x="456" y="437" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="703" y="608" />
+		<entity schema="lcstate" name="lc_data" color="FFFF00" x="76" y="608" />
+		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="76" y="418" />
+		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="76" y="209" />
+		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="475" y="228" />
+		<entity schema="lcstate" name="ack" color="FF00FF" x="266" y="95" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="266" y="494" />
+		<entity schema="lcstate" name="activity" color="00FF00" x="57" y="855" />
+		<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1007" />
+		<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="950" />
+		<entity schema="lcstate" name="runtime" color="00FF00" x="285" y="874" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="703" y="988" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="931" y="950" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="912" y="741" />
+		<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="836" />
 		<group name="Blueprint - Definition" color="0000FF" >
+			<entity schema="lcstate" name="def_version" />
+			<entity schema="lcstate" name="policy" />
 			<entity schema="lcstate" name="environment" />
 			<entity schema="lcstate" name="definition" />
 			<entity schema="lcstate" name="def_policies" />
-			<entity schema="lcstate" name="policy" />
-			<entity schema="lcstate" name="def_version" />
 		</group>
 		<group name="Instance Core" color="FFFF00" >
-			<entity schema="lcstate" name="lifecycle" />
-			<entity schema="lcstate" name="lc_data" />
 			<entity schema="lcstate" name="hook" />
+			<entity schema="lcstate" name="lc_data" />
+			<entity schema="lcstate" name="lifecycle" />
 			<entity schema="lcstate" name="instance" />
 		</group>
 		<group name="Runtime Activities" color="00FF00" >
-			<entity schema="lcstate" name="runtime" />
-			<entity schema="lcstate" name="runtime_data" />
 			<entity schema="lcstate" name="activity" />
+			<entity schema="lcstate" name="runtime_data" />
 			<entity schema="lcstate" name="activity_status" />
+			<entity schema="lcstate" name="runtime" />
 		</group>
 		<group name="Acknowledgement" color="FF00FF" >
 			<entity schema="lcstate" name="lc_ack" />
