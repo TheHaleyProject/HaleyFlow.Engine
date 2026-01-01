@@ -1,7 +1,83 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <project name="lifecycle_state" database="MariaDb" id="19f578f4-fff8-4e61-ac61-4d42ca9c2334" >
-	<schema name="lcledger" />
 	<schema name="lcstate" >
+		<table name="ack" prior="lc_ack" >
+			<column name="guid" prior="message_id" type="CHAR" length="36" mandatory="y" >
+				<defo><![CDATA[uuid()]]></defo>
+				<comment><![CDATA[Each consumer can have its own message id. When a transition happens, we can easily track what each consumer is doing with that transition.]]></comment>
+			</column>
+			<column name="ack_status" type="INT" mandatory="y" >
+				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[Flag:
+1 = Pending  //We have sent to the application.. We dont' know what happened.
+2 = Delivered // Application has received and may have probably stored it in a database.
+3 = Processed (Idempotent) //Action has been taken by the client on the received information. 
+4 = Failed]]></comment>
+			</column>
+			<column name="last_retry" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="retry_count" type="INT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
+			</column>
+			<column name="source" prior="lc_id" type="BIGINT" mandatory="y" />
+			<column name="created" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<column name="modified" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
+			</column>
+			<column name="consumer" type="BIGINT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[consumer of this acknowledgement]]></comment>
+			</column>
+			<index name="pk_ack_log" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="fk_ack_log_transition_log" unique="NORMAL" >
+				<column name="source" />
+			</index>
+			<index name="unq_ack_log" unique="UNIQUE_KEY" >
+				<column name="consumer" />
+				<column name="source" />
+			</index>
+			<index name="unq_ack_log_0" unique="UNIQUE_KEY" >
+				<column name="guid" />
+			</index>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="activity" prior="activ" >
+			<comment><![CDATA[These are minor applicatoin managed activies which the statemachine doens't have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..]]></comment>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="display_name" type="VARCHAR" length="140" mandatory="y" />
+			<column name="name" type="VARCHAR" length="140" >
+				<identity><![CDATA[GENERATED ALWAYS AS ( lower(trim(display_name)) ) PERSISTENT]]></identity>
+			</column>
+			<index name="pk_runtime_activity" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="activity_status" prior="runtime_state" >
+			<comment><![CDATA[These are all execution or activity status, which WorkFlow engine has no visibility about.  Like, 'Pending''Completed'"approved',"Rejected'"Returned'.. Reason is, we dont know what kind of state each runtime activity might follow.. For instance, one of the runtime activity can have 'Approved','Rejected' state.. another can only have 'Sent'"Pendin' (like, email delivery)]]></comment>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
+			<column name="name" type="VARCHAR" length="120" >
+				<identity><![CDATA[GENERATED ALWAYS AS ( lower(trim(display_name)) ) PERSISTENT]]></identity>
+			</column>
+			<index name="pk_ext_state" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
 		<table name="category" prior="tbl" >
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
@@ -24,9 +100,9 @@
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
-			<column name="id" type="INT" mandatory="y" />
 			<index name="pk_definition_policy" unique="PRIMARY_KEY" >
-				<column name="id" />
+				<column name="definition" />
+				<column name="policy" />
 			</index>
 			<fk name="fk_def_policies_definition" to_schema="lcstate" to_table="definition" >
 				<fk_column name="definition" pk="id" />
@@ -86,9 +162,6 @@
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 				<comment><![CDATA[it should be a code provided by the user.]]></comment>
 			</column>
-			<column name="env" type="INT" mandatory="y" >
-				<defo><![CDATA[0]]></defo>
-			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
@@ -99,6 +172,9 @@
 			<column name="description" type="TEXT" />
 			<column name="created" prior="created_at" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<column name="env" type="INT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
 			</column>
 			<index name="pk_definition" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -175,17 +251,70 @@
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
+		<table name="hook" prior="hooks" >
+			<comment><![CDATA[hooks are raised based on policy.. we just check the policy and then raise these hooks]]></comment>
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="instance_id" type="BIGINT" mandatory="y" />
+			<column name="state_id" type="INT" mandatory="y" />
+			<column name="via_event" type="INT" mandatory="y" />
+			<column name="on_entry" type="BIT" mandatory="y" >
+				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[by default, the hooks are for entry.. we can also, setup on leave.
+0 - on leaving
+1 - on entry]]></comment>
+			</column>
+			<column name="route" prior="hook" type="VARCHAR" length="180" mandatory="y" >
+				<comment><![CDATA[event or the route name that needs to be triggered or hooked.]]></comment>
+			</column>
+			<column name="created" prior="creted" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<index name="pk_hooks" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="unq_hooks" unique="UNIQUE_KEY" >
+				<column name="instance_id" />
+				<column name="state_id" />
+				<column name="via_event" />
+				<column name="on_entry" />
+				<column name="route" />
+			</index>
+			<fk name="fk_hooks_instance" to_schema="lcstate" to_table="instance" >
+				<fk_column name="instance_id" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="hook_ack" prior="hook_ck" >
+			<column name="ack_id" type="BIGINT" mandatory="y" />
+			<column name="hook_id" type="BIGINT" mandatory="y" />
+			<index name="pk_hook_ack" unique="PRIMARY_KEY" >
+				<column name="hook_id" />
+				<column name="ack_id" />
+			</index>
+			<fk name="fk_hook_ack_hook" to_schema="lcstate" to_table="hook" >
+				<fk_column name="hook_id" pk="id" />
+			</fk>
+			<fk name="fk_hook_ack_ack" to_schema="lcstate" to_table="ack" >
+				<fk_column name="ack_id" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
 		<table name="instance" prior="insta" >
 			<column name="current_state" type="INT" mandatory="y" />
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
 			<column name="last_event" type="INT" />
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
 			<column name="policy_id" type="INT" >
 				<defo><![CDATA[0]]></defo>
+			</column>
+			<column name="external_ref" type="CHAR" length="36" >
+				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
@@ -195,13 +324,10 @@ completed = 4,
 failed = 8, 
 archive = 16]]></comment>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
-			<column name="external_ref" type="CHAR" length="36" >
-				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
-			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
+			<column name="def_version" type="INT" mandatory="y" />
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
@@ -231,11 +357,60 @@ archive = 16]]></comment>
 			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<fk name="fk_instance_state" to_schema="lcstate" to_table="state" >
+			<fk name="fk_instance_state_0" to_schema="lcstate" to_table="state" >
 				<fk_column name="current_state" pk="id" />
 			</fk>
-			<fk name="fk_instance_events" to_schema="lcstate" to_table="events" >
-				<fk_column name="last_event" pk="id" />
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="lc_ack" prior="lc_a" >
+			<column name="lc_id" type="BIGINT" mandatory="y" />
+			<column name="ack_id" type="BIGINT" mandatory="y" />
+			<index name="pk_lc_ack" unique="PRIMARY_KEY" >
+				<column name="ack_id" />
+				<column name="lc_id" />
+			</index>
+			<fk name="fk_lc_ack_ack" to_schema="lcstate" to_table="ack" >
+				<fk_column name="ack_id" pk="id" />
+			</fk>
+			<fk name="fk_lc_ack_lifecycle" to_schema="lcstate" to_table="lifecycle" >
+				<fk_column name="lc_id" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="lc_data" prior="macro_data" >
+			<column name="lc_id" prior="lc_log" type="BIGINT" mandatory="y" />
+			<column name="actor" type="VARCHAR" length="255" />
+			<column name="payload" prior="metadata" type="LONGTEXT" >
+				<comment><![CDATA[Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)]]></comment>
+			</column>
+			<index name="pk_transition_data" unique="PRIMARY_KEY" >
+				<column name="lc_id" />
+			</index>
+			<fk name="fk_transition_data_transition_log" to_schema="lcstate" to_table="lifecycle" >
+				<fk_column name="lc_id" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="lifecycle" prior="lifecycle_log" >
+			<comment><![CDATA[Contains the major states which are controlled by the statemachine]]></comment>
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="from_state" type="INT" mandatory="y" />
+			<column name="to_state" type="INT" mandatory="y" />
+			<column name="event" type="INT" mandatory="y" />
+			<column name="created" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[utc_timestamp()]]></defo>
+			</column>
+			<column name="instance_id" type="BIGINT" mandatory="y" />
+			<index name="pk_transition_log" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="fk_transition_log_instance" unique="NORMAL" >
+				<column name="instance_id" />
+			</index>
+			<fk name="fk_transition_log_instance" to_schema="lcstate" to_table="instance" >
+				<fk_column name="instance_id" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
@@ -260,16 +435,70 @@ archive = 16]]></comment>
 			</index>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
+		<table name="runtime" prior="execution" >
+			<comment><![CDATA[Remember, runtime state (or activity track) doesn't need an acknowledgement, because, this infomration itself is managed in application side and we are only receiving it directly from the app itself.. But, there might be some events that we need to raise for each state based on the policy.. those has to be properly acknowledge.d]]></comment>
+			<column name="instance_id" type="BIGINT" mandatory="y" />
+			<column name="activity" type="INT" mandatory="y" />
+			<column name="state_id" type="INT" mandatory="y" />
+			<column name="actor_id" type="VARCHAR" length="40" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
+			</column>
+			<column name="status" prior="runtime_state" type="INT" mandatory="y" />
+			<column name="created" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<column name="modified" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+			</column>
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<index name="pk_micro_log" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="unq_execution" unique="UNIQUE_KEY" >
+				<column name="instance_id" />
+				<column name="state_id" />
+				<column name="activity" />
+				<column name="actor_id" />
+			</index>
+			<fk name="fk_execution_runtime_state" to_schema="lcstate" to_table="activity_status" >
+				<fk_column name="status" pk="id" />
+			</fk>
+			<fk name="fk_runtime_instance" to_schema="lcstate" to_table="instance" >
+				<fk_column name="instance_id" pk="id" />
+			</fk>
+			<fk name="fk_runtime_activity" to_schema="lcstate" to_table="activity" >
+				<fk_column name="activity" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
+		<table name="runtime_data" prior="runtime_" >
+			<column name="data" type="LONGTEXT" >
+				<comment><![CDATA[data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..]]></comment>
+			</column>
+			<column name="payload" prior="metadata" type="LONGTEXT" >
+				<comment><![CDATA[Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.]]></comment>
+			</column>
+			<column name="runtime" type="BIGINT" mandatory="y" />
+			<index name="pk_runtime_data" unique="PRIMARY_KEY" >
+				<column name="runtime" />
+			</index>
+			<fk name="fk_runtime_data_runtime" to_schema="lcstate" to_table="runtime" >
+				<fk_column name="runtime" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
 		<table name="state" prior="tbl" >
 			<column name="category" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
-			</column>
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
@@ -282,7 +511,6 @@ is_error = 8]]></comment>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
 			<column name="timeout_minutes" type="INT" >
 				<comment><![CDATA[in minutes]]></comment>
 			</column>
@@ -292,6 +520,7 @@ is_error = 8]]></comment>
 1 = Repeat]]></comment>
 			</column>
 			<column name="timeout_event" type="INT" />
+			<column name="def_version" type="INT" mandatory="y" />
 			<index name="pk_state" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -311,64 +540,9 @@ is_error = 8]]></comment>
 			<fk name="fk_state_category" to_schema="lcstate" to_table="category" >
 				<fk_column name="category" pk="id" />
 			</fk>
-			<fk name="fk_state_events" to_schema="lcstate" to_table="events" >
-				<fk_column name="timeout_event" pk="id" />
-			</fk>
 			<options><![CDATA[engine=InnoDB
  AUTO_INCREMENT 2014 
 ]]></options>
-		</table>
-		<table name="state_ack" prior="ack_log" >
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
-			<column name="guid" prior="message_id" type="CHAR" length="36" mandatory="y" >
-				<defo><![CDATA[uuid()]]></defo>
-				<comment><![CDATA[Each consumer can have its own message id. When a transition happens, we can easily track what each consumer is doing with that transition.]]></comment>
-			</column>
-			<column name="ack_status" type="INT" mandatory="y" >
-				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[Flag:
-1 = Pending  //We have sent to the application.. We dont' know what happened.
-2 = Delivered // Application has received and may have probably stored it in a database.
-3 = Processed (Idempotent) //Action has been taken by the client on the received information. 
-4 = Failed]]></comment>
-			</column>
-			<column name="last_retry" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
-			</column>
-			<column name="retry_count" type="INT" mandatory="y" >
-				<defo><![CDATA[0]]></defo>
-			</column>
-			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
-			</column>
-			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
-				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
-			</column>
-			<column name="transition_log" type="BIGINT" mandatory="y" />
-			<column name="consumer" type="INT" mandatory="y" >
-				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[consumer of this acknowledgement]]></comment>
-			</column>
-			<index name="pk_ack_log" unique="PRIMARY_KEY" >
-				<column name="id" />
-			</index>
-			<index name="fk_ack_log_transition_log" unique="NORMAL" >
-				<column name="transition_log" />
-			</index>
-			<index name="unq_ack_log" unique="UNIQUE_KEY" >
-				<column name="consumer" />
-				<column name="transition_log" />
-			</index>
-			<index name="unq_ack_log_0" unique="UNIQUE_KEY" >
-				<column name="guid" />
-			</index>
-			<fk name="fk_ack_log_transition_log" to_schema="lcstate" to_table="transition_log" >
-				<fk_column name="transition_log" pk="id" />
-			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="transition" prior="transi" >
 			<column name="id" type="INT" mandatory="y" >
@@ -413,73 +587,57 @@ is_error = 8]]></comment>
 			</fk>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
-		<table name="transition_data" prior="transition_da" >
-			<column name="transition_log" type="BIGINT" mandatory="y" />
-			<column name="actor" type="VARCHAR" length="255" />
-			<column name="metadata" type="LONGTEXT" >
-				<comment><![CDATA[Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)]]></comment>
-			</column>
-			<index name="pk_transition_data" unique="PRIMARY_KEY" >
-				<column name="transition_log" />
-			</index>
-			<fk name="fk_transition_data_transition_log" to_schema="lcstate" to_table="transition_log" >
-				<fk_column name="transition_log" pk="id" />
-			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
-		</table>
-		<table name="transition_log" prior="transition_l" >
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
-			<column name="from_state" type="INT" mandatory="y" />
-			<column name="instance_id" type="BIGINT" mandatory="y" />
-			<column name="to_state" type="INT" mandatory="y" />
-			<column name="event" type="INT" mandatory="y" />
-			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
-			</column>
-			<index name="pk_transition_log" unique="PRIMARY_KEY" >
-				<column name="id" />
-			</index>
-			<index name="fk_transition_log_instance" unique="NORMAL" >
-				<column name="instance_id" />
-			</index>
-			<fk name="fk_transition_log_instance" to_schema="lcstate" to_table="instance" >
-				<fk_column name="instance_id" pk="id" />
-			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
-		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="transition" color="0000FF" x="798" y="228" />
-		<entity schema="lcstate" name="state" color="0000FF" x="551" y="190" />
-		<entity schema="lcstate" name="category" color="0000FF" x="798" y="95" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="532" y="494" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="722" y="589" />
-		<entity schema="lcstate" name="events" color="0000FF" x="798" y="418" />
-		<entity schema="lcstate" name="def_policies" color="0000FF" x="912" y="589" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="912" y="741" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="532" y="703" />
-		<entity schema="lcstate" name="transition_log" color="FFFF00" x="57" y="418" />
-		<entity schema="lcstate" name="transition_data" color="FFFF00" x="57" y="608" />
-		<entity schema="lcstate" name="state_ack" color="FFFF00" x="57" y="171" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="285" y="399" />
-		<group name="BluePrint" color="0000FF" >
-			<entity schema="lcstate" name="transition" />
-			<entity schema="lcstate" name="state" />
-			<entity schema="lcstate" name="category" />
-			<entity schema="lcstate" name="def_version" />
+		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="437" y="285" />
+		<entity schema="lcstate" name="lc_data" color="FFFF00" x="627" y="285" />
+		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="247" y="285" />
+		<entity schema="lcstate" name="runtime" color="00FF00" x="475" y="817" />
+		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="247" y="456" />
+		<entity schema="lcstate" name="hook" color="FFFF00" x="437" y="475" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="1045" y="931" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="1045" y="703" />
+		<entity schema="lcstate" name="def_policies" color="0000FF" x="874" y="817" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="874" y="950" />
+		<entity schema="lcstate" name="transition" color="1A4D4D" x="1083" y="152" />
+		<entity schema="lcstate" name="events" color="1A4D4D" x="1083" y="342" />
+		<entity schema="lcstate" name="state" color="1A4D4D" x="855" y="228" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="874" y="608" />
+		<entity schema="lcstate" name="category" color="1A4D4D" x="855" y="95" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="646" y="418" />
+		<entity schema="lcstate" name="ack" color="FF00FF" x="57" y="304" />
+		<entity schema="lcstate" name="runtime_data" color="00FF00" x="304" y="912" />
+		<entity schema="lcstate" name="activity" color="00FF00" x="285" y="779" />
+		<entity schema="lcstate" name="activity_status" color="00FF00" x="665" y="893" />
+		<group name="Blueprint - Definition" color="0000FF" >
+			<entity schema="lcstate" name="environment" />
 			<entity schema="lcstate" name="definition" />
-			<entity schema="lcstate" name="events" />
 			<entity schema="lcstate" name="def_policies" />
 			<entity schema="lcstate" name="policy" />
-			<entity schema="lcstate" name="environment" />
+			<entity schema="lcstate" name="def_version" />
 		</group>
-		<group name="State Info" color="FFFF00" >
-			<entity schema="lcstate" name="transition_log" />
-			<entity schema="lcstate" name="transition_data" />
-			<entity schema="lcstate" name="state_ack" />
+		<group name="Instance Core" color="FFFF00" >
+			<entity schema="lcstate" name="lifecycle" />
+			<entity schema="lcstate" name="lc_data" />
+			<entity schema="lcstate" name="hook" />
 			<entity schema="lcstate" name="instance" />
+		</group>
+		<group name="Runtime Activities" color="00FF00" >
+			<entity schema="lcstate" name="runtime" />
+			<entity schema="lcstate" name="runtime_data" />
+			<entity schema="lcstate" name="activity" />
+			<entity schema="lcstate" name="activity_status" />
+		</group>
+		<group name="Acknowledgement" color="FF00FF" >
+			<entity schema="lcstate" name="lc_ack" />
+			<entity schema="lcstate" name="hook_ack" />
+			<entity schema="lcstate" name="ack" />
+		</group>
+		<group name="Blueprint-State" color="1A4D4D" >
+			<entity schema="lcstate" name="transition" />
+			<entity schema="lcstate" name="events" />
+			<entity schema="lcstate" name="state" />
+			<entity schema="lcstate" name="category" />
 		</group>
 	</layout>
 </project>
