@@ -87,9 +87,9 @@ namespace Haley.Services {
 
                 case WorkFlowEntity.AckLog:
                     return key.Type switch {
-                        WorkFlowEntityKeyType.Id => (QRY_ACK_LOG.EXISTS_BY_ID, new (string,object)[] { (ID, key.keys[0].As<long>()) }),
-                        WorkFlowEntityKeyType.Name => (QRY_ACK_LOG.EXISTS_BY_MESSAGE_ID, new (string,object)[] { (MESSAGE_ID, key.keys[0].As<string>()) }),
-                        WorkFlowEntityKeyType.Composite => (QRY_ACK_LOG.EXISTS_BY_CONSUMER_AND_TRANSITION_LOG, new (string,object)[] { (TRANSITION_LOG, key.keys[0].As<long>()), (CONSUMER, key.keys[1].As<int>()) }),
+                        WorkFlowEntityKeyType.Id => (QRY_TRANSITION.EXISTS_BY_ID, new (string,object)[] { (ID, key.keys[0].As<long>()) }),
+                        WorkFlowEntityKeyType.Name => (QRY_TRANSITION.EXISTS_BY_MESSAGE_ID, new (string,object)[] { (MESSAGE_ID, key.keys[0].As<string>()) }),
+                        WorkFlowEntityKeyType.Composite => (QRY_TRANSITION.EXISTS_BY_CONSUMER_AND_TRANSITION_LOG, new (string,object)[] { (TRANSITION_LOG, key.keys[0].As<long>()), (CONSUMER, key.keys[1].As<int>()) }),
                         _ => throw new NotSupportedException($"ACK_LOG Exists unsupported key: {key.Type}")
                     };
 

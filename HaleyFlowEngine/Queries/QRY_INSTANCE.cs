@@ -1,36 +1,35 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using static Haley.Internal.QueryFields;
+﻿using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal class QRY_INSTANCE {
-        public const string INSERT = $@"INSERT IGNORE INTO instance (last_event, current_state, external_ref, flags, def_version) VALUES ({EVENT}, {CURRENT_STATE}, lower({EXTERNAL_REF}), {FLAGS}, {DEF_VERSION}); SELECT * FROM instance WHERE def_version = {DEF_VERSION} AND external_ref = lower({EXTERNAL_REF}) LIMIT 1;";
-
-        public const string GET_BY_ID = $@"SELECT * FROM instance WHERE id = {ID} LIMIT 1;";
-        public const string GET_BY_GUID = $@"SELECT * FROM instance WHERE guid = {GUID} LIMIT 1;";
-        public const string GET_BY_REF = $@"SELECT * FROM instance WHERE def_version = {DEF_VERSION} AND external_ref = lower({EXTERNAL_REF}) LIMIT 1;";
-        public const string GET_LATEST_DEF = $@"SELECT * FROM instance WHERE def_version = {DEF_VERSION} AND external_ref = lower({EXTERNAL_REF}) LIMIT 1;";
-        public const string GET_BY_REF_ANY_VERSION = $@"SELECT * FROM instance WHERE external_ref = lower({EXTERNAL_REF}) ORDER BY id DESC;";
-        public const string GET_BY_STATE_IN_VERSION = $@"SELECT * FROM instance WHERE def_version = {DEF_VERSION} AND current_state = {CURRENT_STATE};";
-        public const string GET_BY_FLAGS_IN_VERSION = $@"SELECT * FROM instance WHERE def_version = {DEF_VERSION} AND ((flags & {FLAGS}) = {FLAGS});";
-
-        public const string UPDATE_STATE = $@"UPDATE instance SET current_state = {CURRENT_STATE}, last_event = {EVENT}, flags = {FLAGS} WHERE id = {ID};";
-        public const string UPDATE_STATE_BY_GUID = $@"UPDATE instance SET current_state = {CURRENT_STATE}, last_event = {EVENT}, flags = {FLAGS} WHERE guid = {GUID};";
-        public const string MARK_COMPLETED = $@"UPDATE instance SET flags = (flags | 4) WHERE id = {ID};";
-        public const string MARK_COMPLETED_BY_GUID = $@"UPDATE instance SET flags = (flags | 4) WHERE guid = {GUID};";
-
-        public const string DELETE = $@"DELETE FROM instance WHERE id = {ID};";
-        public const string DELETE_BY_GUID = $@"DELETE FROM instance WHERE guid = {GUID};";
-
-        //We are innerjoining state's timeout events with events, because timeout_event in state can be NULL. In that case, we don't want to select those instances which doesn't have any timeout event assigned.
-        public const string GET_INSTANCES_WITH_EXPIRED_TIMEOUTS = $@"SELECT i.def_version, i.external_ref, IF(e.code IS NULL OR e.code = 0, e.id, e.code) AS event_code FROM instance i INNER JOIN state s ON s.id = i.current_state INNER JOIN events e ON e.id = s.timeout_event WHERE s.timeout_minutes IS NOT NULL AND s.timeout_minutes > 0 AND (i.flags & 4) = 0 AND (i.flags & 8) = 0 AND TIMESTAMPADD(MINUTE, s.timeout_minutes, i.modified) <= current_timestamp() LIMIT {MAX_BATCH};";
-
         public const string EXISTS_BY_ID = $@"SELECT 1 FROM instance WHERE id = {ID} LIMIT 1;";
         public const string EXISTS_BY_GUID = $@"SELECT 1 FROM instance WHERE guid = {GUID} LIMIT 1;";
-        public const string EXISTS_BY_VERSION_AND_REF =$@"SELECT 1 FROM instance WHERE def_version = {DEF_VERSION} AND external_ref = lower(trim({EXTERNAL_REF})) LIMIT 1;";
+        public const string EXISTS_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT 1 FROM instance WHERE def_version = {PARENT_ID} AND external_ref = {EXTERNAL_REF} LIMIT 1;";
 
+        public const string GET_BY_ID = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE id = {ID} LIMIT 1;";
+        public const string GET_BY_GUID = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE guid = {GUID} LIMIT 1;";
+        public const string GET_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE def_version = {PARENT_ID} AND external_ref = {EXTERNAL_REF} LIMIT 1;";
+
+        public const string LIST_BY_PARENT = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE def_version = {PARENT_ID} ORDER BY id;";
+        public const string LIST_BY_EXTERNAL_REF = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE external_ref = {EXTERNAL_REF} ORDER BY id;";
+        public const string LIST_BY_CURRENT_STATE = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE current_state = {STATE_ID} ORDER BY id;";
+
+        public const string LIST_WHERE_FLAGS_ANY = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE (flags & {FLAGS}) <> 0 ORDER BY id;";
+        public const string LIST_WHERE_FLAGS_NONE = $@"SELECT id, guid, external_ref, def_version, current_state, last_event, policy_id, flags, created, modified FROM instance WHERE (flags & {FLAGS}) = 0 ORDER BY id;";
+
+        public const string INSERT = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, {EXTERNAL_REF}, {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS});";
+        public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_ID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, {EXTERNAL_REF}, {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id);";
+
+        public const string UPDATE_CURRENT_STATE = $@"UPDATE instance SET current_state = {STATE_ID}, last_event = {EVENT_ID} WHERE id = {ID};";
+        public const string UPDATE_CURRENT_STATE_CAS = $@"UPDATE instance SET current_state = {TO_ID}, last_event = {EVENT_ID} WHERE id = {ID} AND current_state = {FROM_ID};";
+
+        public const string SET_FLAGS = $@"UPDATE instance SET flags = {FLAGS} WHERE id = {ID};";
+        public const string ADD_FLAGS = $@"UPDATE instance SET flags = (flags | {FLAGS}) WHERE id = {ID};";
+        public const string REMOVE_FLAGS = $@"UPDATE instance SET flags = (flags & ~{FLAGS}) WHERE id = {ID};";
+
+        public const string SET_POLICY = $@"UPDATE instance SET policy_id = {POLICY_ID} WHERE id = {ID};";
+        public const string SET_EXTERNAL_REF = $@"UPDATE instance SET external_ref = {EXTERNAL_REF} WHERE id = {ID};";
+
+        public const string DELETE = $@"DELETE FROM instance WHERE id = {ID};";
     }
 }

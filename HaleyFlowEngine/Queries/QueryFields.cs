@@ -7,40 +7,49 @@ using System.Threading.Tasks;
 namespace Haley.Internal {
     internal class QueryFields {
         public const string ID = "@ID";
-        public const string GUID = "@GUID";
-        public const string ENV = "@ENV";
-        public const string PARENT = "@PARENT";
-        public const string DEF_VERSION = "@DEF_VERSION";
-        public const string VERSION = "@VERSION";
-        public const string DISPLAY_NAME = "@DISPLAY_NAME";
+        public const string PARENT_ID = "@PARENT_ID";
+
         public const string NAME = "@NAME";
-        public const string DESCRIPTION = "@DESCRIPTION";
-        public const string CATEGORY = "@CATEGORY";
-        public const string DATA = "@DATA";
         public const string CODE = "@CODE";
-        public const string FROM_STATE = "@FROM_STATE";
-        public const string TO_STATE = "@TO_STATE";
-        public const string EVENT = "@EVENT";
-        public const string FLAGS = "@FLAGS";
-        public const string TIMEOUT_MINUTES = "@TIMEOUT_MINUTES";
-        public const string TIMEOUT_MODE = "@TIMEOUT_MODE";
-        public const string TIMEOUT_EVENT = "@TIMEOUT_EVENT";
-        public const string CURRENT_STATE = "@CURRENT_STATE";
-        public const string EXTERNAL_REF = "@EXTERNAL_REF";
+        public const string GUID = "@GUID";
+        public const string HASH = "@HASH";
+
+        public const string DISPLAY_NAME = "@DISPLAY_NAME";
+        public const string DESCRIPTION = "@DESCRIPTION";
+        public const string CONTENT = "@CONTENT";
+        public const string DATA = "@DATA";
+        public const string PAYLOAD = "@PAYLOAD";
+        public const string VERSION = "@VERSION";
+
         public const string INSTANCE_ID = "@INSTANCE_ID";
+        public const string EXTERNAL_REF = "@EXTERNAL_REF";
+        public const string POLICY_ID = "@POLICY_ID";
+
+        public const string STATE_ID = "@STATE_ID";
+        public const string FROM_ID = "@FROM_ID";
+        public const string TO_ID = "@TO_ID";
+        public const string EVENT_ID = "@EVENT_ID";
+
+        public const string FLAGS = "@FLAGS";
+
         public const string ACTOR = "@ACTOR";
-        public const string METADATA = "@METADATA";
-        public const string TRANSITION_LOG = "@TRANSITION_LOG";
-        public const string MESSAGE_ID = "@MESSAGE_ID";
-        public const string CONSUMER = "@CONSUMER";
+        public const string ACTOR_ID = "@ACTOR_ID";
+
+        public const string ON_ENTRY = "@ON_ENTRY";
+        public const string ROUTE = "@ROUTE";
+
+        public const string ACK_ID = "@ACK_ID";
+        public const string LC_ID = "@LC_ID";
+        public const string HOOK_ID = "@HOOK_ID";
+        public const string CONSUMER_ID = "@CONSUMER_ID";
+        public const string SOURCE_ID = "@SOURCE_ID";
         public const string ACK_STATUS = "@ACK_STATUS";
-        public const string MAX_RETRY = "@MAX_RETRY";
-        public const string RETRY_AFTER_MIN = "@RETRY_AFTER_MIN";
-        public const string CREATED = "@CREATED";
-        public const string MODIFIED = "@MODIFIED";
-        public const string RETENTION_DAYS = "@RETENTION_DAYS";
-        public const string MAX_BATCH = "@MAX_BATCH";
+        public const string OLDER_THAN = "@OLDER_THAN";
+
+        public const string ACTIVITY_ID = "@ACTIVITY_ID";
+        public const string STATUS_ID = "@STATUS_ID";
+
+        public const string TAKE = "@TAKE";
         public const string SKIP = "@SKIP";
-        public const string LIMIT = "@LIMIT";
     }
 }

@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS `ack` (
   `guid` char(36) NOT NULL DEFAULT uuid() COMMENT 'Each consumer can have its own message id. When a transition happens, we can easily track what each consumer is doing with that transition.',
   `ack_status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n1 = Pending  //We have sent to the application.. We dont'' know what happened.\n2 = Delivered // Application has received and may have probably stored it in a database.\n3 = Processed (Idempotent) //Action has been taken by the client on the received information. \n4 = Failed',
   `last_retry` datetime NOT NULL DEFAULT current_timestamp(),
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `retry_count` int(11) NOT NULL DEFAULT 0,
   `source` bigint(20) NOT NULL,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `consumer` bigint(20) NOT NULL DEFAULT 0 COMMENT 'consumer of this acknowledgement',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_ack_log` (`consumer`,`source`),
@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS `ack` (
 
 -- Dumping structure for table lcstate.activity
 CREATE TABLE IF NOT EXISTS `activity` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(140) NOT NULL,
   `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are minor applicatoin managed activies which the statemachine doens''t have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..';
 
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS `definition` (
 CREATE TABLE IF NOT EXISTS `def_policies` (
   `definition` int(11) NOT NULL,
   `policy` int(11) NOT NULL,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `modified` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`definition`,`policy`),
   KEY `fk_def_policies_policy` (`policy`),
   CONSTRAINT `fk_def_policies_definition` FOREIGN KEY (`definition`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
@@ -101,9 +101,9 @@ CREATE TABLE IF NOT EXISTS `def_policies` (
 
 -- Dumping structure for table lcstate.def_version
 CREATE TABLE IF NOT EXISTS `def_version` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `version` int(11) NOT NULL DEFAULT 1,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `parent` int(11) NOT NULL,
@@ -196,8 +196,7 @@ CREATE TABLE IF NOT EXISTS `instance` (
   KEY `fk_instance_events` (`last_event`),
   KEY `fk_instance_def_version` (`def_version`),
   KEY `idx_instance` (`external_ref`),
-  CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fk_instance_state_0` FOREIGN KEY (`current_state`) REFERENCES `state` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
@@ -231,7 +230,7 @@ CREATE TABLE IF NOT EXISTS `lifecycle` (
   `from_state` int(11) NOT NULL,
   `to_state` int(11) NOT NULL,
   `event` int(11) NOT NULL,
-  `created` datetime NOT NULL DEFAULT utc_timestamp(),
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
   `instance_id` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `fk_transition_log_instance` (`instance_id`),
@@ -275,9 +274,9 @@ CREATE TABLE IF NOT EXISTS `runtime` (
 
 -- Dumping structure for table lcstate.runtime_data
 CREATE TABLE IF NOT EXISTS `runtime_data` (
+  `runtime` bigint(20) NOT NULL,
   `data` longtext DEFAULT NULL COMMENT 'data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..',
   `payload` longtext DEFAULT NULL COMMENT 'Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.',
-  `runtime` bigint(20) NOT NULL,
   PRIMARY KEY (`runtime`),
   CONSTRAINT `fk_runtime_data_runtime` FOREIGN KEY (`runtime`) REFERENCES `runtime` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

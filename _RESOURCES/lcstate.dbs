@@ -397,7 +397,7 @@ archive = 16]]></comment>
 			<column name="to_state" type="INT" mandatory="y" />
 			<column name="event" type="INT" mandatory="y" />
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[utc_timestamp()]]></defo>
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
 			<column name="instance_id" type="BIGINT" mandatory="y" />
 			<index name="pk_transition_log" unique="PRIMARY_KEY" >
@@ -586,26 +586,26 @@ is_error = 8]]></comment>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="transition" color="1A4D4D" x="931" y="152" />
-		<entity schema="lcstate" name="events" color="1A4D4D" x="931" y="342" />
-		<entity schema="lcstate" name="state" color="1A4D4D" x="703" y="228" />
-		<entity schema="lcstate" name="category" color="1A4D4D" x="703" y="95" />
-		<entity schema="lcstate" name="hook" color="FFFF00" x="456" y="456" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="703" y="627" />
-		<entity schema="lcstate" name="lc_data" color="FFFF00" x="76" y="627" />
-		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="76" y="437" />
-		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="76" y="209" />
-		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="475" y="228" />
-		<entity schema="lcstate" name="ack" color="FF00FF" x="266" y="95" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="266" y="513" />
+		<entity schema="lcstate" name="transition" color="1A4D4D" x="912" y="152" />
+		<entity schema="lcstate" name="events" color="1A4D4D" x="912" y="342" />
+		<entity schema="lcstate" name="state" color="1A4D4D" x="684" y="228" />
+		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="95" />
+		<entity schema="lcstate" name="hook" color="FFFF00" x="437" y="456" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="627" />
+		<entity schema="lcstate" name="lc_data" color="FFFF00" x="57" y="627" />
+		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="57" y="209" />
+		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="456" y="228" />
+		<entity schema="lcstate" name="ack" color="FF00FF" x="247" y="95" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="513" />
 		<entity schema="lcstate" name="activity" color="00FF00" x="57" y="874" />
 		<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1026" />
 		<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="969" />
 		<entity schema="lcstate" name="runtime" color="00FF00" x="285" y="893" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="703" y="1007" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="931" y="969" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="912" y="760" />
-		<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="855" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="684" y="1007" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="912" y="969" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="893" y="760" />
+		<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="855" />
+		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="57" y="437" />
 		<group name="Blueprint - Definition" color="0000FF" >
 			<entity schema="lcstate" name="def_version" />
 			<entity schema="lcstate" name="policy" />
@@ -616,8 +616,8 @@ is_error = 8]]></comment>
 		<group name="Instance Core" color="FFFF00" >
 			<entity schema="lcstate" name="hook" />
 			<entity schema="lcstate" name="lc_data" />
-			<entity schema="lcstate" name="lifecycle" />
 			<entity schema="lcstate" name="instance" />
+			<entity schema="lcstate" name="lifecycle" />
 		</group>
 		<group name="Runtime Activities" color="00FF00" >
 			<entity schema="lcstate" name="activity" />
