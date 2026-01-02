@@ -1,0 +1,92 @@
+ public interface IAckManager {
+     Task AckAsync(long ackId, LifeCycleAckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default);
+
+     // monitor pulls events that must be re-raised (pending/unacked)
+     Task<IReadOnlyList<ILifeCycleEvent>> GetPendingDispatchAsync(DateTime utcNow, int take, DbExecutionLoad load = default);
+ }
+
+   public interface IBlueprintManager {
+      Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default);
+      Task<DbRow> GetDefVersionByIdAsync(long defVersionId, CancellationToken ct = default);
+
+      // returns compiled blueprint (internal model is fine)
+      Task<LifeCycleBlueprint> GetBlueprintLatestAsync(int envCode, string defName, CancellationToken ct = default);
+      Task<LifeCycleBlueprint> GetBlueprintByVersionIdAsync(long defVersionId, CancellationToken ct = default);
+
+      void Clear();
+      void Invalidate(int envCode, string defName);
+      void Invalidate(long defVersionId);
+  }
+
+  public interface IInstanceMonitor {
+    Task RunOnceAsync(CancellationToken ct = default);
+}
+
+public interface ILifeCycleEngine {
+    event Func<ILifeCycleEvent, Task>? EventRaised;
+    Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default);
+    Task AckAsync(long ackId, LifeCycleAckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default);
+    Task ClearCacheAsync(CancellationToken ct = default);
+    Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default);
+    Task InvalidateAsync(long defVersionId, CancellationToken ct = default);
+}
+
+  public interface IPolicyEnforcer {
+      // policy to include in TRANSITION event (full json)
+      Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
+      // create hook rows + ack rows and return hook events to publish
+      Task<IReadOnlyList<ILifeCycleHookEvent>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
+  }
+
+  public interface IStateMachine {
+    Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, DbExecutionLoad load = default);
+
+    Task<ApplyTransitionResult> ApplyTransitionAsync(
+        LifeCycleBlueprint bp,
+        DbRow instance,
+        string eventName,
+        string? requestId,
+        string? actor,
+        IReadOnlyDictionary<string, object?>? payload,
+        DbExecutionLoad load = default);
+}
+
+public interface ILifeCycleEvent {
+    LifeCycleEventKind Kind { get; }
+    long InstanceId { get; }
+    long DefinitionVersionId { get; }
+    string ExternalRef { get; }
+    string? RequestId { get; }
+    DateTimeOffset OccurredAt { get; }
+    long AckId { get; }          // can be 0 for notice if you want
+    bool AckRequired { get; }
+    IReadOnlyDictionary<string, object?>? Payload { get; }
+}
+ public interface ILifeCycleHookEvent : ILifeCycleEvent {
+     long HookId { get; }
+     long StateId { get; }
+     bool OnEntry { get; }
+     string HookCode { get; }          // emit.event from policy json
+     string? OnSuccessEvent { get; }   // emit.complete.success
+     string? OnFailureEvent { get; }   // emit.complete.failure
+     DateTimeOffset? NotBefore { get; }
+     DateTimeOffset? Deadline { get; }
+ }
+
+
+ public interface ILifeCycleTransitionEvent : ILifeCycleEvent {
+     long LifeCycleId { get; }
+     long FromStateId { get; }
+     long ToStateId { get; }
+     long EventId { get; }
+     int EventCode { get; }
+     string EventName { get; }
+     IReadOnlyDictionary<string, object?>? PrevStateMeta { get; }
+
+     // policy attached to this transition/state (full json content)
+     long? PolicyId { get; }
+     string? PolicyHash { get; }
+     string? PolicyJson { get; }
+ }
+
+

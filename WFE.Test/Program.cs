@@ -78,7 +78,7 @@ var externalRef = Guid.NewGuid().ToString();
 //var instanceKey = LifeCycleKeys.Instance(defVersionId, externalRef);
 var instanceKey = LifeCycleKeys.Instance("VendorRegStates", externalRef,0);
 
-await sm.InitializeAsync(instanceKey, WorkFlowInstanceFlag.Active);
+await sm.InitializeAsync(instanceKey, LifeCycleInstanceFlag.Active);
 
 // Start monitor AFTER listener is attached
 //monitor.Start();

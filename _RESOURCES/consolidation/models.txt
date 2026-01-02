@@ -1,0 +1,63 @@
+public sealed class ApplyTransitionResult {
+    public bool Applied { get; set; }
+    public long InstanceId { get; set; }
+    public long LifeCycleId { get; set; }
+    public long FromStateId { get; set; }
+    public long ToStateId { get; set; }
+    public long EventId { get; set; }
+    public int EventCode { get; set; }
+    public string EventName { get; set; } = "";
+}
+
+ public readonly struct DbArg {
+     public string Name { get; }
+     public object? Value { get; }
+
+     public DbArg(string name, object? value) { Name = name; Value = value; }
+
+     public void Deconstruct(out string name, out object? value) { name = Name; value = Value; }
+
+     public static implicit operator DbArg((string Name, object? Value) t) => new DbArg(t.Name, t.Value);
+ }
+ public readonly struct DbExecutionLoad {
+    public ITransactionHandler? Handler { get; }
+    public CancellationToken Ct { get; }
+
+    public DbExecutionLoad(CancellationToken ct, ITransactionHandler? th = null) {
+        Ct = ct;
+        Handler = th;
+    }
+    public static DbExecutionLoad None => default;
+}
+
+public sealed class LifeCycleBlueprint {
+    public long DefinitionVersionId { get; set; }
+    public long DefinitionId { get; set; }
+    public string Name { get; set; } = "";
+    public int Version { get; set; }
+}   
+
+public sealed class LifeCycleTriggerRequest {
+       public int? EnvironmentCode { get; set; }
+       public string? DefinitionName { get; set; }
+       public long? DefinitionVersionId { get; set; }
+       public string ExternalRef { get; set; } = "";
+       public string EventName { get; set; } = "";          
+       public string? RequestId { get; set; }
+       public string? Actor { get; set; }
+       public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+   }
+
+   public sealed class LifeCycleTriggerResult {
+    public bool Status { get; set; }
+    public bool Transitioned { get; set; }
+    public long InstanceId { get; set; }
+    public long? LifeCycleId { get; set; }
+    public string? Notice { get; set; }
+}
+
+public sealed class PolicyResolution {
+    public long? PolicyId { get; set; }
+    public string? PolicyHash { get; set; }
+    public string? PolicyJson { get; set; }
+}
