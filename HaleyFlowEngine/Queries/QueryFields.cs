@@ -13,6 +13,10 @@ namespace Haley.Internal {
         public const string CODE = "@CODE";
         public const string GUID = "@GUID";
         public const string HASH = "@HASH";
+        public const string CATEGORY_ID = "@CATEGORY_ID";
+        public const string TIMEOUT_MODE = "@TIMEOUT_MODE";
+        public const string TIMEOUT_MINUTES = "@TIMEOUT_MINUTES";
+        public const string TIMEOUT_EVENT = "@TIMEOUT_EVENT";
 
         public const string DISPLAY_NAME = "@DISPLAY_NAME";
         public const string DESCRIPTION = "@DESCRIPTION";
