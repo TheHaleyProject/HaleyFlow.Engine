@@ -1,11 +1,12 @@
 ﻿using Haley.Abstractions;
 using Haley.Models;
 using static Haley.Internal.QueryFields;
+using Haley.Internal;
 
 namespace Haley.Utils {
-    public sealed class MariaWorkFlowDALUtil : IWorkFlowDALUtil {
+    public class MariaWorkFlowDALUtil : IWorkFlowDALUtil {
         private readonly IAdapterGateway _agw;
-        private readonly string _key;
+        protected readonly string _key;
 
         public MariaWorkFlowDALUtil(IAdapterGateway agw, string key) {
             _agw = agw ?? throw new ArgumentNullException(nameof(agw));
