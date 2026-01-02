@@ -18,4 +18,3 @@ namespace Haley.Internal {
         public const string DELETE_BY_PARENT = $@"DELETE FROM def_version WHERE parent = {PARENT_ID};";
     }
 }
-}
