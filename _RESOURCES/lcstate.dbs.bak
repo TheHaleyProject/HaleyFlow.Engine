@@ -28,12 +28,13 @@
 			</column>
 			<column name="ack_id" type="BIGINT" mandatory="y" />
 			<column name="status" prior="ack_status" type="INT" mandatory="y" >
-				<defo><![CDATA[1]]></defo>
+				<defo><![CDATA[0]]></defo>
 				<comment><![CDATA[Flag:
-1 = Pending  //We have sent to the application.. We dont' know what happened.
-2 = Delivered // Application has received and may have probably stored it in a database.
-3 = Processed (Idempotent) //Action has been taken by the client on the received information. 
-4 = Failed]]></comment>
+Pending = 0,
+Delivered = 1, 
+Processed = 2, 
+Failed = 3, 
+Retry = 4]]></comment>
 			</column>
 			<column name="last_retry" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
@@ -628,9 +629,9 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="57" y="437" />
 		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="494" />
 		<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="114" />
-		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="437" y="114" />
 		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="190" y="247" />
 		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="57" y="247" />
+		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="437" y="114" />
 		<group name="Blueprint - Definition" color="0000FF" >
 			<entity schema="lcstate" name="policy" />
 			<entity schema="lcstate" name="environment" />
@@ -652,9 +653,9 @@ is_error = 8]]></comment>
 		</group>
 		<group name="Acknowledgement" color="FF00FF" >
 			<entity schema="lcstate" name="ack" />
-			<entity schema="lcstate" name="ack_consumer" />
 			<entity schema="lcstate" name="hook_ack" />
 			<entity schema="lcstate" name="lc_ack" />
+			<entity schema="lcstate" name="ack_consumer" />
 		</group>
 		<group name="Blueprint-State" color="1A4D4D" >
 			<entity schema="lcstate" name="transition" />

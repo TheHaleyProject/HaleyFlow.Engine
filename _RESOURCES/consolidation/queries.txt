@@ -22,7 +22,7 @@ internal class QRY_ACK_CONSUMER {
     public const string GET_BY_ID = $@"SELECT * FROM ack_consumer WHERE id = {ID} LIMIT 1;";
     public const string GET_BY_ACK_ID_AND_CONSUMER = $@"SELECT * FROM ack_consumer WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID} LIMIT 1;";
     public const string GET_BY_ACK_GUID_AND_CONSUMER = $@"SELECT ac.* FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE a.guid = lower(trim({GUID})) AND ac.consumer = {CONSUMER_ID} LIMIT 1;";
-
+    public const string GET_BY_KEY = $@"SELECT * FROM ack_consumer WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID} LIMIT 1;";
     // inserts must return id
     public const string UPSERT_RETURN_ID = $@"INSERT INTO ack_consumer (ack_id, consumer, status) VALUES ({ACK_ID}, {CONSUMER_ID}, {ACK_STATUS}) ON DUPLICATE KEY UPDATE status = VALUES(status), modified = CURRENT_TIMESTAMP, id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;";
 
@@ -46,7 +46,7 @@ internal class QRY_ACK_HOOK {
 
     public const string GET_BY_HOOK_ID = $@"SELECT * FROM hook_ack WHERE hook_id = {HOOK_ID} LIMIT 1;";
     public const string GET_BY_ACK_ID = $@"SELECT * FROM hook_ack WHERE ack_id = {ACK_ID} LIMIT 1;";
-
+public const string GET_ACK_ID_BY_HOOK_ID = $@"SELECT ack_id AS id FROM hook_ack WHERE hook_id = {HOOK_ID} LIMIT 1;";
     // idempotent attach (hook_id is PK)
     public const string ATTACH = $@"INSERT INTO hook_ack (ack_id, hook_id) VALUES ({ACK_ID}, {HOOK_ID}) ON DUPLICATE KEY UPDATE ack_id = ack_id;";
     public const string DETACH = $@"DELETE FROM hook_ack WHERE hook_id = {HOOK_ID};";
@@ -63,7 +63,8 @@ internal class QRY_ACK_LC {
 
     public const string GET_BY_LC_ID = $@"SELECT * FROM lc_ack WHERE lc_id = {LC_ID} LIMIT 1;";
     public const string GET_BY_ACK_ID = $@"SELECT * FROM lc_ack WHERE ack_id = {ACK_ID} LIMIT 1;";
-
+    public const string GET_ACK_ID_BY_LC_ID = $@"SELECT ack_id AS id FROM lc_ack WHERE lc_id = {LC_ID} LIMIT 1;";
+    
     // idempotent attach (lc_id is PK)
     public const string ATTACH = $@"INSERT INTO lc_ack (ack_id, lc_id) VALUES ({ACK_ID}, {LC_ID}) ON DUPLICATE KEY UPDATE ack_id = ack_id;";
     public const string DETACH = $@"DELETE FROM lc_ack WHERE lc_id = {LC_ID};";
@@ -238,6 +239,8 @@ internal class QRY_ACK_DISPATCH {
     // Note: constant name says RETURN_ID, but we now return GUID
     public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_ID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, trim({EXTERNAL_REF}), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
 
+    public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, {EXTERNAL_REF}, {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid AS guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+
     public const string UPDATE_CURRENT_STATE = $@"UPDATE instance SET current_state = {STATE_ID}, last_event = {EVENT_ID} WHERE id = {ID};";
     public const string UPDATE_CURRENT_STATE_CAS = $@"UPDATE instance SET current_state = {TO_ID}, last_event = {EVENT_ID} WHERE id = {ID} AND current_state = {FROM_ID};";
 
@@ -262,7 +265,7 @@ internal class QRY_HOOK {
     public const string EXISTS_BY_KEY = $@"SELECT 1 FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND via_event = {EVENT_ID} AND on_entry = {ON_ENTRY} AND route = {ROUTE} LIMIT 1;";
 
     public const string GET_BY_ID = $@"SELECT * FROM hook WHERE id = {ID} LIMIT 1;";
-
+    public const string GET_BY_KEY = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND ((via_event = {EVENT_ID}) OR (via_event IS NULL AND {EVENT_ID} IS NULL)) AND on_entry = {ON_ENTRY} AND route = {ROUTE} LIMIT 1;";
     public const string LIST_BY_INSTANCE = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC;";
     public const string LIST_BY_INSTANCE_AND_STATE = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} ORDER BY created DESC, id DESC;";
     public const string LIST_BY_INSTANCE_STATE_ENTRY = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND on_entry = {ON_ENTRY} ORDER BY created DESC, id DESC;";

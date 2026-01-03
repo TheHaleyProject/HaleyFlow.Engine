@@ -24,7 +24,7 @@ namespace Haley.Internal {
 
         public async Task<int?> GetNextDefVersionNumberByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default) {
             var row = await Db.RowAsync(QRY_DEFVERSION.GET_NEXT_VERSION_BY_ENV_CODE_AND_DEF_NAME, load, (CODE, envCode), (NAME, defName));
-            return row.ToInt("next_version");
+            return row.GetInt("next_version");
         }
 
         public Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default)

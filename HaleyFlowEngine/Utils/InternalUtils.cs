@@ -9,25 +9,6 @@ using System.Threading.Tasks;
 
 namespace Haley.Utils {
     internal static class SqlUtil {
-        public static long? ToLong(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value ? Convert.ToInt64(v) : null;
-        public static int? ToInt(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value ? Convert.ToInt32(v) : null;
-        public static string? ToStr(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value ? Convert.ToString(v) : null;
-        public static bool ToBool(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value && Convert.ToInt32(v) != 0;
-
-        public static DateTimeOffset GetUtcDto(this DbRow row, string key) {
-            var dt = (DateTime)row[key];
-            return new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
-        }
-
-        public static Guid GetGuid(this DbRow row, string key) {
-            var s = Convert.ToString(row[key]);
-            return string.IsNullOrWhiteSpace(s) ? Guid.Empty : Guid.Parse(s);
-        }
-
-        public static async Task<long> LastInsertIdAsync(IWorkFlowDALUtil db, DbExecutionLoad load) {
-           return await db.ScalarAsync<long>("SELECT LAST_INSERT_ID();", load);
-        }
-
         public static bool PolicyContainsStateRoute(string policyJson, string stateName) {
             try {
                 using var doc = JsonDocument.Parse(policyJson);
@@ -46,4 +27,11 @@ namespace Haley.Utils {
             }
         }
     }
+
+    public static class JsonUtil {
+        public static readonly JsonSerializerOptions Default = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = false };
+        public static string? ToJson(object? obj) => obj is null ? null : JsonSerializer.Serialize(obj, Default);
+        public static JsonDocument? Parse(string? json) { if (string.IsNullOrWhiteSpace(json)) return null; try { return JsonDocument.Parse(json); } catch { return null; } }
+    }
+
 }
