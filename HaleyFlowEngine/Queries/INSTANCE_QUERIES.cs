@@ -29,6 +29,7 @@ namespace Haley.Internal {
 
         // Note: constant name says RETURN_ID, but we now return GUID
         public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_ID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, trim({EXTERNAL_REF}), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+        public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, {EXTERNAL_REF}, {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid AS guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
 
         public const string UPDATE_CURRENT_STATE = $@"UPDATE instance SET current_state = {STATE_ID}, last_event = {EVENT_ID} WHERE id = {ID};";
         public const string UPDATE_CURRENT_STATE_CAS = $@"UPDATE instance SET current_state = {TO_ID}, last_event = {EVENT_ID} WHERE id = {ID} AND current_state = {FROM_ID};";
@@ -54,6 +55,7 @@ namespace Haley.Internal {
         public const string EXISTS_BY_KEY = $@"SELECT 1 FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND via_event = {EVENT_ID} AND on_entry = {ON_ENTRY} AND route = {ROUTE} LIMIT 1;";
 
         public const string GET_BY_ID = $@"SELECT * FROM hook WHERE id = {ID} LIMIT 1;";
+        public const string GET_BY_KEY = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND ((via_event = {EVENT_ID}) OR (via_event IS NULL AND {EVENT_ID} IS NULL)) AND on_entry = {ON_ENTRY} AND route = {ROUTE} LIMIT 1;";
 
         public const string LIST_BY_INSTANCE = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC;";
         public const string LIST_BY_INSTANCE_AND_STATE = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} ORDER BY created DESC, id DESC;";

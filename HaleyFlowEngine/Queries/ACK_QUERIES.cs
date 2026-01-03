@@ -25,6 +25,7 @@ namespace Haley.Internal {
         public const string GET_BY_ID = $@"SELECT * FROM ack_consumer WHERE id = {ID} LIMIT 1;";
         public const string GET_BY_ACK_ID_AND_CONSUMER = $@"SELECT * FROM ack_consumer WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID} LIMIT 1;";
         public const string GET_BY_ACK_GUID_AND_CONSUMER = $@"SELECT ac.* FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE a.guid = lower(trim({GUID})) AND ac.consumer = {CONSUMER_ID} LIMIT 1;";
+        public const string GET_BY_KEY = $@"SELECT * FROM ack_consumer WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID} LIMIT 1;";
 
         // inserts must return id
         public const string UPSERT_RETURN_ID = $@"INSERT INTO ack_consumer (ack_id, consumer, status) VALUES ({ACK_ID}, {CONSUMER_ID}, {ACK_STATUS}) ON DUPLICATE KEY UPDATE status = VALUES(status), modified = CURRENT_TIMESTAMP, id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;";
@@ -49,6 +50,7 @@ namespace Haley.Internal {
 
         public const string GET_BY_HOOK_ID = $@"SELECT * FROM hook_ack WHERE hook_id = {HOOK_ID} LIMIT 1;";
         public const string GET_BY_ACK_ID = $@"SELECT * FROM hook_ack WHERE ack_id = {ACK_ID} LIMIT 1;";
+        public const string GET_ACK_ID_BY_HOOK_ID = $@"SELECT ack_id AS id FROM hook_ack WHERE hook_id = {HOOK_ID} LIMIT 1;";
 
         // idempotent attach (hook_id is PK)
         public const string ATTACH = $@"INSERT INTO hook_ack (ack_id, hook_id) VALUES ({ACK_ID}, {HOOK_ID}) ON DUPLICATE KEY UPDATE ack_id = ack_id;";
@@ -66,6 +68,7 @@ namespace Haley.Internal {
 
         public const string GET_BY_LC_ID = $@"SELECT * FROM lc_ack WHERE lc_id = {LC_ID} LIMIT 1;";
         public const string GET_BY_ACK_ID = $@"SELECT * FROM lc_ack WHERE ack_id = {ACK_ID} LIMIT 1;";
+        public const string GET_ACK_ID_BY_LC_ID = $@"SELECT ack_id AS id FROM lc_ack WHERE lc_id = {LC_ID} LIMIT 1;";
 
         // idempotent attach (lc_id is PK)
         public const string ATTACH = $@"INSERT INTO lc_ack (ack_id, lc_id) VALUES ({ACK_ID}, {LC_ID}) ON DUPLICATE KEY UPDATE ack_id = ack_id;";
