@@ -61,3 +61,57 @@ public sealed class PolicyResolution {
     public string? PolicyHash { get; set; }
     public string? PolicyJson { get; set; }
 }
+
+ public class LifeCycleEvent : ILifeCycleEvent {
+     public LifeCycleEventKind Kind { get; protected set; }
+
+     public long InstanceId { get; protected set; }
+     public long DefinitionVersionId { get; private set; }   // optional
+     public string ExternalRef { get; protected set; }
+
+     public string? RequestId { get; private set; }
+     public DateTimeOffset OccurredAt { get; protected set; }
+
+     public string AckGuid { get; protected set; }           // changed (see below)
+     public bool AckRequired { get; private set; }
+     public IReadOnlyDictionary<string, object?>? Payload { get; private set; }
+
+     public LifeCycleEvent(long instanceId, string externalRef, DateTimeOffset occurredAt, string ackGuid) {
+         InstanceId = instanceId;
+         ExternalRef = externalRef;
+         OccurredAt = occurredAt;
+         AckGuid = ackGuid;
+     }
+
+     // public, so engine can call it even from another library
+     public void ApplyContext(
+         long? defVersionId = null,
+         string? requestId = null,
+         bool? ackRequired = null,
+         IReadOnlyDictionary<string, object?>? payload = null) {
+         if (defVersionId.HasValue) DefinitionVersionId = defVersionId.Value;
+         if (requestId != null) RequestId = requestId;
+         if (ackRequired.HasValue) AckRequired = ackRequired.Value;
+         if (payload != null) Payload = payload;
+     }
+ }
+
+ public class LifeCycleTransitionEvent : LifeCycleEvent, ILifeCycleTransitionEvent {
+    public long LifeCycleId { get; set; }
+    public long FromStateId { get; set; }
+    public long ToStateId { get; set; }
+    public long EventId { get; set; }
+    public int EventCode { get; set; }
+    public string EventName { get; set; } = string.Empty;
+
+    public IReadOnlyDictionary<string, object?>? PrevStateMeta { get; set; }
+
+    public long? PolicyId { get; set; }
+    public string? PolicyHash { get; set; }
+    public string? PolicyJson { get; set; }
+
+    public LifeCycleTransitionEvent(long instanceId, string externalRef, DateTimeOffset occurredAt, string ackGuid)
+        : base(instanceId, externalRef, occurredAt, ackGuid) {
+        Kind = LifeCycleEventKind.Transition;
+    }
+}

@@ -1,9 +1,8 @@
- public interface IAckManager {
-     Task AckAsync(long ackId, LifeCycleAckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default);
-
-     // monitor pulls events that must be re-raised (pending/unacked)
-     Task<IReadOnlyList<ILifeCycleEvent>> GetPendingDispatchAsync(DateTime utcNow, int take, DbExecutionLoad load = default);
- }
+  public interface IAckManager {
+      Task AckAsync(string ackGuid, LifeCycleAckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default);
+      // monitor pulls events that must be re-raised (pending/unacked)
+      Task<IReadOnlyList<ILifeCycleEvent>> GetPendingDispatchAsync(DateTime utcNow, int take, DbExecutionLoad load = default);
+  }
 
    public interface IBlueprintManager {
       Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default);
@@ -22,14 +21,14 @@
     Task RunOnceAsync(CancellationToken ct = default);
 }
 
-public interface ILifeCycleEngine {
-    event Func<ILifeCycleEvent, Task>? EventRaised;
-    Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default);
-    Task AckAsync(long ackId, LifeCycleAckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default);
-    Task ClearCacheAsync(CancellationToken ct = default);
-    Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default);
-    Task InvalidateAsync(long defVersionId, CancellationToken ct = default);
-}
+    public interface ILifeCycleEngine {
+        event Func<ILifeCycleEvent, Task>? EventRaised;
+        Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default);
+        Task AckAsync(string ackGuid, LifeCycleAckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default);
+        Task ClearCacheAsync(CancellationToken ct = default);
+        Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default);
+        Task InvalidateAsync(long defVersionId, CancellationToken ct = default);
+    }
 
   public interface IPolicyEnforcer {
       // policy to include in TRANSITION event (full json)
@@ -51,17 +50,18 @@ public interface ILifeCycleEngine {
         DbExecutionLoad load = default);
 }
 
-public interface ILifeCycleEvent {
-    LifeCycleEventKind Kind { get; }
-    long InstanceId { get; }
-    long DefinitionVersionId { get; }
-    string ExternalRef { get; }
-    string? RequestId { get; }
-    DateTimeOffset OccurredAt { get; }
-    long AckId { get; }          // can be 0 for notice if you want
-    bool AckRequired { get; }
-    IReadOnlyDictionary<string, object?>? Payload { get; }
-}
+ public interface ILifeCycleEvent {
+     LifeCycleEventKind Kind { get; }
+     long InstanceId { get; }
+     long DefinitionVersionId { get; }
+     string ExternalRef { get; }
+     string? RequestId { get; }
+     DateTimeOffset OccurredAt { get; }
+     string AckGuid { get; }         //String GUID
+     bool AckRequired { get; }
+     IReadOnlyDictionary<string, object?>? Payload { get; }
+ }
+ 
  public interface ILifeCycleHookEvent : ILifeCycleEvent {
      long HookId { get; }
      long StateId { get; }

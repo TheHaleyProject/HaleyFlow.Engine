@@ -24,6 +24,9 @@ namespace Haley.Internal {
         public const string DATA = "@DATA";
         public const string PAYLOAD = "@PAYLOAD";
         public const string VERSION = "@VERSION";
+        public const string DEF_NAME = "@DEF_NAME";
+        public const string ENV_NAME = "@ENV_NAME";
+        public const string FROZEN = "@FROZEN";
 
         public const string INSTANCE_ID = "@INSTANCE_ID";
         public const string EXTERNAL_REF = "@EXTERNAL_REF";

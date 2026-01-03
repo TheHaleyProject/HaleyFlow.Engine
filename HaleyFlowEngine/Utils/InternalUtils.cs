@@ -9,6 +9,22 @@ using System.Threading.Tasks;
 
 namespace Haley.Utils {
     internal static class SqlUtil {
+        public static long GetLong(this DbRow row, string key) => Convert.ToInt64(row[key]);
+        public static int GetInt(this DbRow row, string key) => Convert.ToInt32(row[key]);
+        public static uint GetUInt(this DbRow row, string key) => Convert.ToUInt32(row[key]);
+        public static string GetString(this DbRow row, string key) => Convert.ToString(row[key]) ?? string.Empty;
+
+        public static DateTimeOffset GetUtcDto(this DbRow row, string key) {
+            var dt = (DateTime)row[key];
+            return new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
+        }
+
+        public static Guid GetGuid(this DbRow row, string key) {
+            var s = Convert.ToString(row[key]);
+            return string.IsNullOrWhiteSpace(s) ? Guid.Empty : Guid.Parse(s);
+        }
+
+
         public static async Task<long> LastInsertIdAsync(IWorkFlowDALUtil db, DbExecutionLoad load) {
            return await db.ScalarAsync<long>("SELECT LAST_INSERT_ID();", load);
         }

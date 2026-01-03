@@ -1,0 +1,230 @@
+{
+  "instance_id": 881002,
+  "instance_guid": "5b6a34f2-0a2a-4f8e-9c17-2c3d61c1b9ef",
+  "external_ref": "b2e2f8d3-3a4f-4f0f-9d76-3f5a3d0a0c88",
+  "timeline": [
+    {
+      "lifecycle_id": 99021,
+      "created": "2026-01-03 18:42:11",
+      "from_state": "VendorCreation",
+      "to_state": "Registered",
+      "event": "VendorCreated",
+      "actor": "system:vendor-service",
+      "activities": [
+        {
+          "runtime_id": 440991,
+          "activity": "Issue Credentials",
+          "actor_id": "system:iam",
+          "status": "Completed",
+          "created": "2026-01-03 18:41:10",
+          "modified": "2026-01-03 18:41:59",
+          "frozen": true
+        },
+        {
+          "runtime_id": 440990,
+          "activity": "Send Welcome Email",
+          "actor_id": "system:mailer",
+          "status": "Sent",
+          "created": "2026-01-03 18:41:05",
+          "modified": "2026-01-03 18:41:07",
+          "frozen": true
+        }
+      ]
+    },
+    {
+      "lifecycle_id": 99020,
+      "created": "2026-01-03 18:40:52",
+      "from_state": "PendingPQValidation",
+      "to_state": "VendorCreation",
+      "event": "CompanyValid",
+      "actor": "user:review.lead@company",
+      "activities": [
+        {
+          "runtime_id": 440988,
+          "activity": "Create Vendor Record",
+          "actor_id": "system:vendor-service",
+          "status": "Completed",
+          "created": "2026-01-03 18:40:53",
+          "modified": "2026-01-03 18:40:58",
+          "frozen": true
+        },
+        {
+          "runtime_id": 440972,
+          "activity": "Internal Review",
+          "actor_id": "user:review.lead@company",
+          "status": "Approved",
+          "created": "2026-01-03 17:10:05",
+          "modified": "2026-01-03 18:40:40",
+          "frozen": true
+        },
+        {
+          "runtime_id": 440971,
+          "activity": "Internal Review",
+          "actor_id": "user:reviewer2@company",
+          "status": "Approved",
+          "created": "2026-01-03 17:12:12",
+          "modified": "2026-01-03 18:38:19",
+          "frozen": true
+        },
+        {
+          "runtime_id": 440970,
+          "activity": "Internal Review",
+          "actor_id": "user:reviewer1@company",
+          "status": "Approved",
+          "created": "2026-01-03 17:11:02",
+          "modified": "2026-01-03 18:35:02",
+          "frozen": true
+        }
+      ]
+    },
+    {
+      "lifecycle_id": 99019,
+      "created": "2026-01-03 17:10:00",
+      "from_state": "Overdue",
+      "to_state": "PendingPQValidation",
+      "event": "ResumeValidation",
+      "actor": "system:monitor",
+      "activities": [
+        {
+          "runtime_id": 440965,
+          "activity": "PQ Validation",
+          "actor_id": "system:pq-service",
+          "status": "In Progress",
+          "created": "2026-01-01 11:06:00",
+          "modified": "2026-01-03 17:11:22",
+          "frozen": false
+        },
+        {
+          "runtime_id": 440964,
+          "activity": "Send Reminder Email",
+          "actor_id": "system:mailer",
+          "status": "Sent",
+          "created": "2026-01-03 16:59:50",
+          "modified": "2026-01-03 16:59:51",
+          "frozen": true
+        }
+      ]
+    },
+    {
+      "lifecycle_id": 99018,
+      "created": "2026-01-03 16:00:00",
+      "from_state": "Overdue",
+      "to_state": "Overdue",
+      "event": "OverdueReminder",
+      "actor": "system:monitor",
+      "activities": [
+        {
+          "runtime_id": 440963,
+          "activity": "Send Reminder Email",
+          "actor_id": "system:mailer",
+          "status": "Sent",
+          "created": "2026-01-03 16:00:01",
+          "modified": "2026-01-03 16:00:02",
+          "frozen": true
+        }
+      ]
+    },
+    {
+      "lifecycle_id": 99017,
+      "created": "2026-01-01 11:05:55",
+      "from_state": "PendingPQValidation",
+      "to_state": "Overdue",
+      "event": "PQValidationTimeout",
+      "actor": "system:monitor",
+      "activities": [
+        {
+          "runtime_id": 440965,
+          "activity": "PQ Validation",
+          "actor_id": "system:pq-service",
+          "status": "In Progress",
+          "created": "2026-01-01 11:06:00",
+          "modified": "2026-01-01 11:06:00",
+          "frozen": false
+        },
+        {
+          "runtime_id": 440962,
+          "activity": "Escalation Queue",
+          "actor_id": "system:queue",
+          "status": "Queued",
+          "created": "2026-01-01 11:05:56",
+          "modified": "2026-01-01 11:05:56",
+          "frozen": true
+        }
+      ]
+    },
+    {
+      "lifecycle_id": 99016,
+      "created": "2025-12-30 11:05:55",
+      "from_state": "RequestAccepted",
+      "to_state": "PendingPQValidation",
+      "event": "BeginPQValidation",
+      "actor": "system:api",
+      "activities": [
+        {
+          "runtime_id": 440961,
+          "activity": "Send PQ Request Email",
+          "actor_id": "system:mailer",
+          "status": "Sent",
+          "created": "2025-12-30 11:06:01",
+          "modified": "2025-12-30 11:06:02",
+          "frozen": true
+        },
+        {
+          "runtime_id": 440960,
+          "activity": "Assign Evaluator",
+          "actor_id": "system:router",
+          "status": "Completed",
+          "created": "2025-12-30 11:06:00",
+          "modified": "2025-12-30 11:06:00",
+          "frozen": true
+        }
+      ]
+    }
+  ],
+  "other_activities": [
+    {
+      "runtime_id": 441010,
+      "lc_id": 0,
+      "state": "PendingPQValidation",
+      "activity": "Support Note",
+      "actor_id": "user:support@company",
+      "status": "Added",
+      "created": "2026-01-02 09:22:10",
+      "modified": "2026-01-02 09:22:10",
+      "frozen": true
+    },
+    {
+      "runtime_id": 441009,
+      "lc_id": 0,
+      "state": "RequestAccepted",
+      "activity": "Document Upload",
+      "actor_id": "user:vendor@external",
+      "status": "Completed",
+      "created": "2025-12-30 12:55:00",
+      "modified": "2025-12-30 13:01:40",
+      "frozen": true
+    },
+    {
+      "runtime_id": 441008,
+      "lc_id": 0,
+      "state": "CheckRecentSubmission",
+      "activity": "External DB Lookup",
+      "actor_id": "system:integration",
+      "status": "Failed",
+      "created": "2025-12-30 11:02:10",
+      "modified": "2025-12-30 11:02:12",
+      "frozen": false
+    },
+    {
+      "runtime_id": 441007,
+      "lc_id": 0,
+      "state": "FormSubmitted",
+      "activity": "Anti-Spam Check",
+      "actor_id": "system:fraud",
+      "status": "Skipped",
+      "created": "2025-12-30 11:00:02",
+      "modified": "2025-12-30 11:00:02",
+      "frozen": true
+    }
+  ]
+}
