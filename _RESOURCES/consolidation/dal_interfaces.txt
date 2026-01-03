@@ -1,22 +1,11 @@
-public interface IWorkFlowDALUtil : IAsyncDisposable {
-    Task<int> ExecAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
-    Task<T?> ScalarAsync<T>(string sql, DbExecutionLoad load = default , params DbArg[] args);
-    Task<DbRow?> RowAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
-    Task<DbRows> RowsAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
-}
-
-   public interface IRuntimeDataDAL {
-       Task<DbRow?> GetByIdAsync(long runtimeId, DbExecutionLoad load = default);
-       Task<int> UpsertAsync(long runtimeId, string? dataJson, string? payloadJson, DbExecutionLoad load = default);
-   }
-
-    public interface IWorkFlowDAL : IWorkFlowDALUtil {
+ public interface IWorkFlowDAL : IWorkFlowDALUtil {
      IBlueprintReadDAL Blueprint { get; }
      IInstanceDAL Instance { get; }
      ILifeCycleDAL LifeCycle { get; }
      ILifeCycleDataDAL LifeCycleData { get; }
      IHookDAL Hook { get; }
      IAckDAL Ack { get; }
+     IAckConsumerDAL AckConsumer { get; }
      ILcAckDAL LcAck { get; }
      IHookAckDAL HookAck { get; }
      IAckDispatchDAL AckDispatch { get; }
@@ -26,37 +15,81 @@ public interface IWorkFlowDALUtil : IAsyncDisposable {
      IRuntimeDataDAL RuntimeData { get; }
  }
 
- public interface IRuntimeDAL {
-    Task<DbRow?> GetByIdAsync(long runtimeId, DbExecutionLoad load = default);
-    Task<DbRow?> GetByKeyAsync(long instanceId, long activityId, long stateId, string actorId, DbExecutionLoad load = default);
-    Task<long> UpsertByKeyReturnIdAsync(long instanceId, long activityId, long stateId, string actorId, long statusId, DbExecutionLoad load = default);
-    Task<int> SetStatusAsync(long runtimeId, long statusId, DbExecutionLoad load = default);
-    Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
+ public interface IWorkFlowDALUtil : IAsyncDisposable {
+    Task<int> ExecAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
+    Task<T?> ScalarAsync<T>(string sql, DbExecutionLoad load = default , params DbArg[] args);
+    Task<DbRow?> RowAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
+    Task<DbRows> RowsAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
 }
 
-public interface ILifeCycleDataDAL {
-    Task<DbRow?> GetByIdAsync(long lifeCycleId, DbExecutionLoad load = default);
-    Task<int> UpsertAsync(long lifeCycleId, string? actor, string? payloadJson, DbExecutionLoad load = default);
-}
+   public interface IAckDAL {
+       Task<DbRow?> GetByIdAsync(long ackId, DbExecutionLoad load = default);
+       Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default);
+       Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default);
 
- public interface ILifeCycleDAL {
-     Task<long> InsertAsync(long instanceId, long fromStateId, long toStateId, long eventId, DbExecutionLoad load = default);
+       Task<DbRow?> InsertReturnRowAsync(DbExecutionLoad load = default);
+       Task<DbRow?> InsertWithGuidReturnRowAsync(string guid, DbExecutionLoad load = default);
+       Task<int> DeleteAsync(long ackId, DbExecutionLoad load = default);
+   }
 
-     Task<DbRow?> GetLastByInstanceAsync(long instanceId, DbExecutionLoad load = default);
-     Task<DbRows> ListByInstancePagedAsync(long instanceId, int skip, int take, DbExecutionLoad load = default);
- }
+   public interface IAckConsumerDAL {
+       Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default);
+       Task<DbRow?> GetByAckGuidAndConsumerAsync(string ackGuid, long consumer, DbExecutionLoad load = default);
+       Task<long> UpsertByAckIdAndConsumerReturnIdAsync(long ackId, long consumer, int status, DbExecutionLoad load = default);
+       Task<int> SetStatusAsync(long ackId, long consumer, int status, DbExecutionLoad load = default);
+       Task<int> SetStatusByGuidAsync(string ackGuid, long consumer, int status, DbExecutionLoad load = default);
+       Task<int> MarkRetryAsync(long ackId, long consumer, DbExecutionLoad load = default);
+       Task<DbRows> ListByStatusPagedAsync(int status, int skip, int take, DbExecutionLoad load = default);
+       Task<DbRows> ListByConsumerAndStatusPagedAsync(long consumer, int status, int skip, int take, DbExecutionLoad load = default);
+       Task<DbRows> ListReadyForRetryAsync(int status, DateTime utcOlderThan, DbExecutionLoad load = default);
+   }
 
-  public interface ILcAckDAL {
-     Task<int> AttachAsync(long ackId, long lcId, DbExecutionLoad load = default);
-     Task<int> DetachAsync(long ackId, long lcId, DbExecutionLoad load = default);
- }
+   public interface IAckDispatchDAL {
+       Task<DbRows> ListPendingLifecycleReadyPagedAsync(long consumer, int status, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default);
+       Task<DbRows> ListPendingHookReadyPagedAsync(long consumer, int status, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default);
+       Task<int?> CountPendingLifecycleReadyAsync(int status, DateTime utcOlderThan, DbExecutionLoad load = default);
+       Task<int?> CountPendingHookReadyAsync(int status, DateTime utcOlderThan, DbExecutionLoad load = default);
+   }
 
-  public interface IInstanceDAL {
-     Task<DbRow?> GetByIdAsync(long instanceId, DbExecutionLoad load = default);
-     Task<DbRow?> GetByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default);
+   public interface IHookAckDAL {
+       Task<long?> GetAckIdByHookIdAsync(long hookId, DbExecutionLoad load = default);
+       Task<int> AttachAsync(long ackId, long hookId, DbExecutionLoad load = default);
+       Task<int> DeleteByHookIdAsync(long hookId, DbExecutionLoad load = default);
+   }
 
-     Task<long> UpsertAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default);
+   public interface ILcAckDAL {
+       Task<long?> GetAckIdByLcIdAsync(long lcId, DbExecutionLoad load = default);
+       Task<int> AttachAsync(long ackId, long lcId, DbExecutionLoad load = default);
+       Task<int> DeleteByLcIdAsync(long lcId, DbExecutionLoad load = default);
+   }
 
+     public interface IBlueprintReadDAL {
+      Task<DbRow?> GetLatestDefVersionByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default);
+      Task<DbRow?> GetLatestDefVersionByEnvNameAndDefNameAsync(string envName, string defName, DbExecutionLoad load = default);
+      Task<DbRow?> GetLatestDefVersionByDefinitionGuidAsync(string defGuid, DbExecutionLoad load = default);
+      Task<DbRow?> GetLatestDefVersionByLineFromDefVersionIdAsync(long defVersionId, DbExecutionLoad load = default);
+      Task<DbRow?> GetLatestDefVersionByLineFromDefVersionGuidAsync(string defVersionGuid, DbExecutionLoad load = default);
+      Task<int?> GetNextDefVersionNumberByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default);
+
+      Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default);
+
+      Task<DbRows> ListStatesAsync(long defVersionId, DbExecutionLoad load = default);
+      Task<DbRows> ListEventsAsync(long defVersionId, DbExecutionLoad load = default);
+      Task<DbRows> ListTransitionsAsync(long defVersionId, DbExecutionLoad load = default);
+
+      Task<DbRow?> GetPolicyByIdAsync(long policyId, DbExecutionLoad load = default);
+      Task<DbRow?> GetPolicyByHashAsync(string hash, DbExecutionLoad load = default);
+
+      // policy attached to state/transition (your "policy json included on transition" concept)
+      Task<DbRow?> GetPolicyForStateAsync(long definitionId, long stateId, DbExecutionLoad load = default);
+  }
+
+   public interface IInstanceDAL {
+     Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default);
+     Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default);
+
+     Task<long?> GetIdByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default);
+     Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default);
      Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default);
 
      Task<int> SetPolicyAsync(long instanceId, long policyId, DbExecutionLoad load = default);
@@ -64,53 +97,59 @@ public interface ILifeCycleDataDAL {
      Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
  }
 
-  public interface IHookDAL {
+ public interface IHookDAL {
      Task<DbRow?> GetByIdAsync(long hookId, DbExecutionLoad load = default);
-     Task<DbRow?> GetByKeyAsync(long instanceId, long stateId, long? viaEventId, bool onEntry, string hookCode, DbExecutionLoad load = default);
-     Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long? viaEventId, bool onEntry, string hookCode, string? payloadJson, DbExecutionLoad load = default);
+     Task<DbRow?> GetByKeyAsync(long instanceId, long stateId, long? viaEventId, bool onEntry, string route, DbExecutionLoad load = default);
+     Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long? viaEventId, bool onEntry, string route, string? payloadJson, DbExecutionLoad load = default);
      Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
+     Task<DbRows> ListByInstanceAndStateAsync(long instanceId, long stateId, DbExecutionLoad load = default);
+     Task<int> DeleteAsync(long hookId, DbExecutionLoad load = default);
      Task<int> DeleteByInstanceAsync(long instanceId, DbExecutionLoad load = default);
  }
 
-  public interface IHookAckDAL {
-     Task<int> AttachAsync(long ackId, long hookId, DbExecutionLoad load = default);
-     Task<int> DetachAsync(long ackId, long hookId, DbExecutionLoad load = default);
+ public interface ILifeCycleDAL {
+     Task<long> InsertAsync(long instanceId, long fromStateId, long toStateId, long eventId, DbExecutionLoad load = default);
+     Task<DbRow?> GetLastByInstanceAsync(long instanceId, DbExecutionLoad load = default);
+     Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
+     Task<DbRows> ListByInstancePagedAsync(long instanceId, int skip, int take, DbExecutionLoad load = default);
+     Task<string?> GetTimelineJsonByInstanceIdAsync(long instanceId, DbExecutionLoad load = default);
  }
 
-  public interface IBlueprintReadDAL {
-     Task<DbRow?> GetLatestDefVersionAsync(int envCode, string defName, DbExecutionLoad load = default);
-     Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default);
-
-     Task<DbRows> ListStatesAsync(long defVersionId, DbExecutionLoad load = default);
-     Task<DbRows> ListEventsAsync(long defVersionId, DbExecutionLoad load = default);
-     Task<DbRows> ListTransitionsAsync(long defVersionId, DbExecutionLoad load = default);
-
-     Task<DbRow?> GetPolicyByIdAsync(long policyId, DbExecutionLoad load = default);
-     Task<DbRow?> GetPolicyByHashAsync(string hash, DbExecutionLoad load = default);
-
-     Task<DbRow?> GetPolicyForStateAsync(long defId, long stateId, DbExecutionLoad load = default);
+ public interface ILifeCycleDataDAL {
+     Task<DbRow?> GetByIdAsync(long lifeCycleId, DbExecutionLoad load = default);
+     Task<int> UpsertAsync(long lifeCycleId, string? actor, string? payloadJson, DbExecutionLoad load = default);
+     Task<int> DeleteAsync(long lifeCycleId, DbExecutionLoad load = default);
  }
 
-  public interface IActivityStatusDAL {
-     Task<DbRows> ListAllAsync(DbExecutionLoad load = default);
-     Task<DbRow?> GetByNameAsync(string name, DbExecutionLoad load = default);
- }
+   public interface IRuntimeDAL {
+      Task<DbRow?> GetByIdAsync(long runtimeId, DbExecutionLoad load = default);
+      Task<DbRow?> GetByKeyAsync(long instanceId, long activityId, long stateId, string actorId, DbExecutionLoad load = default);
+      Task<long> UpsertByKeyReturnIdAsync(long instanceId, long activityId, long stateId, string actorId, long statusId, long lcId, bool frozen, DbExecutionLoad load = default);
+      Task<int> SetStatusAsync(long runtimeId, long statusId, DbExecutionLoad load = default);
+      Task<int> SetFrozenAsync(long runtimeId, bool frozen, DbExecutionLoad load = default);
+      Task<int> SetLcIdAsync(long runtimeId, long lcId, DbExecutionLoad load = default);
+      Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
+      Task<DbRows> ListByInstanceAndStateAsync(long instanceId, long stateId, DbExecutionLoad load = default);
+      Task<DbRows> ListByInstanceStateActivityAsync(long instanceId, long stateId, long activityId, DbExecutionLoad load = default);
+      Task<DbRows> ListByLifeCycleAsync(long lcId, DbExecutionLoad load = default);
+  }
+
+  public interface IRuntimeDataDAL {
+      Task<DbRow?> GetByIdAsync(long runtimeId, DbExecutionLoad load = default);
+      Task<int> UpsertAsync(long runtimeId, string? dataJson, string? payloadJson, DbExecutionLoad load = default);
+      Task<int> DeleteAsync(long runtimeId, DbExecutionLoad load = default);
+  }
 
   public interface IActivityDAL {
-     Task<DbRows> ListAllAsync(DbExecutionLoad load = default);
-     Task<DbRow?> GetByNameAsync(string name, DbExecutionLoad load = default);
- }
+      Task<DbRows> ListAllAsync(DbExecutionLoad load = default);
+      Task<DbRow?> GetByIdAsync(long id, DbExecutionLoad load = default);
+      Task<DbRow?> GetByNameAsync(string name, DbExecutionLoad load = default);
+      Task<long> InsertAsync(string displayName, DbExecutionLoad load = default);
+  }
 
- public interface IAckDispatchDAL {
-    Task<DbRows> ListPendingLifecycleReadyPagedAsync(int ackStatus, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default);
-    Task<DbRows> ListPendingHookReadyPagedAsync(int ackStatus, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default);
-}
-
-public interface IAckDAL {
-    Task<DbRow?> GetByIdAsync(long ackId, DbExecutionLoad load = default);
-    Task<long> UpsertByConsumerAndSourceReturnIdAsync(long consumer, long source, int ackStatus, DbExecutionLoad load = default);
-    Task<int> SetStatusAsync(long ackId, int ackStatus, DbExecutionLoad load = default);
-    Task<int> MarkRetryAsync(long ackId, DbExecutionLoad load = default);
-    Task<int> SetNotBeforeAsync(long ackId, DateTime utcNotBefore, DbExecutionLoad load = default);
-}
-
+  public interface IActivityStatusDAL {
+      Task<DbRows> ListAllAsync(DbExecutionLoad load = default);
+      Task<DbRow?> GetByIdAsync(long id, DbExecutionLoad load = default);
+      Task<DbRow?> GetByNameAsync(string name, DbExecutionLoad load = default);
+      Task<long> InsertAsync(string displayName, DbExecutionLoad load = default);
+  }

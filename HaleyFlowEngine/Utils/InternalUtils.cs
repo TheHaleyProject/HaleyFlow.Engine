@@ -9,10 +9,10 @@ using System.Threading.Tasks;
 
 namespace Haley.Utils {
     internal static class SqlUtil {
-        public static long GetLong(this DbRow row, string key) => Convert.ToInt64(row[key]);
-        public static int GetInt(this DbRow row, string key) => Convert.ToInt32(row[key]);
-        public static uint GetUInt(this DbRow row, string key) => Convert.ToUInt32(row[key]);
-        public static string GetString(this DbRow row, string key) => Convert.ToString(row[key]) ?? string.Empty;
+        public static long? ToLong(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value ? Convert.ToInt64(v) : null;
+        public static int? ToInt(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value ? Convert.ToInt32(v) : null;
+        public static string? ToStr(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value ? Convert.ToString(v) : null;
+        public static bool ToBool(this DbRow? row, string col) => row != null && row.TryGetValue(col, out var v) && v != null && v != DBNull.Value && Convert.ToInt32(v) != 0;
 
         public static DateTimeOffset GetUtcDto(this DbRow row, string key) {
             var dt = (DateTime)row[key];
@@ -23,7 +23,6 @@ namespace Haley.Utils {
             var s = Convert.ToString(row[key]);
             return string.IsNullOrWhiteSpace(s) ? Guid.Empty : Guid.Parse(s);
         }
-
 
         public static async Task<long> LastInsertIdAsync(IWorkFlowDALUtil db, DbExecutionLoad load) {
            return await db.ScalarAsync<long>("SELECT LAST_INSERT_ID();", load);

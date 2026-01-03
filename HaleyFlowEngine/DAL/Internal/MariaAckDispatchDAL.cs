@@ -6,27 +6,16 @@ namespace Haley.Internal {
     internal sealed class MariaAckDispatchDAL : MariaDALBase, IAckDispatchDAL {
         public MariaAckDispatchDAL(IWorkFlowDALUtil db) : base(db) { }
 
-        public Task<DbRows> ListPendingLifecycleReadyAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default)
-            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_LC_READY, load, (ACK_STATUS, ackStatus), (OLDER_THAN, utcOlderThan));
+        public Task<DbRows> ListPendingLifecycleReadyPagedAsync(long consumer, int status, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_LC_READY_PAGED, load, (ACK_STATUS, status), (OLDER_THAN, utcOlderThan), (SKIP, skip), (TAKE, take));
 
-        public Task<DbRows> ListPendingLifecycleReadyPagedAsync(int ackStatus, DateTime utcOlderThan, int take, int skip, DbExecutionLoad load = default)
-            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_LC_READY_PAGED, load,
-                (ACK_STATUS, ackStatus),
-                (OLDER_THAN, utcOlderThan),
-                (TAKE, take),
-                (SKIP, skip)
-            );
+        public Task<DbRows> ListPendingHookReadyPagedAsync(long consumer, int status, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_HOOK_READY_PAGED, load, (ACK_STATUS, status), (OLDER_THAN, utcOlderThan), (SKIP, skip), (TAKE, take));
 
-        public Task<DbRows> ListPendingHookReadyAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default)
-            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_HOOK_READY, load, (ACK_STATUS, ackStatus), (OLDER_THAN, utcOlderThan));
+        public Task<int?> CountPendingLifecycleReadyAsync(int status, DateTime utcOlderThan, DbExecutionLoad load = default)
+            => Db.ScalarAsync<int?>(QRY_ACK_DISPATCH.COUNT_PENDING_LC_READY, load, (ACK_STATUS, status), (OLDER_THAN, utcOlderThan));
 
-        public Task<DbRows> ListPendingHookReadyPagedAsync(int ackStatus, DateTime utcOlderThan, int take, int skip, DbExecutionLoad load = default)
-            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_HOOK_READY_PAGED, load,
-                (ACK_STATUS, ackStatus),
-                (OLDER_THAN, utcOlderThan),
-                (TAKE, take),
-                (SKIP, skip)
-            );
+        public Task<int?> CountPendingHookReadyAsync(int status, DateTime utcOlderThan, DbExecutionLoad load = default)
+            => Db.ScalarAsync<int?>(QRY_ACK_DISPATCH.COUNT_PENDING_HOOK_READY, load, (ACK_STATUS, status), (OLDER_THAN, utcOlderThan));
     }
-
 }
