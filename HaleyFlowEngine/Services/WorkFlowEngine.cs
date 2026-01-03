@@ -9,43 +9,51 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
-    internal sealed class DefaultWorkFlowEngine : IWorkFlowEngine {
+    internal sealed class WorkFlowEngine :  IWorkFlowEngine {
         private readonly IWorkFlowDAL _dal;
+        private readonly LifeCycleEngine _lc;
+        public IStateMachine StateMachine { get; }
+        public IBlueprintManager? BlueprintManager { get; }
+        public IPolicyEnforcer? PolicyEnforcer { get; }
+        public IAckManager? AckManager { get; }
+        public IRuntimeEngine Runtime { get; }
+        public IWorkFlowDAL? Dal { get { return _dal; } }
 
-        public IStateMachine StateMachine { get; private set; }
-        public IBlueprintManager BlueprintManager { get; private set; }
-        public IPolicyEnforcer PolicyEnforcer { get; private set; }
-        public IAckManager AckManager { get; private set; }
-        public IInstanceMonitor InstanceMonitor { get; private set; }
-        public IConsumerRegistry ConsumerRegistry { get; private set; }
-        public IWorkFlowDAL Dal { get { return _dal; } }
+        public event Func<ILifeCycleEvent, Task>? EventRaised;
 
-        public event Func<ILifeCycleEvent, Task> EventRaised;
+        public WorkFlowEngine(IWorkFlowDAL dal, Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? transitionConsumers = null, Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? hookConsumers = null, IReadOnlyList<long>? monitorConsumers = null) {
+            _dal = dal ?? throw new ArgumentNullException(nameof(dal));
 
-        public DefaultWorkFlowEngine(IWorkFlowDAL dal, IConsumerRegistry consumerRegistry = null) {
-            _dal = dal;
-            ConsumerRegistry = consumerRegistry;
-            BlueprintManager = new DefaultBlueprintManager(dal);
-            StateMachine = new DefaultStateMachine(dal, BlueprintManager);
-            PolicyEnforcer = new DefaultPolicyEnforcer(dal);
-            AckManager = new DefaultAckManager(dal);
-            var lc = new DefaultLifeCycleEngine(dal, StateMachine, BlueprintManager, PolicyEnforcer, AckManager, consumerRegistry);
-            lc.EventRaised += async (e) => { var h = EventRaised; if (h != null) await h.Invoke(e); };
-            _lifeCycle = lc;
-            InstanceMonitor = null; // implement once you finalize timeout queries
+            BlueprintManager = new BlueprintManager(_dal);
+            StateMachine = new StateMachine(_dal, BlueprintManager);
+            PolicyEnforcer = new PolicyEnforcer(_dal);
+            AckManager = new AckManager(_dal, transitionConsumers, hookConsumers);
+            Runtime = new RuntimeEngine(_dal);
+
+            _lc = new LifeCycleEngine(_dal, StateMachine, BlueprintManager, PolicyEnforcer, AckManager, monitorConsumers);
+
+            _lc.EventRaised += async (e) => {
+                var h = EventRaised;
+                if (h != null) await h.Invoke(e);
+            };
         }
 
-        private readonly DefaultLifeCycleEngine _lifeCycle;
+        public Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) { return _lc.TriggerAsync(req, ct); }
 
-        public Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) { return _lifeCycle.TriggerAsync(req, ct); }
-        public Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) { return _lifeCycle.AckAsync(consumerId, ackGuid, outcome, message, retryAt, ct); }
-        public Task ClearCacheAsync(CancellationToken ct = default) { return _lifeCycle.ClearCacheAsync(ct); }
-        public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { return _lifeCycle.InvalidateAsync(envCode, defName, ct); }
-        public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { return _lifeCycle.InvalidateAsync(defVersionId, ct); }
+        public Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) { return _lc.AckAsync(consumerId, ackGuid, outcome, message, retryAt, ct); }
+
+        public Task ClearCacheAsync(CancellationToken ct = default) { return _lc.ClearCacheAsync(ct); }
+
+        public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { return _lc.InvalidateAsync(envCode, defName, ct); }
+
+        public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { return _lc.InvalidateAsync(defVersionId, ct); }
+
+        public Task RunMonitorOnceAsync(CancellationToken ct = default) { return _lc.RunMonitorOnceAsync(ct); }
 
         public Task StartAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Task.CompletedTask; }
+
         public Task StopAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Task.CompletedTask; }
+
         public ValueTask DisposeAsync() { return _dal.DisposeAsync(); }
     }
-
 }

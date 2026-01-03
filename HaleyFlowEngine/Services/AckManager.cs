@@ -9,10 +9,20 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
-    internal sealed class DefaultAckManager : IAckManager {
+    internal sealed class AckManager : IAckManager {
         private readonly IWorkFlowDAL _dal;
+        private readonly Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> _transitionConsumers;
+        private readonly Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> _hookConsumers;
 
-        public DefaultAckManager(IWorkFlowDAL dal) { _dal = dal; }
+        public AckManager(IWorkFlowDAL dal, Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? transitionConsumers = null, Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? hookConsumers = null) {
+            _dal = dal ?? throw new ArgumentNullException(nameof(dal));
+            _transitionConsumers = transitionConsumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(new long[] { 0 }));
+            _hookConsumers = hookConsumers ?? ((dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(new long[] { 0 }));
+        }
+
+        public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, long instanceId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _transitionConsumers(defVersionId, instanceId, ct); }
+
+        public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, long instanceId, string hookCode, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _hookConsumers(defVersionId, instanceId, hookCode, ct); }
 
         public async Task<ILifeCycleAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             var ack = await _dal.Ack.InsertReturnRowAsync(load);
@@ -22,7 +32,10 @@ namespace Haley.Services {
             var ackGuid = ack.GetString("guid");
 
             await _dal.LcAck.AttachAsync(ackId, lifecycleId, load);
-            for (int i = 0; i < consumerIds.Count; i++) await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerIds[i], initialAckStatus, load);
+
+            for (var i = 0; i < consumerIds.Count; i++) {
+                await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerIds[i], initialAckStatus, load);
+            }
 
             return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid };
         }
@@ -35,25 +48,28 @@ namespace Haley.Services {
             var ackGuid = ack.GetString("guid");
 
             await _dal.HookAck.AttachAsync(ackId, hookId, load);
-            for (int i = 0; i < consumerIds.Count; i++) await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerIds[i], initialAckStatus, load);
+
+            for (var i = 0; i < consumerIds.Count; i++) {
+                await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerIds[i], initialAckStatus, load);
+            }
 
             return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid };
         }
 
-        public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
+        public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
             var status = outcome == AckOutcome.Delivered ? AckStatus.Delivered :
                          outcome == AckOutcome.Processed ? AckStatus.Processed :
                          outcome == AckOutcome.Failed ? AckStatus.Failed :
                          AckStatus.Pending;
 
-            await _dal.AckConsumer.SetStatusByGuidAsync(ackGuid, consumerId, status, load);
+            await _dal.AckConsumer.SetStatusByGuidAsync(ackGuid, consumerId, (int)status, load);
 
             if (outcome == AckOutcome.Retry) {
                 var ackId = await _dal.Ack.GetIdByGuidAsync(ackGuid, load);
                 if (ackId.HasValue) await _dal.AckConsumer.MarkRetryAsync(ackId.Value, consumerId, load);
             }
 
-            _ = message; _ = retryAt; // message/retryAt are not persisted in current schema
+            _ = message; _ = retryAt;
         }
 
         public async Task MarkRetryAsync(long ackId, long consumerId, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
@@ -68,26 +84,28 @@ namespace Haley.Services {
             var list = new List<ILifeCycleDispatchItem>(rows.Count);
 
             foreach (var r in rows) {
+                // Columns expected from your ack_dispatch lifecycle query (adjust keys only if your select differs):
+                // ack_id, ack_guid, consumer, status, retry_count, last_retry, instance_id, external_ref, def_version_id, lc_id, from_state, to_state, event_id, event_code, event_name
                 var evt = new LifeCycleTransitionEvent {
                     ConsumerId = r.GetLong("consumer"),
                     InstanceId = r.GetLong("instance_id"),
-                    DefinitionVersionId = 0, // not in dispatch query; if needed, extend query to join instance.def_version
+                    DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
                     ExternalRef = r.GetString("external_ref"),
                     RequestId = null,
                     OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString("ack_guid"),
                     AckRequired = true,
-                    Payload = BuildLcPayload(r),
+                    Payload = null,
                     LifeCycleId = r.GetLong("lc_id"),
                     FromStateId = r.GetLong("from_state"),
                     ToStateId = r.GetLong("to_state"),
-                    EventId = r.GetLong("event"),
-                    EventCode = 0,
-                    EventName = null,
+                    EventId = r.GetLong("event_id"),
+                    EventCode = r.GetNullableInt("event_code") ?? 0,
+                    EventName = r.GetString("event_name") ?? string.Empty,
                     PrevStateMeta = null,
-                    PolicyId = null,
-                    PolicyHash = null,
-                    PolicyJson = null
+                    PolicyId = r.GetNullableLong("policy_id"),
+                    PolicyHash = r.GetString("policy_hash"),
+                    PolicyJson = r.GetString("policy_json")
                 };
 
                 list.Add(new LifeCycleDispatchItem {
@@ -110,10 +128,12 @@ namespace Haley.Services {
             var list = new List<ILifeCycleDispatchItem>(rows.Count);
 
             foreach (var r in rows) {
+                // Columns expected from your ack_dispatch hook query (adjust keys only if your select differs):
+                // ack_id, ack_guid, consumer, status, retry_count, last_retry, instance_id, external_ref, def_version_id, hook_id, state_id, on_entry, route, via_event, hook_created
                 var evt = new LifeCycleHookEvent {
                     ConsumerId = r.GetLong("consumer"),
                     InstanceId = r.GetLong("instance_id"),
-                    DefinitionVersionId = 0, // not in dispatch query; if needed, extend query to join instance.def_version
+                    DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
                     ExternalRef = r.GetString("external_ref"),
                     RequestId = null,
                     OccurredAt = r.GetDateTimeOffset("hook_created") ?? DateTimeOffset.UtcNow,
@@ -146,15 +166,7 @@ namespace Haley.Services {
         }
 
         public async Task<int> CountPendingLifecycleDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) { return (await _dal.AckDispatch.CountPendingLifecycleReadyAsync(ackStatus, utcOlderThan, load)) ?? 0; }
-        public async Task<int> CountPendingHookDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) { return (await _dal.AckDispatch.CountPendingHookReadyAsync(ackStatus, utcOlderThan, load)) ?? 0; }
 
-        private static IReadOnlyDictionary<string, object> BuildLcPayload(DbRow r) {
-            var payload = new Dictionary<string, object>();
-            var actor = r.GetString("actor");
-            var body = r.GetString("payload");
-            if (!string.IsNullOrWhiteSpace(actor)) payload["actor"] = actor;
-            if (!string.IsNullOrWhiteSpace(body)) payload["payloadJson"] = body;
-            return payload.Count == 0 ? null : payload;
-        }
+        public async Task<int> CountPendingHookDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) { return (await _dal.AckDispatch.CountPendingHookReadyAsync(ackStatus, utcOlderThan, load)) ?? 0; }
     }
 }

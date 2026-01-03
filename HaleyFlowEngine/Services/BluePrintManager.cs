@@ -11,26 +11,22 @@ using System.Threading.Tasks;
 namespace Haley.Services {
     internal sealed class BlueprintManager : IBlueprintManager {
         private readonly IWorkFlowDAL _dal;
-        private readonly ConcurrentDictionary<string, Lazy<Task<DbRow>>> _latestDefVersion = new ConcurrentDictionary<string, Lazy<Task<DbRow>>>();
-        private readonly ConcurrentDictionary<long, Lazy<Task<LifeCycleBlueprint>>> _byVersion = new ConcurrentDictionary<long, Lazy<Task<LifeCycleBlueprint>>>();
+        private readonly ConcurrentDictionary<string, Lazy<Task<DbRow>>> _latestDefVersion = new();
+        private readonly ConcurrentDictionary<long, Lazy<Task<LifeCycleBlueprint>>> _blueprintsByVer = new();
 
-        public BlueprintManager(IWorkFlowDAL dal) { _dal = dal; }
+        public BlueprintManager(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
-        public async Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
+        public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            var k = envCode + ":" + (defName ?? "").Trim().ToLowerInvariant();
-            var lazy = _latestDefVersion.GetOrAdd(k, _ => new Lazy<Task<DbRow>>(async () => {
-                var row = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(envCode, defName, default);
-                if (row == null) throw new InvalidOperationException("def_version not found for envCode=" + envCode + ", defName=" + defName);
-                return row;
-            }));
-            return await lazy.Value;
+            var key = $"{envCode}:{(defName ?? string.Empty).Trim().ToLowerInvariant()}";
+            var lazy = _latestDefVersion.GetOrAdd(key, _ => new Lazy<Task<DbRow>>(() => LoadLatestDefVersionAsync(envCode, defName, ct)));
+            return lazy.Value;
         }
 
         public async Task<DbRow> GetDefVersionByIdAsync(long defVersionId, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var row = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, default);
-            if (row == null) throw new InvalidOperationException("def_version not found id=" + defVersionId);
+            if (row == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
             return row;
         }
 
@@ -42,32 +38,43 @@ namespace Haley.Services {
 
         public Task<LifeCycleBlueprint> GetBlueprintByVersionIdAsync(long defVersionId, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            var lazy = _byVersion.GetOrAdd(defVersionId, _ => new Lazy<Task<LifeCycleBlueprint>>(() => BuildBlueprintAsync(defVersionId, ct)));
+            var lazy = _blueprintsByVer.GetOrAdd(defVersionId, _ => new Lazy<Task<LifeCycleBlueprint>>(() => BuildBlueprintAsync(defVersionId, ct)));
             return lazy.Value;
         }
 
-        public void Clear() { _latestDefVersion.Clear(); _byVersion.Clear(); }
-        public void Invalidate(int envCode, string defName) { var k = envCode + ":" + (defName ?? "").Trim().ToLowerInvariant(); _latestDefVersion.TryRemove(k, out _); }
-        public void Invalidate(long defVersionId) { _byVersion.TryRemove(defVersionId, out _); }
+        public void Clear() { _latestDefVersion.Clear(); _blueprintsByVer.Clear(); }
+
+        public void Invalidate(int envCode, string defName) { _latestDefVersion.TryRemove($"{envCode}:{(defName ?? string.Empty).Trim().ToLowerInvariant()}", out _); }
+
+        public void Invalidate(long defVersionId) { _blueprintsByVer.TryRemove(defVersionId, out _); }
+
+        private async Task<DbRow> LoadLatestDefVersionAsync(int envCode, string defName, CancellationToken ct) {
+            ct.ThrowIfCancellationRequested();
+            var row = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(envCode, defName, default);
+            if (row == null) throw new InvalidOperationException($"def_version not found. env={envCode}, def={defName}");
+            return row;
+        }
 
         private async Task<LifeCycleBlueprint> BuildBlueprintAsync(long defVersionId, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
             var dv = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, default);
-            if (dv == null) throw new InvalidOperationException("def_version not found id=" + defVersionId);
+            if (dv == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
 
-            var definitionId = dv.GetLong("parent");
-            var envCode = dv.GetInt("env_code");
-            var defName = dv.GetString("def_name") ?? dv.GetString("name") ?? "unknown";
+            var bp = new LifeCycleBlueprint();
+            bp.DefVersionId = defVersionId;
+            bp.DefinitionId = dv.GetLong("parent");
+            bp.EnvCode = dv.GetInt("env_code");
+            bp.DefName = dv.GetString("def_name") ?? dv.GetString("name") ?? "unknown";
 
-            var statesRows = await _dal.Blueprint.ListStatesAsync(defVersionId, default);
-            var eventsRows = await _dal.Blueprint.ListEventsAsync(defVersionId, default);
+            var stateRows = await _dal.Blueprint.ListStatesAsync(defVersionId, default);
+            var eventRows = await _dal.Blueprint.ListEventsAsync(defVersionId, default);
             var transRows = await _dal.Blueprint.ListTransitionsAsync(defVersionId, default);
 
             var statesById = new Dictionary<long, StateDef>();
             long initialStateId = 0;
 
-            foreach (var r in statesRows) {
+            foreach (var r in stateRows) {
                 var flags = r.Get<uint>("flags");
                 var isInitial = (flags & 1u) == 1u;
                 var st = new StateDef {
@@ -89,7 +96,7 @@ namespace Haley.Services {
             var eventsByName = new Dictionary<string, EventDef>();
             var eventsByCode = new Dictionary<int, EventDef>();
 
-            foreach (var r in eventsRows) {
+            foreach (var r in eventRows) {
                 var ev = new EventDef {
                     Id = r.GetLong("id"),
                     Code = r.GetInt("code"),
@@ -109,19 +116,14 @@ namespace Haley.Services {
                 transitions[Tuple.Create(fromId, evId)] = new TransitionDef { FromStateId = fromId, ToStateId = toId, EventId = evId, Flags = r.Get<uint>("flags") };
             }
 
-            return new LifeCycleBlueprint {
-                DefVersionId = defVersionId,
-                DefinitionId = definitionId,
-                EnvCode = envCode,
-                DefName = defName,
-                StatesById = statesById,
-                EventsById = eventsById,
-                EventsByName = eventsByName,
-                EventsByCode = eventsByCode,
-                Transitions = transitions,
-                InitialStateId = initialStateId
-            };
+            bp.StatesById = statesById;
+            bp.EventsById = eventsById;
+            bp.EventsByName = eventsByName;
+            bp.EventsByCode = eventsByCode;
+            bp.Transitions = transitions;
+            bp.InitialStateId = initialStateId;
+
+            return bp;
         }
     }
-
 }
