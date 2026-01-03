@@ -76,7 +76,6 @@ namespace Haley.Internal {
 
         public const string PENDING_ACKS = $@"SELECT a.id AS ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.last_retry, ac.retry_count, l.* FROM lc_ack la JOIN ack a ON a.id = la.ack_id JOIN ack_consumer ac ON ac.ack_id = a.id JOIN lifecycle l ON l.id = la.lc_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.last_retry ASC, ac.id ASC;";
     }
-
     internal class QRY_ACK_DISPATCH {
         //LC ACK
         public const string LIST_PENDING_LC_READY = $@"SELECT a.id AS ack_id, a.guid AS ack_guid, a.created AS ack_created, ac.id AS ack_consumer_id, ac.consumer, ac.status, ac.last_retry, ac.retry_count, ac.created AS consumer_created, ac.modified AS consumer_modified, l.id AS lc_id, l.instance_id, l.from_state, l.to_state, l.event, l.created AS lc_created, i.guid AS instance_guid, i.external_ref, d.actor, d.payload FROM lc_ack la JOIN ack a ON a.id = la.ack_id JOIN ack_consumer ac ON ac.ack_id = a.id JOIN lifecycle l ON l.id = la.lc_id JOIN instance i ON i.id = l.instance_id LEFT JOIN lc_data d ON d.lc_id = l.id WHERE ac.status = {ACK_STATUS} AND ac.last_retry < {OLDER_THAN} ORDER BY ac.last_retry ASC, ac.id ASC;";

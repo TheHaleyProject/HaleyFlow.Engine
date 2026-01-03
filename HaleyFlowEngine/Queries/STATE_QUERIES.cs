@@ -68,5 +68,4 @@ namespace Haley.Internal {
         public const string UPDATE = $@"UPDATE category SET display_name = {DISPLAY_NAME} WHERE id = {ID};";
         public const string DELETE = $@"DELETE FROM category WHERE id = {ID};";
     }
-
 }

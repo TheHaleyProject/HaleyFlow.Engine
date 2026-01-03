@@ -21,19 +21,28 @@ USE `lcstate`;
 
 -- Dumping structure for table lcstate.ack
 CREATE TABLE IF NOT EXISTS `ack` (
-  `guid` char(36) NOT NULL DEFAULT uuid() COMMENT 'Each consumer can have its own message id. When a transition happens, we can easily track what each consumer is doing with that transition.',
-  `ack_status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n1 = Pending  //We have sent to the application.. We dont'' know what happened.\n2 = Delivered // Application has received and may have probably stored it in a database.\n3 = Processed (Idempotent) //Action has been taken by the client on the received information. \n4 = Failed',
+  `guid` char(36) NOT NULL DEFAULT uuid(),
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unq_ack` (`guid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.ack_consumer
+CREATE TABLE IF NOT EXISTS `ack_consumer` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `consumer` bigint(20) NOT NULL DEFAULT 0,
+  `ack_id` bigint(20) NOT NULL,
+  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n1 = Pending  //We have sent to the application.. We dont'' know what happened.\n2 = Delivered // Application has received and may have probably stored it in a database.\n3 = Processed (Idempotent) //Action has been taken by the client on the received information. \n4 = Failed',
   `last_retry` datetime NOT NULL DEFAULT current_timestamp(),
   `retry_count` int(11) NOT NULL DEFAULT 0,
-  `source` bigint(20) NOT NULL,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `consumer` bigint(20) NOT NULL DEFAULT 0 COMMENT 'consumer of this acknowledgement',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unq_ack_log` (`consumer`,`source`),
-  UNIQUE KEY `unq_ack_log_0` (`guid`),
-  KEY `fk_ack_log_transition_log` (`source`)
+  UNIQUE KEY `unq_ack_consumer` (`ack_id`,`consumer`),
+  CONSTRAINT `fk_ack_consumer_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
@@ -81,6 +90,7 @@ CREATE TABLE IF NOT EXISTS `definition` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_definition_0` (`guid`),
   UNIQUE KEY `unq_definition` (`env`,`name`),
+  KEY `idx_definition` (`name`),
   CONSTRAINT `fk_definition_environment` FOREIGN KEY (`env`) REFERENCES `environment` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -169,8 +179,8 @@ CREATE TABLE IF NOT EXISTS `hook` (
 CREATE TABLE IF NOT EXISTS `hook_ack` (
   `ack_id` bigint(20) NOT NULL,
   `hook_id` bigint(20) NOT NULL,
-  PRIMARY KEY (`hook_id`,`ack_id`),
-  KEY `fk_hook_ack_ack` (`ack_id`),
+  PRIMARY KEY (`hook_id`),
+  UNIQUE KEY `unq_hook_ack` (`ack_id`),
   CONSTRAINT `fk_hook_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hook_ack_hook` FOREIGN KEY (`hook_id`) REFERENCES `hook` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -180,8 +190,8 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
 -- Dumping structure for table lcstate.instance
 CREATE TABLE IF NOT EXISTS `instance` (
   `current_state` int(11) NOT NULL,
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `last_event` int(11) DEFAULT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `policy_id` int(11) DEFAULT 0,
   `external_ref` char(36) DEFAULT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
@@ -203,10 +213,10 @@ CREATE TABLE IF NOT EXISTS `instance` (
 
 -- Dumping structure for table lcstate.lc_ack
 CREATE TABLE IF NOT EXISTS `lc_ack` (
-  `lc_id` bigint(20) NOT NULL,
   `ack_id` bigint(20) NOT NULL,
-  PRIMARY KEY (`ack_id`,`lc_id`),
-  KEY `fk_lc_ack_lifecycle` (`lc_id`),
+  `lc_id` bigint(20) NOT NULL,
+  PRIMARY KEY (`lc_id`),
+  UNIQUE KEY `idx_lc_ack` (`ack_id`),
   CONSTRAINT `fk_lc_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_lc_ack_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -216,7 +226,7 @@ CREATE TABLE IF NOT EXISTS `lc_ack` (
 -- Dumping structure for table lcstate.lc_data
 CREATE TABLE IF NOT EXISTS `lc_data` (
   `lc_id` bigint(20) NOT NULL,
-  `actor` varchar(255) DEFAULT NULL,
+  `actor` varchar(60) DEFAULT NULL,
   `payload` longtext DEFAULT NULL COMMENT 'Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)',
   PRIMARY KEY (`lc_id`),
   CONSTRAINT `fk_transition_data_transition_log` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
@@ -256,10 +266,12 @@ CREATE TABLE IF NOT EXISTS `runtime` (
   `instance_id` bigint(20) NOT NULL,
   `activity` int(11) NOT NULL,
   `state_id` int(11) NOT NULL,
-  `actor_id` varchar(40) NOT NULL DEFAULT '0',
+  `actor_id` varchar(60) NOT NULL DEFAULT '0',
   `status` int(11) NOT NULL,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp(),
+  `frozen` bit(1) NOT NULL DEFAULT b'0' COMMENT 'For instance, this specific item may have some status, but we might freeze it, meaning, it cannot change status anymore.. unless we unlock the frreeze state..',
+  `lc_id` bigint(20) NOT NULL DEFAULT 0,
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_execution` (`instance_id`,`state_id`,`activity`,`actor_id`),
@@ -274,9 +286,9 @@ CREATE TABLE IF NOT EXISTS `runtime` (
 
 -- Dumping structure for table lcstate.runtime_data
 CREATE TABLE IF NOT EXISTS `runtime_data` (
-  `runtime` bigint(20) NOT NULL,
   `data` longtext DEFAULT NULL COMMENT 'data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..',
   `payload` longtext DEFAULT NULL COMMENT 'Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.',
+  `runtime` bigint(20) NOT NULL,
   PRIMARY KEY (`runtime`),
   CONSTRAINT `fk_runtime_data_runtime` FOREIGN KEY (`runtime`) REFERENCES `runtime` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

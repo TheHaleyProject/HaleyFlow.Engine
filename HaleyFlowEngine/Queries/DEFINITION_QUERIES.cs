@@ -36,7 +36,6 @@ namespace Haley.Internal {
         // 4) env CODE + definition NAME => next version number (max+1)
         public const string GET_NEXT_VERSION_BY_ENV_CODE_AND_DEF_NAME = $@"SELECT IFNULL(MAX(dv.version), 0) + 1 AS next_version FROM def_version dv JOIN definition d ON d.id = dv.parent JOIN environment e ON e.id = d.env WHERE e.code = {CODE} AND d.name = lower(trim({NAME})) LIMIT 1;";
     }
-
     internal class QRY_DEFINITION {
         public const string EXISTS_BY_ID = $@"SELECT 1 FROM definition WHERE id = {ID} LIMIT 1;";
         public const string EXISTS_BY_GUID = $@"SELECT 1 FROM definition WHERE guid = lower(trim({GUID})) LIMIT 1;";
@@ -53,7 +52,6 @@ namespace Haley.Internal {
         public const string UPDATE = $@"UPDATE definition SET env = {PARENT_ID}, display_name = {DISPLAY_NAME}, description = {DESCRIPTION} WHERE id = {ID};";
         public const string DELETE = $@"DELETE FROM definition WHERE id = {ID};";
     }
-
     internal class QRY_ENVIRONMENT {
         public const string EXISTS_BY_ID = $@"SELECT 1 FROM environment WHERE id = {ID} LIMIT 1;";
         public const string EXISTS_BY_NAME = $@"SELECT 1 FROM environment WHERE name = lower(trim({NAME})) LIMIT 1;";
@@ -71,7 +69,6 @@ namespace Haley.Internal {
         public const string UPDATE = $@"UPDATE environment SET display_name = {DISPLAY_NAME}, code = {CODE} WHERE id = {ID};";
         public const string DELETE = $@"DELETE FROM environment WHERE id = {ID};";
     }
-
     internal class QRY_POLICY {
         public const string EXISTS_BY_ID = $@"SELECT 1 FROM policy WHERE id = {ID} LIMIT 1;";
         public const string EXISTS_BY_HASH = $@"SELECT 1 FROM policy WHERE hash = lower(trim({HASH})) LIMIT 1;";

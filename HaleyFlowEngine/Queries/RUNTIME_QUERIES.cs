@@ -32,7 +32,6 @@ namespace Haley.Internal {
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM runtime WHERE instance_id = {INSTANCE_ID};";
     }
 
-
     internal class QRY_RUNTIME_DATA {
         public const string EXISTS_BY_ID = $@"SELECT 1 FROM runtime_data WHERE runtime = {ID} LIMIT 1;";
         public const string GET_BY_ID = $@"SELECT * FROM runtime_data WHERE runtime = {ID} LIMIT 1;";
@@ -72,5 +71,4 @@ namespace Haley.Internal {
         public const string UPDATE = $@"UPDATE activity_status SET display_name = {DISPLAY_NAME} WHERE id = {ID};";
         public const string DELETE = $@"DELETE FROM activity_status WHERE id = {ID};";
     }
-
 }
