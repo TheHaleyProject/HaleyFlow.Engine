@@ -42,7 +42,7 @@ sm.TransitionRaised += async occurred => {
     Console.WriteLine($"[TRN] ext={occurred.ExternalRef} {occurred.FromStateId}->{occurred.ToStateId} event={occurred.EventCode} {occurred.EventName}");
 
     // Each consumer creates its own ack row (unique by transition_log + consumer)
-    var ackInsert = await sm.MarkAck(occurred.MessageId, AckConsumerStatus.Delivered);
+    var ackInsert = await sm.MarkAck(occurred.MessageId, AckStatus.Delivered);
     if (!ackInsert.Status) Console.WriteLine($"[ACK-INSERT] failed: {ackInsert.Message}");
 };
 
