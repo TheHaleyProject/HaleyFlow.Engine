@@ -30,14 +30,14 @@ namespace Haley.Services {
         public event Func<ILifeCycleEvent, Task>? EventRaised;
         public event Func<LifeCycleNotice, Task>? NoticeRaised;
 
-        public WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null, IReadOnlyList<long>? monitorConsumers = null) {
+        public WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _opt = options ?? new WorkFlowEngineOptions();
 
             BlueprintManager = _opt.BlueprintManager ?? new BlueprintManager(_dal);
 
             // If you don't want engine to auto-create importer, pass it via options.
-            BlueprintImporter = _opt.BlueprintImporter ?? throw new InvalidOperationException("BlueprintImporter is required (set WorkFlowEngineOptions.BlueprintImporter).");
+            BlueprintImporter = _opt.BlueprintImporter ?? new BlueprintImporter(_dal);
 
             StateMachine = _opt.StateMachine ?? new StateMachine(_dal, BlueprintManager);
             PolicyEnforcer = _opt.PolicyEnforcer ?? new PolicyEnforcer(_dal);
@@ -50,7 +50,7 @@ namespace Haley.Services {
             AckManager = _opt.AckManager ?? new AckManager(_dal, transitionConsumers, hookConsumers);
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
-            _monitorConsumers = monitorConsumers ?? new long[] { _opt.DefaultConsumerId };
+            _monitorConsumers = _opt.MonitorConsumers ?? new long[] { _opt.DefaultConsumerId };
             Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex, ct) => RaiseNoticeSafeAsync(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex), ct));
         }
 
