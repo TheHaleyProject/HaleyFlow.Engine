@@ -50,5 +50,9 @@ namespace Haley.Utils {
             return arr;
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public ITransactionHandler CreateNewTransaction() {
+            return _agw.GetTransactionHandler(_key);
+        }
     }
 }

@@ -17,11 +17,13 @@ namespace Haley.Services {
         public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
 
         public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, DbExecutionLoad load = default) {
-            var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId, CancellationToken.None);
+            load.Ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(externalRef)) throw new ArgumentNullException(nameof(externalRef));
+
+            var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId, load.Ct);
             var initStateId = bp.InitialStateId;
 
-            // NOTE: this matches your earlier finalized query: UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID
-            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, initStateId, null, 0, 1u, load);
+            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, initStateId, null, 0, (uint)LifeCycleInstanceFlag.Active, load);
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException("Instance upsert failed (guid null).");
 
             var row = await _dal.Instance.GetByGuidAsync(guid, load);
@@ -30,24 +32,25 @@ namespace Haley.Services {
         }
 
         public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
             if (bp == null) throw new ArgumentNullException(nameof(bp));
             if (instance == null) throw new ArgumentNullException(nameof(instance));
+            if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentNullException(nameof(eventName));
 
-            var res = new ApplyTransitionResult();
+            var res = new ApplyTransitionResult { Applied = false, EventName = string.Empty, Reason = string.Empty };
 
             var instanceId = instance.GetLong("id");
             var fromStateId = instance.GetLong("current_state");
             var ev = ResolveEvent(bp, eventName);
 
             res.FromStateId = fromStateId;
-            res.EventId = ev != null ? ev.Id : 0;
-            res.EventCode = ev != null ? ev.Code : 0;
-            res.EventName = ev != null ? ev.Name : null;
+            res.EventId = ev?.Id ?? 0;
+            res.EventCode = ev?.Code ?? 0;
+            res.EventName = ev?.Name ?? string.Empty;
 
-            if (ev == null) { res.Applied = false; res.Reason = "UnknownEvent"; return res; }
+            if (ev == null) { res.Reason = "UnknownEvent"; res.ToStateId = fromStateId; return res; }
 
             if (!bp.Transitions.TryGetValue(Tuple.Create(fromStateId, ev.Id), out var t)) {
-                res.Applied = false;
                 res.Reason = "InvalidTransition";
                 res.ToStateId = fromStateId;
                 return res;
@@ -55,20 +58,16 @@ namespace Haley.Services {
 
             res.ToStateId = t.ToStateId;
 
-            if (res.ToStateId == res.FromStateId) {
-                res.Applied = false;
-                res.Reason = "NoOpAlreadyInState";
-                return res;
-            }
+            if (res.ToStateId == res.FromStateId) { res.Reason = "NoOpAlreadyInState"; return res; }
 
             var cas = await _dal.Instance.UpdateCurrentStateCasAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);
-            if (cas != 1) { res.Applied = false; res.Reason = "ConcurrencyConflict"; return res; }
+            if (cas != 1) { res.Reason = "ConcurrencyConflict"; return res; }
 
             var lcId = await _dal.LifeCycle.InsertAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);
             res.Applied = true;
             res.LifeCycleId = lcId;
 
-            var store = new Dictionary<string, object?>();
+            var store = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrWhiteSpace(requestId)) store["requestId"] = requestId;
             if (payload != null && payload.Count > 0) store["payload"] = payload;
 
@@ -81,9 +80,9 @@ namespace Haley.Services {
         private static EventDef? ResolveEvent(LifeCycleBlueprint bp, string eventNameOrCode) {
             if (string.IsNullOrWhiteSpace(eventNameOrCode)) return null;
             var s = eventNameOrCode.Trim();
-
             if (int.TryParse(s, out var code) && bp.EventsByCode.TryGetValue(code, out var byCode)) return byCode;
-            if (bp.EventsByName.TryGetValue(s.ToLowerInvariant(), out var byName)) return byName;
+            var key = s.ToLowerInvariant();
+            if (bp.EventsByName.TryGetValue(key, out var byName)) return byName;
             return null;
         }
     }

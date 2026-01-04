@@ -14,48 +14,52 @@ namespace Haley.Services {
 
         public RuntimeEngine(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
-        public async Task<long> UpsertAsync(RuntimeUpsertRequest req, DbExecutionLoad load = default, CancellationToken ct = default) {
+        public async Task<long> UpsertAsync(RuntimeUpsertRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
 
-            var inst = await _dal.Instance.GetByGuidAsync(req.InstanceGuid, load);
-            if (inst == null) throw new InvalidOperationException($"Instance not found: {req.InstanceGuid}");
+            var transaction = _dal.CreateNewTransaction();
+            using var tx = transaction.Begin(false);
+            var load = new DbExecutionLoad(ct, transaction);
+            var committed = false;
 
-            var instanceId = inst.GetLong("id");
+            try {
+                var instanceId = await _dal.Instance.GetIdByGuidAsync(req.InstanceGuid, load);
+                if (!instanceId.HasValue || instanceId.Value <= 0) throw new InvalidOperationException($"Instance not found: {req.InstanceGuid}");
 
-            var runtimeId = await _dal.Runtime.UpsertByKeyReturnIdAsync(instanceId, req.ActivityId, req.StateId, req.ActorId, req.StatusId, req.LcId, req.Frozen, load);
+                var runtimeId = await _dal.Runtime.UpsertByKeyReturnIdAsync(instanceId.Value, req.ActivityId, req.StateId, req.ActorId, req.StatusId, req.LcId, req.Frozen, load);
 
-            var dataJson = req.Data == null ? null : JsonSerializer.Serialize(req.Data);
-            var payloadJson = req.Payload == null ? null : JsonSerializer.Serialize(req.Payload);
-            await _dal.RuntimeData.UpsertAsync(runtimeId, dataJson, payloadJson, load);
+                var dataJson = req.Data == null ? null : JsonSerializer.Serialize(req.Data);
+                var payloadJson = req.Payload == null ? null : JsonSerializer.Serialize(req.Payload);
+                await _dal.RuntimeData.UpsertAsync(runtimeId, dataJson, payloadJson, load);
 
-            return runtimeId;
+                tx.Commit();
+                committed = true;
+                return runtimeId;
+            } catch {
+                if (!committed) tx.Rollback();
+                throw;
+            }
         }
 
-        public Task<int> SetStatusAsync(long runtimeId, long statusId, DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetStatusAsync(runtimeId, statusId, load); }
+        public Task<int> SetStatusAsync(long runtimeId, long statusId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetStatusAsync(runtimeId, statusId, new DbExecutionLoad(ct)); }
 
-        public Task<int> SetFrozenAsync(long runtimeId, bool frozen, DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetFrozenAsync(runtimeId, frozen, load); }
+        public Task<int> SetFrozenAsync(long runtimeId, bool frozen, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetFrozenAsync(runtimeId, frozen, new DbExecutionLoad(ct)); }
 
-        public Task<int> SetLcIdAsync(long runtimeId, long lcId, DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetLcIdAsync(runtimeId, lcId, load); }
+        public Task<int> SetLcIdAsync(long runtimeId, long lcId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetLcIdAsync(runtimeId, lcId, new DbExecutionLoad(ct)); }
 
-        // Optional helpers (inside SAME class, per your request)
-        public Task<DbRows> ListActivitiesAsync(DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Activity.ListAllAsync(load); }
-
-        public Task<DbRow?> GetActivityByNameAsync(string name, DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Activity.GetByNameAsync(name, load); }
-
-        public async Task<long> EnsureActivityAsync(string displayName, DbExecutionLoad load = default, CancellationToken ct = default) {
+        public async Task<long> EnsureActivityAsync(string displayName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
+            var load = new DbExecutionLoad(ct);
             var row = await _dal.Activity.GetByNameAsync(displayName, load);
             return row != null ? row.GetLong("id") : await _dal.Activity.InsertAsync(displayName, load);
         }
 
-        public Task<DbRows> ListActivityStatusesAsync(DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.ActivityStatus.ListAllAsync(load); }
-
-        public Task<DbRow?> GetActivityStatusByNameAsync(string name, DbExecutionLoad load = default, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.ActivityStatus.GetByNameAsync(name, load); }
-
-        public async Task<long> EnsureActivityStatusAsync(string displayName, DbExecutionLoad load = default, CancellationToken ct = default) {
+        public async Task<long> EnsureActivityStatusAsync(string displayName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
+            var load = new DbExecutionLoad(ct);
             var row = await _dal.ActivityStatus.GetByNameAsync(displayName, load);
             return row != null ? row.GetLong("id") : await _dal.ActivityStatus.InsertAsync(displayName, load);
         }
     }
+
 }

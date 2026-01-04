@@ -8,6 +8,11 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Haley.Services {
     internal sealed class PolicyEnforcer : IPolicyEnforcer {
@@ -16,6 +21,7 @@ namespace Haley.Services {
         public PolicyEnforcer(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
         public async Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
             var pr = new PolicyResolution();
             if (!applied.Applied) return pr;
 
@@ -29,6 +35,7 @@ namespace Haley.Services {
         }
 
         public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
 
             var pol = await _dal.Blueprint.GetPolicyForStateAsync(bp.DefinitionId, applied.ToStateId, load);
@@ -36,7 +43,7 @@ namespace Haley.Services {
             if (string.IsNullOrWhiteSpace(policyJson)) return Array.Empty<ILifeCycleHookEmission>();
 
             if (!bp.StatesById.TryGetValue(applied.ToStateId, out var toState)) return Array.Empty<ILifeCycleHookEmission>();
-            if (!bp.EventsById.TryGetValue(applied.EventId, out var viaEvent)) viaEvent = null;
+            bp.EventsById.TryGetValue(applied.EventId, out var viaEvent);
 
             var instanceId = instance.GetLong("id");
             var emissions = new List<ILifeCycleHookEmission>();
@@ -45,42 +52,33 @@ namespace Haley.Services {
             if (!doc.RootElement.TryGetProperty("routes", out var routes) || routes.ValueKind != JsonValueKind.Array) return Array.Empty<ILifeCycleHookEmission>();
 
             foreach (var route in routes.EnumerateArray()) {
-                if (!route.TryGetProperty("state", out var stEl) || stEl.ValueKind != JsonValueKind.String) continue;
-                if (!string.Equals(stEl.GetString(), toState.Name, StringComparison.OrdinalIgnoreCase)) continue;
+                load.Ct.ThrowIfCancellationRequested();
 
-                if (route.TryGetProperty("via", out var viaEl) && viaEl.ValueKind == JsonValueKind.Number) {
+                var routeState = TryGetString(route, "state");
+                if (string.IsNullOrWhiteSpace(routeState)) continue;
+
+                if (!IsStateMatch(routeState!, toState)) continue;
+
+                if (route.TryGetProperty("via", out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined) {
                     if (viaEvent == null) continue;
-                    if (viaEl.GetInt32() != viaEvent.Code) continue;
+                    var viaCode = TryGetInt(viaEl);
+                    if (!viaCode.HasValue || viaCode.Value != viaEvent.Code) continue;
                 }
 
                 if (!route.TryGetProperty("emit", out var emitEl) || emitEl.ValueKind != JsonValueKind.Array) continue;
 
                 foreach (var e in emitEl.EnumerateArray()) {
-                    if (!e.TryGetProperty("event", out var hookCodeEl) || hookCodeEl.ValueKind != JsonValueKind.String) continue;
-                    var hookCode = hookCodeEl.GetString();
+                    load.Ct.ThrowIfCancellationRequested();
+
+                    var hookCode = TryGetString(e, "event");
                     if (string.IsNullOrWhiteSpace(hookCode)) continue;
 
-                    // Create hook row (via_event NOT NULL; payload NOT stored)
                     var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, load);
 
-                    string? onSuccess = null;
-                    string? onFailure = null;
-
-                    if (e.TryGetProperty("complete", out var compEl) && compEl.ValueKind == JsonValueKind.Object) {
-                        if (compEl.TryGetProperty("success", out var sEl)) onSuccess = sEl.ValueKind == JsonValueKind.String ? sEl.GetString() : sEl.ToString();
-                        if (compEl.TryGetProperty("failure", out var fEl)) onFailure = fEl.ValueKind == JsonValueKind.String ? fEl.GetString() : fEl.ToString();
-                    }
-
-                    DateTimeOffset? notBefore = null;
-                    DateTimeOffset? deadline = null;
-
-                    if (e.TryGetProperty("notBefore", out var nbEl) && nbEl.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(nbEl.GetString(), out var nb)) notBefore = nb;
-                    if (e.TryGetProperty("deadline", out var dlEl) && dlEl.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(dlEl.GetString(), out var dl)) deadline = dl;
-
-                    IReadOnlyDictionary<string, object?>? payload = null;
-                    if (e.TryGetProperty("payload", out var pEl) && pEl.ValueKind != JsonValueKind.Null && pEl.ValueKind != JsonValueKind.Undefined) {
-                        payload = JsonToDictionary(pEl);
-                    }
+                    var (onSuccess, onFailure) = ReadCompletionEvents(e);
+                    var notBefore = ReadDateTimeOffset(e, "notBefore");
+                    var deadline = ReadDateTimeOffset(e, "deadline");
+                    var payload = ReadPayload(e);
 
                     emissions.Add(new LifeCycleHookEmission {
                         HookId = hookId,
@@ -99,14 +97,49 @@ namespace Haley.Services {
             return emissions;
         }
 
-        private static IReadOnlyDictionary<string, object?>? JsonToDictionary(JsonElement el) {
+        private static bool IsStateMatch(string routeState, StateDef toState) {
+            if (string.Equals(routeState, toState.Name, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!string.IsNullOrWhiteSpace(toState.DisplayName) && string.Equals(routeState, toState.DisplayName, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private static (string? onSuccess, string? onFailure) ReadCompletionEvents(JsonElement emitObj) {
+            if (!emitObj.TryGetProperty("complete", out var compEl) || compEl.ValueKind != JsonValueKind.Object) return (null, null);
+            string? onSuccess = null;
+            string? onFailure = null;
+            if (compEl.TryGetProperty("success", out var sEl)) onSuccess = sEl.ValueKind == JsonValueKind.String ? sEl.GetString() : sEl.ToString();
+            if (compEl.TryGetProperty("failure", out var fEl)) onFailure = fEl.ValueKind == JsonValueKind.String ? fEl.GetString() : fEl.ToString();
+            return (onSuccess, onFailure);
+        }
+
+        private static DateTimeOffset? ReadDateTimeOffset(JsonElement obj, string prop) {
+            if (!obj.TryGetProperty(prop, out var el) || el.ValueKind != JsonValueKind.String) return null;
+            return DateTimeOffset.TryParse(el.GetString(), out var dt) ? dt : null;
+        }
+
+        private static IReadOnlyDictionary<string, object?>? ReadPayload(JsonElement emitObj) {
+            if (!emitObj.TryGetProperty("payload", out var pEl) || pEl.ValueKind == JsonValueKind.Null || pEl.ValueKind == JsonValueKind.Undefined) return null;
+            return JsonToDictionary(pEl);
+        }
+
+        private static string? TryGetString(JsonElement obj, string prop) {
+            if (!obj.TryGetProperty(prop, out var el)) return null;
+            return el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
+        }
+
+        private static int? TryGetInt(JsonElement el) {
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var i)) return i;
+            if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var j)) return j;
+            return null;
+        }
+
+        private static IReadOnlyDictionary<string, object?> JsonToDictionary(JsonElement el) {
             if (el.ValueKind == JsonValueKind.Object) {
                 var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
                 foreach (var p in el.EnumerateObject()) dict[p.Name] = JsonToObject(p.Value);
                 return dict;
             }
-            // If payload is not an object, wrap it for safety.
-            return new Dictionary<string, object?> { ["value"] = JsonToObject(el) };
+            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["value"] = JsonToObject(el) };
         }
 
         private static object? JsonToObject(JsonElement el) {
@@ -132,5 +165,4 @@ namespace Haley.Services {
             }
         }
     }
-
 }

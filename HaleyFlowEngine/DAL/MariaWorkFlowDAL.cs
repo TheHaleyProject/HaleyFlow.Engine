@@ -6,25 +6,24 @@ using Haley.Internal;
 namespace Haley.Utils {
     public class MariaWorkFlowDAL : MariaWorkFlowDALUtil, IWorkFlowDAL {
         public IBlueprintReadDAL Blueprint { get; }
+        public IBlueprintWriteDAL BlueprintWrite { get; }
         public IInstanceDAL Instance { get; }
         public ILifeCycleDAL LifeCycle { get; }
         public ILifeCycleDataDAL LifeCycleData { get; }
         public IHookDAL Hook { get; }
-
         public IAckDAL Ack { get; }
         public IAckConsumerDAL AckConsumer { get; }
         public ILcAckDAL LcAck { get; }
         public IHookAckDAL HookAck { get; }
         public IAckDispatchDAL AckDispatch { get; }
-
         public IActivityDAL Activity { get; }
         public IActivityStatusDAL ActivityStatus { get; }
-
         public IRuntimeDAL Runtime { get; }
         public IRuntimeDataDAL RuntimeData { get; }
 
         public MariaWorkFlowDAL(IAdapterGateway agw, string key) : base(agw, key) {
             Blueprint = new MariaBlueprintReadDAL(this);
+            BlueprintWrite = new MariaBlueprintWriteDAL(this);
             Instance = new MariaInstanceDAL(this);
             LifeCycle = new MariaLifeCycleDAL(this);
             LifeCycleData = new MariaLifeCycleDataDAL(this);
