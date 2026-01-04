@@ -139,7 +139,7 @@ namespace Haley.Services {
                 };
 
                 list.Add(new LifeCycleDispatchItem {
-                    Kind = LifeCycleDispatchKind.Lifecycle,
+                    Kind = LifeCycleEventKind.Transition,
                     AckId = r.GetLong("ack_id"),
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     ConsumerId = r.GetLong("consumer"),
@@ -182,7 +182,7 @@ namespace Haley.Services {
                 };
 
                 list.Add(new LifeCycleDispatchItem {
-                    Kind = LifeCycleDispatchKind.Hook,
+                    Kind = LifeCycleEventKind.Hook,
                     AckId = r.GetLong("ack_id"),
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     ConsumerId = r.GetLong("consumer"),
