@@ -1,9 +1,85 @@
 
- public sealed class LifeCycleAckRef : ILifeCycleAckRef {
-     public long AckId { get; set; }
-     public string AckGuid { get; set; }
-     public LifeCycleAckRef(long ackId, string ackGuid) { AckId = ackId; AckGuid = ackGuid ?? string.Empty; }
+public interface ILifeCycleDispatchItem {
+    LifeCycleDispatchKind Kind { get; }
+    long AckId { get; }
+    string AckGuid { get; }
+    long ConsumerId { get; }
+    int AckStatus { get; }
+    int RetryCount { get; }
+    DateTime LastRetryUtc { get; }
+    ILifeCycleEvent Event { get; }
+}
+
+  public interface ILifeCycleEvent {
+      LifeCycleEventKind Kind { get; }
+      long ConsumerId { get; }
+      long InstanceId { get; }
+      long DefinitionVersionId { get; }
+      string ExternalRef { get; }
+      string? RequestId { get; }
+      DateTimeOffset OccurredAt { get; }
+      string AckGuid { get; }
+      bool AckRequired { get; }
+      IReadOnlyDictionary<string, object?>? Payload { get; }
+  }
+
+   public interface ILifeCycleHookEmission {
+     long HookId { get; }
+     long StateId { get; }
+     bool OnEntry { get; }
+     string HookCode { get; }
+     string? OnSuccessEvent { get; }
+     string? OnFailureEvent { get; }
+     DateTimeOffset? NotBefore { get; }
+     DateTimeOffset? Deadline { get; }
+     IReadOnlyDictionary<string, object?>? Payload { get; } // ephemeral (NOT stored)
  }
+
+  public interface ILifeCycleHookEvent : ILifeCycleEvent {
+     long HookId { get; }
+     long StateId { get; }
+     bool OnEntry { get; }
+     string HookCode { get; }
+     string? OnSuccessEvent { get; }
+     string? OnFailureEvent { get; }
+     DateTimeOffset? NotBefore { get; }
+     DateTimeOffset? Deadline { get; }
+ }
+
+   public interface ILifeCycleTransitionEvent : ILifeCycleEvent {
+      long LifeCycleId { get; }
+      long FromStateId { get; }
+      long ToStateId { get; }
+      long EventId { get; }
+      int EventCode { get; }
+      string EventName { get; }
+      IReadOnlyDictionary<string, object?>? PrevStateMeta { get; }
+      long? PolicyId { get; }
+      string? PolicyHash { get; }
+      string? PolicyJson { get; }
+  }
+
+   public interface ILifeCycleAckRef {
+     long AckId { get; }
+     string AckGuid { get; }
+ }
+
+
+public sealed class LifeCycleAckRef : ILifeCycleAckRef {
+    public long AckId { get; set; }
+    public string AckGuid { get; set; }
+}
+
+        public sealed class LifeCycleDispatchItem : ILifeCycleDispatchItem {
+        public LifeCycleDispatchKind Kind { get; set; }
+        public long AckId { get; set; }
+        public string AckGuid { get; set; }
+        public long ConsumerId { get; set; }
+        public int AckStatus { get; set; }
+        public int RetryCount { get; set; }
+        public DateTime LastRetryUtc { get; set; }
+        public ILifeCycleEvent Event { get; set; }
+    }
 
      public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
         public long HookId { get; set; }
@@ -17,16 +93,7 @@
         public IReadOnlyDictionary<string, object> Payload { get; set; }
     }
 
-        public sealed class LifeCycleDispatchItem : ILifeCycleDispatchItem {
-        public LifeCycleDispatchKind Kind { get; set; }
-        public long AckId { get; set; }
-        public string AckGuid { get; set; }
-        public long ConsumerId { get; set; }
-        public int AckStatus { get; set; }
-        public int RetryCount { get; set; }
-        public DateTime LastRetryUtc { get; set; }
-        public ILifeCycleEvent Event { get; set; }
-    }
+
 
  public sealed class EventDef {
     public long Id { get; set; }
@@ -36,39 +103,43 @@
     public EventDef() { }
 }
 
-  public sealed class LifeCycleBlueprint {
-      public long DefVersionId { get; set; }
-      public long DefinitionId { get; set; }
-      public int EnvCode { get; set; }
-      public string DefName { get; set; }
-      public IReadOnlyDictionary<long, StateDef> StatesById { get; set; }
-      public IReadOnlyDictionary<long, EventDef> EventsById { get; set; }
-      public IReadOnlyDictionary<string, EventDef> EventsByName { get; set; }
-      public IReadOnlyDictionary<int, EventDef> EventsByCode { get; set; }
-      public IReadOnlyDictionary<Tuple<long, long>, TransitionDef> Transitions { get; set; }
-      public long InitialStateId { get; set; }
-      public LifeCycleBlueprint() { }
-  }
+   public sealed class LifeCycleBlueprint {
+     public long DefVersionId { get; set; }
+     public long DefinitionId { get; set; }
+     public int EnvCode { get; set; }
+     public string DefName { get; set; }
+     public IReadOnlyDictionary<long, StateDef> StatesById { get; set; }
+     public IReadOnlyDictionary<long, EventDef> EventsById { get; set; }
+     public IReadOnlyDictionary<string, EventDef> EventsByName { get; set; }
+     public IReadOnlyDictionary<int, EventDef> EventsByCode { get; set; }
+     public IReadOnlyDictionary<Tuple<long, int>, TransitionDef> Transitions { get; set; }
+     public long InitialStateId { get; set; }
+     public LifeCycleBlueprint() { }
+ }
 
-     public sealed class LifeCycleNotice {
-    public LifeCycleNoticeKind Kind { get; }
-    public string Code { get; }
-    public string Message { get; }
-    public Exception? Exception { get; }
-    public DateTimeOffset OccurredAt { get; }
+   public sealed class LifeCycleNotice {
+     public LifeCycleNoticeKind Kind { get; }
+     public string NoticeType { get; }          // machine-readable category (string)
+     public string Code { get; }                // short code (stable)
+     public string Message { get; }             // human readable
+     public Exception? Exception { get; }
+     public DateTimeOffset OccurredAt { get; }
+     public IReadOnlyDictionary<string, object?>? Data { get; }  // optional structured payload
 
-    public LifeCycleNotice(LifeCycleNoticeKind kind, string code, string message, Exception? exception = null) {
-        Kind = kind;
-        Code = code ?? string.Empty;
-        Message = message ?? string.Empty;
-        Exception = exception;
-        OccurredAt = DateTimeOffset.UtcNow;
-    }
+     public LifeCycleNotice(LifeCycleNoticeKind kind, string noticeType, string code, string message, Exception? exception = null, IReadOnlyDictionary<string, object?>? data = null) {
+         Kind = kind;
+         NoticeType = noticeType ?? string.Empty;
+         Code = code ?? string.Empty;
+         Message = message ?? string.Empty;
+         Exception = exception;
+         Data = data;
+         OccurredAt = DateTimeOffset.UtcNow;
+     }
 
-    public static LifeCycleNotice Error(string code, string message, Exception ex) => new LifeCycleNotice(LifeCycleNoticeKind.Error, code, message, ex);
-    public static LifeCycleNotice Warn(string code, string message) => new LifeCycleNotice(LifeCycleNoticeKind.Warning, code, message);
-    public static LifeCycleNotice Info(string code, string message) => new LifeCycleNotice(LifeCycleNoticeKind.Info, code, message);
-}
+     public static LifeCycleNotice Error(string noticeType, string code, string message, Exception ex, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Error, noticeType, code, message, ex, data);
+     public static LifeCycleNotice Warn(string noticeType, string code, string message, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Warning, noticeType, code, message, null, data);
+     public static LifeCycleNotice Info(string noticeType, string code, string message, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Info, noticeType, code, message, null, data);
+ }
 
  public sealed class StateDef {
      public long Id { get; set; }
@@ -141,16 +212,16 @@
      public ApplyTransitionResult() { }
  }
 
-  public sealed class LifeCycleTriggerRequest {
+   public sealed class LifeCycleTriggerRequest {
      public int EnvCode { get; set; }
-     public string DefName { get; set; } = string.Empty;
-     public string ExternalRef { get; set; } = string.Empty;
-     public string EventName { get; set; } = string.Empty; // you can map name->code in blueprint if needed
-     public string? RequestId { get; set; }
-     public string? Actor { get; set; }
-     public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+     public string DefName { get; set; }
+     public string ExternalRef { get; set; }
+     public string Event { get; set; }
+     public string Actor { get; set; }
+     public string RequestId { get; set; }
      public bool AckRequired { get; set; } = true;
-     public DbExecutionLoad Load { get; set; } = default;
+     public IReadOnlyDictionary<string, object> Payload { get; set; }
+     public LifeCycleTriggerRequest() { }
  }
 
   public sealed class LifeCycleTriggerResult {
@@ -204,3 +275,14 @@
        public IAckManager? AckManager { get; set; }
        public IRuntimeEngine? RuntimeEngine { get; set; }
    }
+
+   public readonly struct DbExecutionLoad {
+    public ITransactionHandler? Handler { get; }
+    public CancellationToken Ct { get; }
+
+    public DbExecutionLoad(CancellationToken ct, ITransactionHandler? th = null) {
+        Ct = ct;
+        Handler = th;
+    }
+    public static DbExecutionLoad None => default;
+}

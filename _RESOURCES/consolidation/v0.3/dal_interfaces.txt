@@ -39,28 +39,41 @@
       Task<int> DeleteByLcIdAsync(long lcId, DbExecutionLoad load = default);
   }
 
-   public interface IBlueprintReadDAL {
-     Task<DbRow?> GetLatestDefVersionByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default);
-     Task<DbRow?> GetLatestDefVersionByEnvNameAndDefNameAsync(string envName, string defName, DbExecutionLoad load = default);
-     Task<DbRow?> GetLatestDefVersionByDefinitionGuidAsync(string defGuid, DbExecutionLoad load = default);
-     Task<DbRow?> GetLatestDefVersionByLineFromDefVersionIdAsync(long defVersionId, DbExecutionLoad load = default);
-     Task<DbRow?> GetLatestDefVersionByLineFromDefVersionGuidAsync(string defVersionGuid, DbExecutionLoad load = default);
-     Task<int?> GetNextDefVersionNumberByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default);
+  public interface IBlueprintReadDAL {
+    Task<DbRow?> GetLatestDefVersionByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default);
+    Task<DbRow?> GetLatestDefVersionByEnvNameAndDefNameAsync(string envName, string defName, DbExecutionLoad load = default);
+    Task<DbRow?> GetLatestDefVersionByDefinitionGuidAsync(string defGuid, DbExecutionLoad load = default);
+    Task<DbRow?> GetLatestDefVersionByLineFromDefVersionIdAsync(long defVersionId, DbExecutionLoad load = default);
+    Task<DbRow?> GetLatestDefVersionByLineFromDefVersionGuidAsync(string defVersionGuid, DbExecutionLoad load = default);
+    Task<int?> GetNextDefVersionNumberByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default);
 
-     Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default);
+    Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default);
 
-     Task<DbRows> ListStatesAsync(long defVersionId, DbExecutionLoad load = default);
-     Task<DbRows> ListEventsAsync(long defVersionId, DbExecutionLoad load = default);
-     Task<DbRows> ListTransitionsAsync(long defVersionId, DbExecutionLoad load = default);
+    Task<DbRows> ListStatesAsync(long defVersionId, DbExecutionLoad load = default);
+    Task<DbRows> ListEventsAsync(long defVersionId, DbExecutionLoad load = default);
+    Task<DbRows> ListTransitionsAsync(long defVersionId, DbExecutionLoad load = default);
 
-     Task<DbRow?> GetPolicyByIdAsync(long policyId, DbExecutionLoad load = default);
-     Task<DbRow?> GetPolicyByHashAsync(string hash, DbExecutionLoad load = default);
+    Task<DbRow?> GetPolicyByIdAsync(long policyId, DbExecutionLoad load = default);
+    Task<DbRow?> GetPolicyByHashAsync(string hash, DbExecutionLoad load = default);
 
-     // policy attached to state/transition (your "policy json included on transition" concept)
-     Task<DbRow?> GetPolicyForStateAsync(long definitionId, long stateId, DbExecutionLoad load = default);
- }
+    // policy attached to state/transition (your "policy json included on transition" concept)
+    Task<DbRow?> GetPolicyForStateAsync(long definitionId, long stateId, DbExecutionLoad load = default);
+}
 
-  public interface IInstanceDAL {
+// IBlueprintWriteDAL.cs
+public interface IBlueprintWriteDAL {
+    Task<int> EnsureEnvironmentByCodeAsync(int envCode, string envDisplayName, DbExecutionLoad load = default);
+    Task<int> EnsureDefinitionByEnvIdAsync(int envId, string defDisplayName, string? description, DbExecutionLoad load = default);
+    Task<long> InsertDefVersionAsync(int definitionId, int version, string data, DbExecutionLoad load = default);
+    Task<int> EnsureCategoryByNameAsync(string displayName, DbExecutionLoad load = default);
+    Task<int> InsertEventAsync(long defVersionId, string displayName, int code, DbExecutionLoad load = default);
+    Task<int> InsertStateAsync(long defVersionId, int categoryId, string displayName, uint flags, int? timeoutMinutes, uint timeoutMode, long? timeoutEventId, DbExecutionLoad load = default);
+    Task<int> InsertTransitionAsync(long defVersionId, int fromStateId, int toStateId, int eventId, DbExecutionLoad load = default);
+    Task<long> EnsurePolicyByHashAsync(string hash, string content, DbExecutionLoad load = default);
+    Task<int> AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(int envCode, string defName, long policyId, DbExecutionLoad load = default);
+}
+
+ public interface IInstanceDAL {
      Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default);
      Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default);
 
@@ -129,3 +142,29 @@
        Task<DbRow?> GetByNameAsync(string name, DbExecutionLoad load = default);
        Task<long> InsertAsync(string displayName, DbExecutionLoad load = default);
    }
+
+     public interface IWorkFlowDAL : IWorkFlowDALUtil {
+      IBlueprintReadDAL Blueprint { get; }
+      IBlueprintWriteDAL BlueprintWrite { get; }
+      IInstanceDAL Instance { get; }
+      ILifeCycleDAL LifeCycle { get; }
+      ILifeCycleDataDAL LifeCycleData { get; }
+      IHookDAL Hook { get; }
+      IAckDAL Ack { get; }
+      IAckConsumerDAL AckConsumer { get; }
+      ILcAckDAL LcAck { get; }
+      IHookAckDAL HookAck { get; }
+      IAckDispatchDAL AckDispatch { get; }
+      IActivityDAL Activity { get; }
+      IActivityStatusDAL ActivityStatus { get; }
+      IRuntimeDAL Runtime { get; }
+      IRuntimeDataDAL RuntimeData { get; }
+  }
+
+  public interface IWorkFlowDALUtil : IAsyncDisposable {
+    Task<int> ExecAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
+    Task<T?> ScalarAsync<T>(string sql, DbExecutionLoad load = default , params DbArg[] args);
+    Task<DbRow?> RowAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
+    Task<DbRows> RowsAsync(string sql, DbExecutionLoad load = default, params DbArg[] args);
+    ITransactionHandler CreateNewTransaction();
+}

@@ -51,7 +51,7 @@ namespace Haley.Services {
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
             _monitorConsumers = monitorConsumers ?? new long[] { _opt.DefaultConsumerId };
-            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex, ct) => RaiseNoticeSafeAsync(LifeCycleNotice.Error("MONITOR_ERROR", ex.Message, ex), ct));
+            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex, ct) => RaiseNoticeSafeAsync(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex), ct));
         }
 
         public Task StartAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
@@ -202,7 +202,7 @@ namespace Haley.Services {
                 throw;
             } catch (Exception ex) {
                 if (!committed) { try { transaction.Rollback(); } catch { } }
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Error("TRIGGER_ERROR", ex.Message, ex), ct);
+                await RaiseNoticeSafeAsync(LifeCycleNotice.Error("TRIGGER_ERROR", "TRIGGER_ERROR", ex.Message, ex), ct);
                 throw;
             }
         }
@@ -246,7 +246,7 @@ namespace Haley.Services {
                 ct.ThrowIfCancellationRequested();
                 var item = lc[i];
 
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceId}"), ct);
+                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceId}"), ct);
                 await RaiseEventSafeAsync(item.Event, ct);
                 await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
@@ -257,7 +257,7 @@ namespace Haley.Services {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceId}"), ct);
+                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceId}"), ct);
                 await RaiseEventSafeAsync(item.Event, ct);
                 await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
@@ -271,7 +271,7 @@ namespace Haley.Services {
             ct.ThrowIfCancellationRequested();
             var h = EventRaised;
             if (h == null) return;
-            try { await h.Invoke(e); } catch (Exception ex) { await RaiseNoticeSafeAsync(LifeCycleNotice.Error("EVENT_HANDLER_ERROR", ex.Message, ex), ct); }
+            try { await h.Invoke(e); } catch (Exception ex) { await RaiseNoticeSafeAsync(LifeCycleNotice.Error("EVENT_HANDLER_ERROR", "EVENT_HANDLER_ERROR", ex.Message, ex), ct); }
         }
 
         private async Task RaiseNoticeSafeAsync(LifeCycleNotice n, CancellationToken ct) {
