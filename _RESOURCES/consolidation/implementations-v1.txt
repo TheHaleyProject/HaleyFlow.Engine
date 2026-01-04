@@ -1,0 +1,1168 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml;
+
+// =========================================================
+//  REQUIRED (from your project / attached files):
+//   - IWorkFlowDAL + DAL groups (dal_interfaces.txt)
+//   - DbRow / DbRows / DbExecutionLoad / DbArg (your common DAL types)
+//   - Row extension methods: GetLong/GetInt/GetString/GetGuid/GetDateTimeOffset/GetBool/Get<T>/GetN<T>
+//   - Models + Interfaces (models.txt, model-interfaces.txt)
+//   - Enums (enums.txt)
+//   - Queries classes (queries.txt): QRY_ENVIRONMENT, QRY_DEFINITION, QRY_DEFVERSION, QRY_EVENTS, QRY_STATE, QRY_TRANSITION, QRY_CATEGORY, QRY_POLICY
+// =========================================================
+
+#region Small engine-only models (allowed additions)
+
+public sealed class LifeCycleNotice {
+    public NoticeKind Kind { get; set; }
+    public string Message { get; set; } = "";
+    public Exception? Exception { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+    public IReadOnlyDictionary<string, object?>? Meta { get; set; }
+}
+
+public enum NoticeKind {
+    Info = 1,
+    Warning = 2,
+    Error = 3,
+    DuplicateRequest = 10,
+    NoOpAlreadyInState = 11,
+    TransitionSuppressed = 12,
+    MissingConsumerMapping = 20,
+    MonitorSkipped = 21
+}
+
+public interface IBlueprintImporter {
+    Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, DbExecutionLoad load = default, CancellationToken ct = default);
+    Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, DbExecutionLoad load = default, CancellationToken ct = default);
+}
+
+#endregion
+
+#region Blueprint model (engine-side)
+
+public sealed class LifeCycleBlueprint {
+    public long DefinitionId { get; init; }
+    public long DefinitionVersionId { get; init; }
+    public int Version { get; init; }
+
+    public IReadOnlyDictionary<long, BpState> StatesById { get; init; } = new Dictionary<long, BpState>();
+    public IReadOnlyDictionary<string, BpState> StatesByName { get; init; } = new Dictionary<string, BpState>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<long, BpEvent> EventsById { get; init; } = new Dictionary<long, BpEvent>();
+    public IReadOnlyDictionary<string, BpEvent> EventsByName { get; init; } = new Dictionary<string, BpEvent>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyDictionary<int, BpEvent> EventsByCode { get; init; } = new Dictionary<int, BpEvent>();
+
+    public IReadOnlyDictionary<(long FromStateId, long EventId), BpTransition> Transitions { get; init; } = new Dictionary<(long, long), BpTransition>();
+
+    public long InitialStateId { get; init; }
+}
+
+public sealed class BpState {
+    public long Id { get; init; }
+    public string DisplayName { get; init; } = "";
+    public string Name { get; init; } = "";
+    public int Flags { get; init; }
+    public int? TimeoutMin { get; init; }
+    public int? TimeoutMode { get; init; }
+    public long? TimeoutEventId { get; init; }
+    public string? TimeoutHookCode { get; init; }
+    public int? TimeoutDeadlineMin { get; init; }
+}
+
+public sealed class BpEvent {
+    public long Id { get; init; }
+    public string DisplayName { get; init; } = "";
+    public string Name { get; init; } = "";
+    public int Code { get; init; }
+}
+
+public sealed class BpTransition {
+    public long Id { get; init; }
+    public long FromStateId { get; init; }
+    public long ToStateId { get; init; }
+    public long EventId { get; init; }
+}
+
+#endregion
+
+#region Concrete event + dispatch models
+
+public sealed class LifeCycleAckRef : ILifeCycleAckRef {
+    public long AckId { get; set; }
+    public string AckGuid { get; set; } = "";
+}
+
+public sealed class TransitionEvent : ILifeCycleTransitionEvent {
+    public LifeCycleEventKind Kind { get; set; } = LifeCycleEventKind.Transition;
+    public long ConsumerId { get; set; }
+    public long InstanceId { get; set; }
+    public long DefinitionVersionId { get; set; }
+    public string ExternalRef { get; set; } = "";
+    public string? RequestId { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+    public string AckGuid { get; set; } = "";
+    public bool AckRequired { get; set; }
+    public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+
+    public long LifeCycleId { get; set; }
+    public long FromStateId { get; set; }
+    public long ToStateId { get; set; }
+    public long EventId { get; set; }
+    public int EventCode { get; set; }
+    public string EventName { get; set; } = "";
+    public IReadOnlyDictionary<string, object?>? PrevStateMeta { get; set; }
+
+    public long? PolicyId { get; set; }
+    public string? PolicyHash { get; set; }
+    public string? PolicyJson { get; set; }
+}
+
+public sealed class HookEvent : ILifeCycleHookEvent {
+    public LifeCycleEventKind Kind { get; set; } = LifeCycleEventKind.Hook;
+    public long ConsumerId { get; set; }
+    public long InstanceId { get; set; }
+    public long DefinitionVersionId { get; set; }
+    public string ExternalRef { get; set; } = "";
+    public string? RequestId { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+    public string AckGuid { get; set; } = "";
+    public bool AckRequired { get; set; }
+    public IReadOnlyDictionary<string, object?>? Payload { get; set; } // ephemeral
+
+    public long HookId { get; set; }
+    public long StateId { get; set; }
+    public bool OnEntry { get; set; }
+    public string HookCode { get; set; } = "";
+    public string? OnSuccessEvent { get; set; }
+    public string? OnFailureEvent { get; set; }
+    public DateTimeOffset? NotBefore { get; set; }
+    public DateTimeOffset? Deadline { get; set; }
+}
+
+public sealed class LifeCycleDispatchItem : ILifeCycleDispatchItem {
+    public LifeCycleDispatchKind Kind { get; set; }
+    public long AckId { get; set; }
+    public string AckGuid { get; set; } = "";
+    public long ConsumerId { get; set; }
+    public int AckStatus { get; set; }
+    public int RetryCount { get; set; }
+    public DateTime LastRetryUtc { get; set; }
+    public ILifeCycleEvent Event { get; set; } = null!;
+}
+
+#endregion
+
+#region Engine implementations
+
+public sealed class BlueprintManager : IBlueprintManager {
+    private readonly IWorkFlowDAL _dal;
+
+    private readonly ConcurrentDictionary<string, (DbRow Row, LifeCycleBlueprint Blueprint)> _latestByEnvDef = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<long, (DbRow Row, LifeCycleBlueprint Blueprint)> _byDefVersionId = new();
+
+    public BlueprintManager(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) => GetLatestDefVersionCoreAsync(envCode, defName);
+
+    public Task<DbRow> GetDefVersionByIdAsync(long defVersionId, CancellationToken ct = default) => _dal.Blueprint.GetDefVersionByIdAsync(defVersionId);
+
+    public async Task<LifeCycleBlueprint> GetBlueprintLatestAsync(int envCode, string defName, CancellationToken ct = default) {
+        var key = $"{envCode}:{defName}".Trim();
+        if (_latestByEnvDef.TryGetValue(key, out var cached)) return cached.Blueprint;
+
+        var dv = await GetLatestDefVersionCoreAsync(envCode, defName).ConfigureAwait(false);
+        var bp = await BuildBlueprintAsync(dv).ConfigureAwait(false);
+
+        _latestByEnvDef[key] = (dv, bp);
+        _byDefVersionId[bp.DefinitionVersionId] = (dv, bp);
+        return bp;
+    }
+
+    public async Task<LifeCycleBlueprint> GetBlueprintByVersionIdAsync(long defVersionId, CancellationToken ct = default) {
+        if (_byDefVersionId.TryGetValue(defVersionId, out var cached)) return cached.Blueprint;
+
+        var dv = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId).ConfigureAwait(false);
+        var bp = await BuildBlueprintAsync(dv).ConfigureAwait(false);
+
+        _byDefVersionId[defVersionId] = (dv, bp);
+        return bp;
+    }
+
+    public void Clear() { _latestByEnvDef.Clear(); _byDefVersionId.Clear(); }
+
+    public void Invalidate(int envCode, string defName) { _latestByEnvDef.TryRemove($"{envCode}:{defName}".Trim(), out _); }
+
+    public void Invalidate(long defVersionId) { _byDefVersionId.TryRemove(defVersionId, out _); }
+
+    private async Task<DbRow> GetLatestDefVersionCoreAsync(int envCode, string defName) {
+        var dv = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(envCode, defName).ConfigureAwait(false);
+        if (dv == null) throw new InvalidOperationException($"Definition not found: envCode={envCode}, defName={defName}");
+        return dv;
+    }
+
+    private async Task<LifeCycleBlueprint> BuildBlueprintAsync(DbRow defVersionRow) {
+        var defVersionId = defVersionRow.GetLong("id");
+        var defId = defVersionRow.GetLong("parent");
+        var version = defVersionRow.GetInt("version");
+
+        var states = await _dal.Blueprint.ListStatesAsync(defVersionId).ConfigureAwait(false);
+        var events = await _dal.Blueprint.ListEventsAsync(defVersionId).ConfigureAwait(false);
+        var transitions = await _dal.Blueprint.ListTransitionsAsync(defVersionId).ConfigureAwait(false);
+
+        var stById = new Dictionary<long, BpState>();
+        var stByName = new Dictionary<string, BpState>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var s in states ?? Array.Empty<DbRow>()) {
+            var sid = s.GetLong("id");
+            var disp = s.GetString("display_name") ?? "";
+            var name = s.GetString("name") ?? disp;
+
+            var bpS = new BpState {
+                Id = sid,
+                DisplayName = disp,
+                Name = name,
+                Flags = s.GetInt("flags"),
+                TimeoutMin = s.GetNullableInt("timeout_min"),
+                TimeoutMode = s.GetNullableInt("timeout_mode"),
+                TimeoutEventId = s.GetNullableLong("timeout_event"),
+                TimeoutHookCode = s.GetString("timeout_hook_code"),
+                TimeoutDeadlineMin = s.GetNullableInt("timeout_deadline_min")
+            };
+
+            stById[sid] = bpS;
+            if (!string.IsNullOrWhiteSpace(bpS.DisplayName)) stByName[bpS.DisplayName.Trim()] = bpS;
+            if (!string.IsNullOrWhiteSpace(bpS.Name)) stByName[bpS.Name.Trim()] = bpS;
+        }
+
+        var evById = new Dictionary<long, BpEvent>();
+        var evByName = new Dictionary<string, BpEvent>(StringComparer.OrdinalIgnoreCase);
+        var evByCode = new Dictionary<int, BpEvent>();
+
+        foreach (var e in events ?? Array.Empty<DbRow>()) {
+            var eid = e.GetLong("id");
+            var disp = e.GetString("display_name") ?? "";
+            var name = e.GetString("name") ?? disp;
+            var code = e.GetInt("code");
+
+            var bpE = new BpEvent { Id = eid, DisplayName = disp, Name = name, Code = code };
+            evById[eid] = bpE;
+            if (!string.IsNullOrWhiteSpace(bpE.DisplayName)) evByName[bpE.DisplayName.Trim()] = bpE;
+            if (!string.IsNullOrWhiteSpace(bpE.Name)) evByName[bpE.Name.Trim()] = bpE;
+            evByCode[code] = bpE;
+        }
+
+        var trMap = new Dictionary<(long, long), BpTransition>();
+        foreach (var t in transitions ?? Array.Empty<DbRow>()) {
+            var fromId = t.GetLong("from_state");
+            var evId = t.GetLong("event");
+            trMap[(fromId, evId)] = new BpTransition {
+                Id = t.GetLong("id"),
+                FromStateId = fromId,
+                ToStateId = t.GetLong("to_state"),
+                EventId = evId
+            };
+        }
+
+        var initialStateId = stById.Values.FirstOrDefault(x => (x.Flags & (int)LifeCycleStateFlag.IsInitial) != 0)?.Id ?? 0;
+        if (initialStateId == 0 && stById.Count > 0) initialStateId = stById.Keys.Min();
+
+        return new LifeCycleBlueprint {
+            DefinitionId = defId,
+            DefinitionVersionId = defVersionId,
+            Version = version,
+            StatesById = stById,
+            StatesByName = stByName,
+            EventsById = evById,
+            EventsByName = evByName,
+            EventsByCode = evByCode,
+            Transitions = trMap,
+            InitialStateId = initialStateId
+        };
+    }
+}
+
+public sealed class StateMachine : IStateMachine {
+    private readonly IWorkFlowDAL _dal;
+    private readonly IBlueprintManager _bp;
+
+    public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
+
+    public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, DbExecutionLoad load = default) {
+        var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId).ConfigureAwait(false);
+        var instanceGuid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, bp.InitialStateId, 0, 0, (uint)LifeCycleInstanceFlag.Active, load).ConfigureAwait(false);
+        var row = await _dal.Instance.GetByGuidAsync(instanceGuid, load).ConfigureAwait(false);
+        if (row == null) throw new InvalidOperationException($"Instance missing after upsert. defVersionId={defVersionId}, externalRef={externalRef}");
+        return row;
+    }
+
+    public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DbExecutionLoad load = default) {
+        if (bp == null) throw new ArgumentNullException(nameof(bp));
+        if (instance == null) throw new ArgumentNullException(nameof(instance));
+
+        var instanceId = instance.GetLong("id");
+        var currentStateId = instance.GetLong("current_state");
+        var instanceGuid = instance.GetString("guid") ?? "";
+        var externalRef = instance.GetString("external_ref") ?? "";
+
+        if (!bp.EventsByName.TryGetValue(eventName.Trim(), out var ev)) {
+            return new ApplyTransitionResult {
+                Applied = false,
+                InstanceId = instanceId,
+                InstanceGuid = instanceGuid,
+                ExternalRef = externalRef,
+                FromStateId = currentStateId,
+                ToStateId = currentStateId,
+                Reason = $"Event not found: {eventName}"
+            };
+        }
+
+        if (!bp.Transitions.TryGetValue((currentStateId, ev.Id), out var tr)) {
+            return new ApplyTransitionResult {
+                Applied = false,
+                InstanceId = instanceId,
+                InstanceGuid = instanceGuid,
+                ExternalRef = externalRef,
+                FromStateId = currentStateId,
+                ToStateId = currentStateId,
+                EventId = ev.Id,
+                EventCode = ev.Code,
+                EventName = ev.DisplayName,
+                Reason = $"No transition from state={currentStateId} via event={eventName}"
+            };
+        }
+
+        var affected = await _dal.Instance.UpdateCurrentStateCasAsync(instanceId, currentStateId, tr.ToStateId, ev.Id, load).ConfigureAwait(false);
+        if (affected <= 0) {
+            // concurrent / idempotent: re-read by guid and decide
+            var fresh = await _dal.Instance.GetByGuidAsync(instanceGuid, load).ConfigureAwait(false);
+            var nowState = fresh?.GetLong("current_state") ?? currentStateId;
+            var ok = nowState == tr.ToStateId;
+
+            return new ApplyTransitionResult {
+                Applied = ok,
+                InstanceId = instanceId,
+                InstanceGuid = instanceGuid,
+                ExternalRef = externalRef,
+                FromStateId = currentStateId,
+                ToStateId = nowState,
+                EventId = ev.Id,
+                EventCode = ev.Code,
+                EventName = ev.DisplayName,
+                Reason = ok ? "No-op (already applied)" : "Transition suppressed (CAS failed)"
+            };
+        }
+
+        var lifeCycleId = await _dal.LifeCycle.InsertAsync(instanceId, currentStateId, tr.ToStateId, ev.Id, load).ConfigureAwait(false);
+
+        var payloadJson = payload == null ? null : JsonSerializer.Serialize(payload);
+        await _dal.LifeCycleData.UpsertAsync(lifeCycleId, actor, payloadJson, load).ConfigureAwait(false);
+
+        return new ApplyTransitionResult {
+            Applied = true,
+            InstanceId = instanceId,
+            InstanceGuid = instanceGuid,
+            ExternalRef = externalRef,
+            LifeCycleId = lifeCycleId,
+            FromStateId = currentStateId,
+            ToStateId = tr.ToStateId,
+            EventId = ev.Id,
+            EventCode = ev.Code,
+            EventName = ev.DisplayName,
+            Reason = "Applied"
+        };
+    }
+}
+
+public sealed class PolicyEnforcer : IPolicyEnforcer {
+    private readonly IWorkFlowDAL _dal;
+
+    public PolicyEnforcer(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public async Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+        // DB query is now expected to exist: QRY_POLICY.GET_POLICY_FOR_STATE (you fixed)
+        var row = await _dal.Blueprint.GetPolicyForStateAsync(bp.DefinitionId, applied.ToStateId, load).ConfigureAwait(false);
+        if (row == null) return new PolicyResolution { PolicyId = null, Hash = null, Json = null };
+
+        return new PolicyResolution {
+            PolicyId = row.GetNullableLong("id"),
+            Hash = row.GetString("hash"),
+            Json = row.GetString("content")
+        };
+    }
+
+    public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+        // Policy JSON format: { "routes":[ { "state":"UnderEvaluation", "via":1002?, "emit":[ {code,...} ] } ] }
+        var res = new List<ILifeCycleHookEmission>();
+
+        var policyRow = await _dal.Blueprint.GetPolicyForStateAsync(bp.DefinitionId, applied.ToStateId, load).ConfigureAwait(false);
+        var policyJson = policyRow?.GetString("content");
+        if (string.IsNullOrWhiteSpace(policyJson)) return res;
+
+        using var doc = JsonDocument.Parse(policyJson);
+        if (!doc.RootElement.TryGetProperty("routes", out var routesEl) || routesEl.ValueKind != JsonValueKind.Array) return res;
+
+        var state = bp.StatesById.TryGetValue(applied.ToStateId, out var st) ? st : null;
+        var stateName = state?.DisplayName ?? state?.Name ?? applied.ToStateId.ToString();
+
+        foreach (var route in routesEl.EnumerateArray()) {
+            if (!route.TryGetProperty("state", out var stEl) || stEl.ValueKind != JsonValueKind.String) continue;
+            var routeState = stEl.GetString() ?? "";
+            if (!string.Equals(routeState, stateName, StringComparison.OrdinalIgnoreCase) && !string.Equals(routeState, state?.Name, StringComparison.OrdinalIgnoreCase)) continue;
+
+            // optional "via" (event code)
+            if (route.TryGetProperty("via", out var viaEl) && viaEl.ValueKind == JsonValueKind.Number) {
+                var viaCode = viaEl.GetInt32();
+                if (viaCode != applied.EventCode) continue;
+            }
+
+            if (!route.TryGetProperty("emit", out var emitEl) || emitEl.ValueKind != JsonValueKind.Array) continue;
+
+            foreach (var emit in emitEl.EnumerateArray()) {
+                var hookCode = emit.TryGetProperty("code", out var codeEl) && codeEl.ValueKind == JsonValueKind.String ? (codeEl.GetString() ?? "") : "";
+                if (string.IsNullOrWhiteSpace(hookCode)) continue;
+
+                var onSuccess = emit.TryGetProperty("on_success", out var osEl) && osEl.ValueKind == JsonValueKind.String ? osEl.GetString() : null;
+                var onFailure = emit.TryGetProperty("on_failure", out var ofEl) && ofEl.ValueKind == JsonValueKind.String ? ofEl.GetString() : null;
+
+                DateTimeOffset? notBefore = null;
+                if (emit.TryGetProperty("not_before", out var nbEl) && nbEl.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(nbEl.GetString(), out var nb)) notBefore = nb;
+
+                DateTimeOffset? deadline = null;
+                if (emit.TryGetProperty("deadline", out var dlEl) && dlEl.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(dlEl.GetString(), out var dl)) deadline = dl;
+
+                IReadOnlyDictionary<string, object?>? payload = null;
+                if (emit.TryGetProperty("payload", out var plEl) && plEl.ValueKind == JsonValueKind.Object) payload = JsonObjectToDictionary(plEl);
+
+                // IMPORTANT: hook.payload is NOT stored (pass null)
+                // via_event is NOT NULL in schema (you confirmed), so we use applied.EventId always
+                var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
+                    instance.GetLong("id"),
+                    applied.ToStateId,
+                    applied.EventId,          // via_event (NOT NULL)
+                    true,                     // on_entry
+                    hookCode,
+                    null,                     // payload_json (NOT stored)
+                    load
+                ).ConfigureAwait(false);
+
+                res.Add(new HookEmission {
+                    HookId = hookId,
+                    StateId = applied.ToStateId,
+                    OnEntry = true,
+                    HookCode = hookCode,
+                    OnSuccessEvent = onSuccess,
+                    OnFailureEvent = onFailure,
+                    NotBefore = notBefore,
+                    Deadline = deadline,
+                    Payload = payload // ephemeral only
+                });
+            }
+        }
+
+        return res;
+    }
+
+    private static IReadOnlyDictionary<string, object?> JsonObjectToDictionary(JsonElement obj) {
+        var d = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in obj.EnumerateObject()) d[p.Name] = JsonElementToObject(p.Value);
+        return d;
+    }
+
+    private static object? JsonElementToObject(JsonElement el) {
+        return el.ValueKind switch {
+            JsonValueKind.String => el.GetString(),
+            JsonValueKind.Number => el.TryGetInt64(out var l) ? l : el.TryGetDouble(out var db) ? db : null,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            JsonValueKind.Object => JsonObjectToDictionary(el),
+            JsonValueKind.Array => el.EnumerateArray().Select(JsonElementToObject).ToList(),
+            _ => null
+        };
+    }
+
+    private sealed class HookEmission : ILifeCycleHookEmission {
+        public long HookId { get; set; }
+        public long StateId { get; set; }
+        public bool OnEntry { get; set; }
+        public string HookCode { get; set; } = "";
+        public string? OnSuccessEvent { get; set; }
+        public string? OnFailureEvent { get; set; }
+        public DateTimeOffset? NotBefore { get; set; }
+        public DateTimeOffset? Deadline { get; set; }
+        public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+    }
+}
+
+public sealed class AckManager : IAckManager {
+    private readonly IWorkFlowDAL _dal;
+    private readonly IBlueprintManager _bp;
+
+    // These are intentionally settable so you can wire them without bloating ctor signatures.
+    public Func<CancellationToken, Task<IReadOnlyList<long>>>? ListConsumersAsync { get; set; }
+    public Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? ResolveTransitionConsumersAsync { get; set; }
+    public Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? ResolveHookConsumersAsync { get; set; }
+
+    public AckManager(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
+
+    public async Task<ILifeCycleAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        var ack = await _dal.Ack.InsertReturnRowAsync(load).ConfigureAwait(false);
+        var ackId = ack.GetLong("id");
+        var ackGuid = ack.GetString("guid") ?? "";
+
+        await _dal.LcAck.AttachAsync(ackId, lifecycleId, load).ConfigureAwait(false);
+        foreach (var c in consumerIds ?? Array.Empty<long>()) await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, c, initialAckStatus, load).ConfigureAwait(false);
+
+        return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid };
+    }
+
+    public async Task<ILifeCycleAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        var ack = await _dal.Ack.InsertReturnRowAsync(load).ConfigureAwait(false);
+        var ackId = ack.GetLong("id");
+        var ackGuid = ack.GetString("guid") ?? "";
+
+        await _dal.HookAck.AttachAsync(ackId, hookId, load).ConfigureAwait(false);
+        foreach (var c in consumerIds ?? Array.Empty<long>()) await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, c, initialAckStatus, load).ConfigureAwait(false);
+
+        return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid };
+    }
+
+    public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
+        if (string.IsNullOrWhiteSpace(ackGuid)) return;
+
+        if (outcome == AckOutcome.Retry) {
+            await SetStatusAsyncByGuid(ackGuid, consumerId, (int)AckStatus.Pending, load).ConfigureAwait(false);
+            await MarkRetryByGuidAsync(ackGuid, consumerId, retryAt, load).ConfigureAwait(false);
+            return;
+        }
+
+        var status = outcome switch {
+            AckOutcome.Delivered => (int)AckStatus.Delivered,
+            AckOutcome.Processed => (int)AckStatus.Processed,
+            AckOutcome.Failed => (int)AckStatus.Failed,
+            _ => (int)AckStatus.Processed
+        };
+
+        await SetStatusAsyncByGuid(ackGuid, consumerId, status, load).ConfigureAwait(false);
+    }
+
+    public Task MarkRetryAsync(long ackId, long consumerId, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) => MarkRetryCoreAsync(ackId, consumerId, retryAt, load);
+
+    public Task SetStatusAsync(long ackId, long consumerId, int ackStatus, DbExecutionLoad load = default) => _dal.AckConsumer.SetStatusAsync(ackId, consumerId, ackStatus, load);
+
+    public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListPendingLifecycleDispatchAsync(long consumerId, int ackStatus, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default) {
+        var rows = await _dal.AckDispatch.ListPendingLifecycleReadyPagedAsync(consumerId, ackStatus, utcOlderThan, skip, take, load).ConfigureAwait(false);
+        return await BuildLifecycleDispatchAsync(rows).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListPendingHookDispatchAsync(long consumerId, int ackStatus, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default) {
+        var rows = await _dal.AckDispatch.ListPendingHookReadyPagedAsync(consumerId, ackStatus, utcOlderThan, skip, take, load).ConfigureAwait(false);
+        return await BuildHookDispatchAsync(rows).ConfigureAwait(false);
+    }
+
+    public Task<int> CountPendingLifecycleDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) => _dal.AckDispatch.CountPendingLifecycleReadyAsync(ackStatus, utcOlderThan, load);
+
+    public Task<int> CountPendingHookDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) => _dal.AckDispatch.CountPendingHookReadyAsync(ackStatus, utcOlderThan, load);
+
+    public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, long instanceId, CancellationToken ct = default) => ResolveTransitionConsumersAsync == null ? Task.FromResult((IReadOnlyList<long>)Array.Empty<long>()) : ResolveTransitionConsumersAsync(defVersionId, instanceId, ct);
+
+    public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, long instanceId, string hookCode, CancellationToken ct = default) => ResolveHookConsumersAsync == null ? Task.FromResult((IReadOnlyList<long>)Array.Empty<long>()) : ResolveHookConsumersAsync(defVersionId, instanceId, hookCode, ct);
+
+    private async Task<IReadOnlyList<ILifeCycleDispatchItem>> BuildLifecycleDispatchAsync(DbRows? rows) {
+        var list = new List<ILifeCycleDispatchItem>();
+        foreach (var r in rows ?? Array.Empty<DbRow>()) {
+            var consumerId = r.GetLong("consumer");
+            var ackId = r.GetLong("ack_id");
+            var ackGuid = r.GetString("ack_guid") ?? "";
+            var ackStatus = r.GetInt("status");
+            var retryCount = r.GetInt("retry_count");
+            var lastRetry = r.GetDateTime("last_retry") ?? DateTime.UtcNow;
+
+            var instanceGuid = r.GetString("instance_guid") ?? "";
+            var instance = await _dal.Instance.GetByGuidAsync(instanceGuid).ConfigureAwait(false);
+            var defVersionId = instance?.GetLong("def_version") ?? 0;
+            var instanceId = instance?.GetLong("id") ?? r.GetLong("instance_id");
+            var externalRef = r.GetString("external_ref") ?? "";
+
+            var bp = defVersionId > 0 ? await _bp.GetBlueprintByVersionIdAsync(defVersionId).ConfigureAwait(false) : null;
+
+            var eventId = r.GetLong("event");
+            var ev = (bp != null && bp.EventsById.TryGetValue(eventId, out var found)) ? found : null;
+
+            IReadOnlyDictionary<string, object?>? payload = null;
+            var payloadJson = r.GetString("payload");
+            if (!string.IsNullOrWhiteSpace(payloadJson)) payload = JsonSerializer.Deserialize<Dictionary<string, object?>>(payloadJson);
+
+            var evObj = new TransitionEvent {
+                ConsumerId = consumerId,
+                InstanceId = instanceId,
+                DefinitionVersionId = defVersionId,
+                ExternalRef = externalRef,
+                AckGuid = ackGuid,
+                AckRequired = true,
+                OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
+                LifeCycleId = r.GetLong("lc_id"),
+                FromStateId = r.GetLong("from_state"),
+                ToStateId = r.GetLong("to_state"),
+                EventId = eventId,
+                EventCode = ev?.Code ?? 0,
+                EventName = ev?.DisplayName ?? "",
+                Payload = payload
+            };
+
+            list.Add(new LifeCycleDispatchItem {
+                Kind = LifeCycleDispatchKind.LifeCycle,
+                AckId = ackId,
+                AckGuid = ackGuid,
+                ConsumerId = consumerId,
+                AckStatus = ackStatus,
+                RetryCount = retryCount,
+                LastRetryUtc = DateTime.SpecifyKind(lastRetry, DateTimeKind.Utc),
+                Event = evObj
+            });
+        }
+        return list;
+    }
+
+    private async Task<IReadOnlyList<ILifeCycleDispatchItem>> BuildHookDispatchAsync(DbRows? rows) {
+        var list = new List<ILifeCycleDispatchItem>();
+        foreach (var r in rows ?? Array.Empty<DbRow>()) {
+            var consumerId = r.GetLong("consumer");
+            var ackId = r.GetLong("ack_id");
+            var ackGuid = r.GetString("ack_guid") ?? "";
+            var ackStatus = r.GetInt("status");
+            var retryCount = r.GetInt("retry_count");
+            var lastRetry = r.GetDateTime("last_retry") ?? DateTime.UtcNow;
+
+            var instanceGuid = r.GetString("instance_guid") ?? "";
+            var instance = await _dal.Instance.GetByGuidAsync(instanceGuid).ConfigureAwait(false);
+            var defVersionId = instance?.GetLong("def_version") ?? 0;
+            var instanceId = instance?.GetLong("id") ?? r.GetLong("instance_id");
+            var externalRef = r.GetString("external_ref") ?? "";
+
+            var evObj = new HookEvent {
+                ConsumerId = consumerId,
+                InstanceId = instanceId,
+                DefinitionVersionId = defVersionId,
+                ExternalRef = externalRef,
+                AckGuid = ackGuid,
+                AckRequired = true,
+                OccurredAt = r.GetDateTimeOffset("hook_created") ?? DateTimeOffset.UtcNow,
+
+                HookId = r.GetLong("hook_id"),
+                StateId = r.GetLong("state_id"),
+                OnEntry = r.GetBool("on_entry"),
+                HookCode = r.GetString("route") ?? ""
+            };
+
+            list.Add(new LifeCycleDispatchItem {
+                Kind = LifeCycleDispatchKind.Hook,
+                AckId = ackId,
+                AckGuid = ackGuid,
+                ConsumerId = consumerId,
+                AckStatus = ackStatus,
+                RetryCount = retryCount,
+                LastRetryUtc = DateTime.SpecifyKind(lastRetry, DateTimeKind.Utc),
+                Event = evObj
+            });
+        }
+        return list;
+    }
+
+    private Task SetStatusAsyncByGuid(string ackGuid, long consumerId, int status, DbExecutionLoad load) => _dal.AckConsumer.SetStatusByGuidAsync(ackGuid, consumerId, status, load);
+
+    private async Task MarkRetryByGuidAsync(string ackGuid, long consumerId, DateTimeOffset? retryAt, DbExecutionLoad load) {
+        // DAL doesn't expose retryAt; do inline update when provided.
+        if (retryAt == null) {
+            var row = await _dal.AckConsumer.GetByAckGuidAndConsumerAsync(ackGuid, consumerId, load).ConfigureAwait(false);
+            if (row != null) await _dal.AckConsumer.MarkRetryAsync(row.GetLong("ack_id"), consumerId, load).ConfigureAwait(false);
+            return;
+        }
+
+        const string sql = @"UPDATE ack_consumer ac JOIN ack a ON a.id = ac.ack_id SET ac.retry_count = ac.retry_count + 1, ac.last_retry = {RETRY_AT} WHERE a.guid = lower(trim({GUID})) AND ac.consumer = {CONSUMER_ID};";
+        await _dal.ExecAsync(sql, load,
+            new DbArg("RETRY_AT", retryAt.Value.UtcDateTime),
+            new DbArg("GUID", ackGuid),
+            new DbArg("CONSUMER_ID", consumerId)
+        ).ConfigureAwait(false);
+    }
+
+    private async Task MarkRetryCoreAsync(long ackId, long consumerId, DateTimeOffset? retryAt, DbExecutionLoad load) {
+        if (retryAt == null) { await _dal.AckConsumer.MarkRetryAsync(ackId, consumerId, load).ConfigureAwait(false); return; }
+        const string sql = @"UPDATE ack_consumer SET retry_count = retry_count + 1, last_retry = {RETRY_AT} WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID};";
+        await _dal.ExecAsync(sql, load, new DbArg("RETRY_AT", retryAt.Value.UtcDateTime), new DbArg("ACK_ID", ackId), new DbArg("CONSUMER_ID", consumerId)).ConfigureAwait(false);
+    }
+}
+
+public sealed class RuntimeEngine : IRuntimeEngine {
+    private readonly IWorkFlowDAL _dal;
+
+    public RuntimeEngine(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public async Task<long> UpsertAsync(RuntimeUpsertRequest req, DbExecutionLoad load = default, CancellationToken ct = default) {
+        if (req == null) throw new ArgumentNullException(nameof(req));
+        var instanceId = await _dal.Instance.GetIdByGuidAsync(req.InstanceGuid, load).ConfigureAwait(false);
+        if (instanceId <= 0) throw new InvalidOperationException($"Instance not found: {req.InstanceGuid}");
+
+        var runtimeId = await _dal.Runtime.UpsertByKeyReturnIdAsync(instanceId, req.ActivityId, req.StatusId, req.Frozen, load).ConfigureAwait(false);
+
+        if (req.Data != null) {
+            var json = JsonSerializer.Serialize(req.Data);
+            await _dal.RuntimeData.UpsertAsync(runtimeId, req.DataKind, json, load).ConfigureAwait(false);
+        }
+
+        return runtimeId;
+    }
+
+    public Task<int> SetStatusAsync(long runtimeId, long statusId, DbExecutionLoad load = default, CancellationToken ct = default) => _dal.Runtime.SetStatusAsync(runtimeId, statusId, load);
+
+    public Task<int> SetFrozenAsync(long runtimeId, bool frozen, DbExecutionLoad load = default, CancellationToken ct = default) => _dal.Runtime.SetFrozenAsync(runtimeId, frozen, load);
+
+    public Task<int> SetLcIdAsync(long runtimeId, long lcId, DbExecutionLoad load = default, CancellationToken ct = default) => _dal.Runtime.SetLcIdAsync(runtimeId, lcId, load);
+}
+
+public sealed class BlueprintImporter : IBlueprintImporter {
+    private readonly IWorkFlowDAL _dal;
+
+    public BlueprintImporter(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public async Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, DbExecutionLoad load = default, CancellationToken ct = default) {
+        if (string.IsNullOrWhiteSpace(definitionJson)) throw new ArgumentNullException(nameof(definitionJson));
+
+        using var doc = JsonDocument.Parse(definitionJson);
+        var defEl = doc.RootElement.GetProperty("definition");
+        var defName = defEl.GetProperty("name").GetString() ?? throw new InvalidOperationException("definition.name missing");
+        var defVersion = defEl.TryGetProperty("version", out var vEl) ? vEl.GetInt32() : 1;
+        var defDesc = defEl.TryGetProperty("description", out var dEl) ? dEl.GetString() : null;
+
+        // 1) ensure env
+        var envRow = await _dal.RowAsync(QRY_ENVIRONMENT.GET_BY_CODE, load, new DbArg("CODE", envCode)).ConfigureAwait(false);
+        long envId;
+        if (envRow == null) {
+            envId = await _dal.ScalarAsync<long>(QRY_ENVIRONMENT.INSERT, load, new DbArg("DISPLAY_NAME", envDisplayName), new DbArg("CODE", envCode)).ConfigureAwait(false);
+        } else {
+            envId = envRow.GetLong("id");
+            await _dal.ExecAsync(QRY_ENVIRONMENT.UPDATE, load, new DbArg("ID", envId), new DbArg("DISPLAY_NAME", envDisplayName), new DbArg("CODE", envCode)).ConfigureAwait(false);
+        }
+
+        // 2) ensure definition
+        var defRow = await _dal.RowAsync(QRY_DEFINITION.GET_BY_PARENT_AND_NAME, load, new DbArg("PARENT_ID", envId), new DbArg("NAME", defName)).ConfigureAwait(false);
+        long defId;
+        if (defRow == null) {
+            defId = await _dal.ScalarAsync<long>(QRY_DEFINITION.INSERT, load, new DbArg("PARENT_ID", envId), new DbArg("DISPLAY_NAME", defName), new DbArg("DESCRIPTION", defDesc)).ConfigureAwait(false);
+        } else {
+            defId = defRow.GetLong("id");
+            await _dal.ExecAsync(QRY_DEFINITION.UPDATE, load, new DbArg("ID", defId), new DbArg("DISPLAY_NAME", defName), new DbArg("DESCRIPTION", defDesc)).ConfigureAwait(false);
+        }
+
+        // 3) upsert def_version (missing GET_BY_PARENT_AND_VERSION in queries.txt, so we use an inline select)
+        const string getDv = @"SELECT * FROM def_version WHERE parent = {PARENT_ID} AND version = {VERSION} LIMIT 1;";
+        var dvRow = await _dal.RowAsync(getDv, load, new DbArg("PARENT_ID", defId), new DbArg("VERSION", defVersion)).ConfigureAwait(false);
+
+        long defVersionId;
+        if (dvRow == null) {
+            defVersionId = await _dal.ScalarAsync<long>(QRY_DEFVERSION.INSERT, load, new DbArg("PARENT_ID", defId), new DbArg("VERSION", defVersion), new DbArg("DATA", definitionJson)).ConfigureAwait(false);
+        } else {
+            defVersionId = dvRow.GetLong("id");
+            await _dal.ExecAsync(QRY_DEFVERSION.UPDATE_DATA, load, new DbArg("ID", defVersionId), new DbArg("DATA", definitionJson)).ConfigureAwait(false);
+        }
+
+        // 4) clean existing graph (transitions -> states -> events)
+        await _dal.ExecAsync(QRY_TRANSITION.DELETE_BY_PARENT, load, new DbArg("PARENT_ID", defVersionId)).ConfigureAwait(false);
+
+        const string delStates = @"DELETE FROM state WHERE def_version = {PARENT_ID};";
+        await _dal.ExecAsync(delStates, load, new DbArg("PARENT_ID", defVersionId)).ConfigureAwait(false);
+
+        await _dal.ExecAsync(QRY_EVENTS.DELETE_BY_PARENT, load, new DbArg("PARENT_ID", defVersionId)).ConfigureAwait(false);
+
+        // 5) insert events first (state.timeout_event FK)
+        var eventCodeToId = new Dictionary<int, long>();
+        if (doc.RootElement.TryGetProperty("events", out var evArr) && evArr.ValueKind == JsonValueKind.Array) {
+            foreach (var ev in evArr.EnumerateArray()) {
+                var name = ev.GetProperty("name").GetString() ?? "";
+                var code = ev.GetProperty("code").GetInt32();
+                var eid = await _dal.ScalarAsync<long>(QRY_EVENTS.INSERT, load, new DbArg("PARENT_ID", defVersionId), new DbArg("DISPLAY_NAME", name), new DbArg("CODE", code)).ConfigureAwait(false);
+                eventCodeToId[code] = eid;
+            }
+        }
+
+        // 6) categories (global), states
+        var stateNameToId = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        if (doc.RootElement.TryGetProperty("states", out var stArr) && stArr.ValueKind == JsonValueKind.Array) {
+            foreach (var st in stArr.EnumerateArray()) {
+                var stateName = st.GetProperty("name").GetString() ?? "";
+                var catName = st.TryGetProperty("category", out var cEl) ? cEl.GetString() : null;
+
+                long? catId = null;
+                if (!string.IsNullOrWhiteSpace(catName)) {
+                    var catRow = await _dal.RowAsync(QRY_CATEGORY.GET_BY_NAME, load, new DbArg("NAME", catName)).ConfigureAwait(false);
+                    catId = catRow?.GetNullableLong("id");
+                    if (catId == null || catId.Value <= 0) catId = await _dal.ScalarAsync<long>(QRY_CATEGORY.INSERT, load, new DbArg("DISPLAY_NAME", catName)).ConfigureAwait(false);
+                }
+
+                var flags = 0;
+                if (st.TryGetProperty("is_initial", out var ii) && ii.ValueKind == JsonValueKind.True) flags |= (int)LifeCycleStateFlag.IsInitial;
+                if (st.TryGetProperty("is_final", out var ifn) && ifn.ValueKind == JsonValueKind.True) flags |= (int)LifeCycleStateFlag.IsFinal;
+                if (st.TryGetProperty("is_system", out var isy) && isy.ValueKind == JsonValueKind.True) flags |= (int)LifeCycleStateFlag.IsSystem;
+                if (st.TryGetProperty("is_error", out var ier) && ier.ValueKind == JsonValueKind.True) flags |= (int)LifeCycleStateFlag.IsError;
+
+                int? timeoutMin = null;
+                if (st.TryGetProperty("timeout", out var toEl) && toEl.ValueKind == JsonValueKind.String) timeoutMin = (int)XmlConvert.ToTimeSpan(toEl.GetString() ?? "").TotalMinutes;
+
+                int? timeoutMode = null;
+                if (st.TryGetProperty("timeout_mode", out var tmEl) && tmEl.ValueKind == JsonValueKind.String) timeoutMode = string.Equals(tmEl.GetString(), "repeat", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+                long? timeoutEventId = null;
+                if (st.TryGetProperty("timeout_event", out var teEl) && teEl.ValueKind == JsonValueKind.Number) {
+                    var code = teEl.GetInt32();
+                    timeoutEventId = eventCodeToId.TryGetValue(code, out var eid) ? eid : null;
+                }
+
+                var timeoutHookCode = st.TryGetProperty("timeout_hook_code", out var thEl) && thEl.ValueKind == JsonValueKind.String ? thEl.GetString() : null;
+
+                int? deadlineMin = null;
+                if (st.TryGetProperty("timeout_deadline", out var tdEl) && tdEl.ValueKind == JsonValueKind.String) deadlineMin = (int)XmlConvert.ToTimeSpan(tdEl.GetString() ?? "").TotalMinutes;
+
+                var sid = await _dal.ScalarAsync<long>(
+                    QRY_STATE.INSERT,
+                    load,
+                    new DbArg("PARENT_ID", defVersionId),
+                    new DbArg("DISPLAY_NAME", stateName),
+                    new DbArg("CATEGORY_ID", catId),
+                    new DbArg("FLAGS", flags),
+                    new DbArg("TIMEOUT_MIN", timeoutMin),
+                    new DbArg("TIMEOUT_MODE", timeoutMode),
+                    new DbArg("TIMEOUT_EVENT", timeoutEventId),
+                    new DbArg("TIMEOUT_NOTE", null),
+                    new DbArg("TIMEOUT_HOOK_CODE", timeoutHookCode),
+                    new DbArg("TIMEOUT_DEADLINE_MIN", deadlineMin),
+                    new DbArg("TIMEOUT_DEADLINE_NOTE", null)
+                ).ConfigureAwait(false);
+
+                stateNameToId[stateName] = sid;
+            }
+        }
+
+        // 7) transitions
+        if (doc.RootElement.TryGetProperty("transitions", out var trArr) && trArr.ValueKind == JsonValueKind.Array) {
+            foreach (var tr in trArr.EnumerateArray()) {
+                var from = tr.GetProperty("from").GetString() ?? "";
+                var to = tr.GetProperty("to").GetString() ?? "";
+                var evCode = tr.GetProperty("event").GetInt32();
+
+                if (!stateNameToId.TryGetValue(from, out var fromId)) continue;
+                if (!stateNameToId.TryGetValue(to, out var toId)) continue;
+                if (!eventCodeToId.TryGetValue(evCode, out var evId)) continue;
+
+                await _dal.ScalarAsync<long>(QRY_TRANSITION.INSERT, load,
+                    new DbArg("PARENT_ID", defVersionId),
+                    new DbArg("FROM_ID", fromId),
+                    new DbArg("TO_ID", toId),
+                    new DbArg("EVENT_ID", evId)
+                ).ConfigureAwait(false);
+            }
+        }
+
+        return defVersionId;
+    }
+
+    public async Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, DbExecutionLoad load = default, CancellationToken ct = default) {
+        if (string.IsNullOrWhiteSpace(policyJson)) throw new ArgumentNullException(nameof(policyJson));
+
+        // ensure env exists (same as definition import)
+        var envRow = await _dal.RowAsync(QRY_ENVIRONMENT.GET_BY_CODE, load, new DbArg("CODE", envCode)).ConfigureAwait(false);
+        long envId;
+        if (envRow == null) envId = await _dal.ScalarAsync<long>(QRY_ENVIRONMENT.INSERT, load, new DbArg("DISPLAY_NAME", envDisplayName), new DbArg("CODE", envCode)).ConfigureAwait(false);
+        else envId = envRow.GetLong("id");
+
+        // policy hash + upsert
+        var hash = ComputeSha256Hex(policyJson);
+        var policyId = await _dal.ScalarAsync<long>(QRY_POLICY.UPSERT_BY_HASH_RETURN_ID, load, new DbArg("HASH", hash), new DbArg("CONTENT", policyJson)).ConfigureAwait(false);
+
+        // attach to definition (policy json includes for.definition)
+        using var doc = JsonDocument.Parse(policyJson);
+        var forEl = doc.RootElement.GetProperty("for");
+        var defName = forEl.GetProperty("definition").GetString() ?? throw new InvalidOperationException("policy.for.definition missing");
+
+        var defRow = await _dal.RowAsync(QRY_DEFINITION.GET_BY_PARENT_AND_NAME, load, new DbArg("PARENT_ID", envId), new DbArg("NAME", defName)).ConfigureAwait(false);
+        if (defRow == null) throw new InvalidOperationException($"Definition not found for policy attach: envCode={envCode}, defName={defName}");
+        var defId = defRow.GetLong("id");
+
+        await _dal.ExecAsync(QRY_POLICY.ATTACH_TO_DEFINITION, load, new DbArg("PARENT_ID", defId), new DbArg("ID", policyId)).ConfigureAwait(false);
+        return policyId;
+    }
+
+    private static string ComputeSha256Hex(string text) {
+        using var sha = SHA256.Create();
+        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(text));
+        var sb = new StringBuilder(bytes.Length * 2);
+        foreach (var b in bytes) sb.Append(b.ToString("x2"));
+        return sb.ToString();
+    }
+}
+
+public sealed class LifeCycleMonitor : IAsyncDisposable {
+    private readonly Func<CancellationToken, Task> _runner;
+    private readonly TimeSpan _interval;
+    private Timer? _timer;
+    private CancellationTokenSource? _cts;
+    private int _running;
+
+    public LifeCycleMonitor(Func<CancellationToken, Task> runner, TimeSpan interval) { _runner = runner ?? throw new ArgumentNullException(nameof(runner)); _interval = interval <= TimeSpan.Zero ? TimeSpan.FromMinutes(2) : interval; }
+
+    public void Start() {
+        if (_timer != null) return;
+        _cts = new CancellationTokenSource();
+        _timer = new Timer(_ => Tick(), null, TimeSpan.Zero, _interval);
+    }
+
+    public void Stop() { _timer?.Dispose(); _timer = null; _cts?.Cancel(); _cts?.Dispose(); _cts = null; }
+
+    public Task RunOnceAsync(CancellationToken ct = default) => _runner(ct);
+
+    public ValueTask DisposeAsync() { Stop(); return ValueTask.CompletedTask; }
+
+    private void Tick() {
+        if (Interlocked.Exchange(ref _running, 1) == 1) return;
+        var ct = _cts?.Token ?? CancellationToken.None;
+
+        _ = Task.Run(async () => {
+            try { await _runner(ct).ConfigureAwait(false); }
+            finally { Interlocked.Exchange(ref _running, 0); }
+        }, ct);
+    }
+}
+
+public abstract class LifeCycleEngineBase : ILifeCycleEngine {
+    public event Func<ILifeCycleEvent, Task>? EventRaised;
+    public event Func<LifeCycleNotice, Task>? NoticeRaised;
+
+    protected Task RaiseEventAsync(ILifeCycleEvent ev) => EventRaised == null ? Task.CompletedTask : EventRaised(ev);
+
+    protected Task RaiseNoticeAsync(LifeCycleNotice n) => NoticeRaised == null ? Task.CompletedTask : NoticeRaised(n);
+
+    public abstract Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default);
+    public abstract Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default);
+    public abstract Task ClearCacheAsync(CancellationToken ct = default);
+    public abstract Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default);
+    public abstract Task InvalidateAsync(long defVersionId, CancellationToken ct = default);
+    public abstract Task RunMonitorOnceAsync(CancellationToken ct = default);
+}
+
+public sealed class WorkFlowEngine : LifeCycleEngineBase, IWorkFlowEngine {
+    private readonly IWorkFlowDAL _dal;
+    private readonly TimeSpan _monitorInterval;
+    private int _started;
+
+    private readonly BlueprintManager _blueprintManager;
+    private readonly StateMachine _stateMachine;
+    private readonly PolicyEnforcer _policyEnforcer;
+    private readonly AckManager _ackManager;
+    private readonly RuntimeEngine _runtime;
+    private readonly BlueprintImporter _importer;
+    private readonly LifeCycleMonitor _monitor;
+
+    public WorkFlowEngine(IWorkFlowDAL dal, TimeSpan? monitorInterval = null) {
+        _dal = dal ?? throw new ArgumentNullException(nameof(dal));
+        _monitorInterval = monitorInterval ?? TimeSpan.FromMinutes(2);
+
+        _blueprintManager = new BlueprintManager(_dal);
+        _stateMachine = new StateMachine(_dal, _blueprintManager);
+        _policyEnforcer = new PolicyEnforcer(_dal);
+        _ackManager = new AckManager(_dal, _blueprintManager);
+        _runtime = new RuntimeEngine(_dal);
+        _importer = new BlueprintImporter(_dal);
+
+        _monitor = new LifeCycleMonitor(async ct => await MonitorCoreAsync(ct).ConfigureAwait(false), _monitorInterval);
+    }
+
+    public IStateMachine StateMachine => _stateMachine;
+    public IBlueprintManager? BlueprintManager => _blueprintManager;
+    public IPolicyEnforcer? PolicyEnforcer => _policyEnforcer;
+    public IAckManager? AckManager => _ackManager;
+    public IRuntimeEngine Runtime => _runtime;
+    public IWorkFlowDAL? Dal => _dal;
+    public IBlueprintImporter Importer => _importer;
+
+    public Task StartAsync(CancellationToken ct = default) {
+        if (Interlocked.Exchange(ref _started, 1) == 1) return Task.CompletedTask;
+        _monitor.Start();
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken ct = default) {
+        if (Interlocked.Exchange(ref _started, 0) == 0) return Task.CompletedTask;
+        _monitor.Stop();
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync() {
+        await StopAsync().ConfigureAwait(false);
+        await _monitor.DisposeAsync().ConfigureAwait(false);
+        if (_dal is IAsyncDisposable ad) await ad.DisposeAsync().ConfigureAwait(false);
+    }
+
+    public override async Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
+        if (req == null) throw new ArgumentNullException(nameof(req));
+
+        try {
+            var bp = await _blueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct).ConfigureAwait(false);
+            var instance = await _stateMachine.EnsureInstanceAsync(bp.DefinitionVersionId, req.ExternalRef, req.Load).ConfigureAwait(false);
+
+            var applied = await _stateMachine.ApplyTransitionAsync(bp, instance, req.EventName, req.RequestId, req.Actor, req.Payload, req.Load).ConfigureAwait(false);
+            var result = new LifeCycleTriggerResult {
+                Applied = applied.Applied,
+                Reason = applied.Reason,
+                InstanceGuid = applied.InstanceGuid,
+                ExternalRef = applied.ExternalRef,
+                LifeCycleId = applied.LifeCycleId
+            };
+
+            if (!applied.Applied) {
+                if (string.Equals(applied.Reason, "No-op (already applied)", StringComparison.OrdinalIgnoreCase))
+                    await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.NoOpAlreadyInState, Message = applied.Reason ?? "" }).ConfigureAwait(false);
+                else
+                    await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.TransitionSuppressed, Message = applied.Reason ?? "" }).ConfigureAwait(false);
+
+                return result;
+            }
+
+            var instanceId = applied.InstanceId;
+
+            // policy
+            var policy = await _policyEnforcer.ResolvePolicyAsync(bp, instance, applied, req.Load).ConfigureAwait(false);
+            if (policy.PolicyId.HasValue && policy.PolicyId.Value > 0) await _dal.Instance.SetPolicyAsync(instanceId, policy.PolicyId.Value, req.Load).ConfigureAwait(false);
+
+            // transition ack + dispatch
+            var transitionConsumers = await _ackManager.GetTransitionConsumersAsync(bp.DefinitionVersionId, instanceId, ct).ConfigureAwait(false);
+            var transitionAckGuid = "";
+            if (req.AckRequired && transitionConsumers.Count > 0) {
+                var ackRef = await _ackManager.CreateLifecycleAckAsync(applied.LifeCycleId, transitionConsumers, (int)AckStatus.Pending, req.Load).ConfigureAwait(false);
+                transitionAckGuid = ackRef.AckGuid;
+                result.LifeCycleAckGuids.Add(transitionAckGuid);
+            } else if (req.AckRequired && transitionConsumers.Count == 0) {
+                await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.MissingConsumerMapping, Message = "No transition consumers mapped." }).ConfigureAwait(false);
+            }
+
+            foreach (var consumer in transitionConsumers.DefaultIfEmpty(0)) {
+                var te = new TransitionEvent {
+                    ConsumerId = consumer,
+                    InstanceId = instanceId,
+                    DefinitionVersionId = bp.DefinitionVersionId,
+                    ExternalRef = req.ExternalRef,
+                    RequestId = req.RequestId,
+                    OccurredAt = DateTimeOffset.UtcNow,
+                    AckGuid = transitionAckGuid,
+                    AckRequired = req.AckRequired && transitionConsumers.Count > 0,
+                    Payload = req.Payload,
+
+                    LifeCycleId = applied.LifeCycleId,
+                    FromStateId = applied.FromStateId,
+                    ToStateId = applied.ToStateId,
+                    EventId = applied.EventId,
+                    EventCode = applied.EventCode,
+                    EventName = applied.EventName ?? "",
+                    PolicyId = policy.PolicyId,
+                    PolicyHash = policy.Hash,
+                    PolicyJson = policy.Json
+                };
+
+                await RaiseEventAsync(te).ConfigureAwait(false);
+            }
+
+            // hooks
+            var hooks = await _policyEnforcer.EmitHooksAsync(bp, instance, applied, req.Load).ConfigureAwait(false);
+            foreach (var h in hooks) {
+                var hookConsumers = await _ackManager.GetHookConsumersAsync(bp.DefinitionVersionId, instanceId, h.HookCode, ct).ConfigureAwait(false);
+                var hookAckGuid = "";
+
+                if (req.AckRequired && hookConsumers.Count > 0) {
+                    var ackRef = await _ackManager.CreateHookAckAsync(h.HookId, hookConsumers, (int)AckStatus.Pending, req.Load).ConfigureAwait(false);
+                    hookAckGuid = ackRef.AckGuid;
+                    result.HookAckGuids.Add(hookAckGuid);
+                } else if (req.AckRequired && hookConsumers.Count == 0) {
+                    await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.MissingConsumerMapping, Message = $"No hook consumers mapped. hook={h.HookCode}" }).ConfigureAwait(false);
+                }
+
+                foreach (var consumer in hookConsumers.DefaultIfEmpty(0)) {
+                    var he = new HookEvent {
+                        ConsumerId = consumer,
+                        InstanceId = instanceId,
+                        DefinitionVersionId = bp.DefinitionVersionId,
+                        ExternalRef = req.ExternalRef,
+                        RequestId = req.RequestId,
+                        OccurredAt = DateTimeOffset.UtcNow,
+                        AckGuid = hookAckGuid,
+                        AckRequired = req.AckRequired && hookConsumers.Count > 0,
+
+                        HookId = h.HookId,
+                        StateId = h.StateId,
+                        OnEntry = h.OnEntry,
+                        HookCode = h.HookCode,
+                        OnSuccessEvent = h.OnSuccessEvent,
+                        OnFailureEvent = h.OnFailureEvent,
+                        NotBefore = h.NotBefore,
+                        Deadline = h.Deadline,
+
+                        Payload = h.Payload // ephemeral only
+                    };
+
+                    await RaiseEventAsync(he).ConfigureAwait(false);
+                }
+            }
+
+            return result;
+        }
+        catch (Exception ex) {
+            await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.Error, Message = ex.Message, Exception = ex }).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public override async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
+        try { await _ackManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, default).ConfigureAwait(false); }
+        catch (Exception ex) { await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.Error, Message = ex.Message, Exception = ex }).ConfigureAwait(false); throw; }
+    }
+
+    public override Task ClearCacheAsync(CancellationToken ct = default) { _blueprintManager.Clear(); return Task.CompletedTask; }
+
+    public override Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { _blueprintManager.Invalidate(envCode, defName); return Task.CompletedTask; }
+
+    public override Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { _blueprintManager.Invalidate(defVersionId); return Task.CompletedTask; }
+
+    public override Task RunMonitorOnceAsync(CancellationToken ct = default) => _monitor.RunOnceAsync(ct);
+
+    private async Task MonitorCoreAsync(CancellationToken ct) {
+        // This monitor focuses on ACK dispatch (your v0.2 priority).
+        // Stale/timeout states need an explicit query; left as TODO stub.
+
+        try {
+            if (_ackManager.ListConsumersAsync == null) {
+                await RaiseNoticeAsync(new LifeCycleNotice { Kind = NoticeKind.MonitorSkipped, Message = "Monitor: ListConsumersAsync not configured (no consumers to scan)." }).ConfigureAwait(false);
+                return;
+            }
+
+            var consumers = await _ackManager.ListConsumersAsync(ct).ConfigureAwait(false);
+            if (consumers == null || consumers.Count == 0) return;
+
+            var olderThan = DateTime.UtcNow;
+            const int take = 200;
+
+            foreach (var consumerId in consumers) {
+                // lifecycle dispatch
+                var lc = await _ackManager.ListPendingLifecycleDispatchAsync(consumerId, (int)AckStatus.Pending, olderThan, 0, take).ConfigureAwait(false);
+                foreach (var item in lc) await DispatchItemAsync(item).ConfigureAwait(false);
+
+                // hook dispatch
+                var hk = await _ackManager.ListPendingHookDispatchAsync(consumerId, (int)AckStatus.Pending, olderThan, 0, take).ConfigureAwait(false);
+                foreach (

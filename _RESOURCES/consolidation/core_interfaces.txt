@@ -50,46 +50,6 @@
         DbExecutionLoad load = default);
 }
 
- public interface ILifeCycleEvent {
-     LifeCycleEventKind Kind { get; }
-     long InstanceId { get; }
-     long DefinitionVersionId { get; }
-     string ExternalRef { get; }
-     string? RequestId { get; }
-     DateTimeOffset OccurredAt { get; }
-     string AckGuid { get; }         //String GUID
-     bool AckRequired { get; }
-     IReadOnlyDictionary<string, object?>? Payload { get; }
- }
- 
- public interface ILifeCycleHookEvent : ILifeCycleEvent {
-     long HookId { get; }
-     long StateId { get; }
-     bool OnEntry { get; }
-     string HookCode { get; }          // emit.event from policy json
-     string? OnSuccessEvent { get; }   // emit.complete.success
-     string? OnFailureEvent { get; }   // emit.complete.failure
-     DateTimeOffset? NotBefore { get; }
-     DateTimeOffset? Deadline { get; }
- }
-
-
- public interface ILifeCycleTransitionEvent : ILifeCycleEvent {
-     long LifeCycleId { get; }
-     long FromStateId { get; }
-     long ToStateId { get; }
-     long EventId { get; }
-     int EventCode { get; }
-     string EventName { get; }
-     IReadOnlyDictionary<string, object?>? PrevStateMeta { get; }
-
-     // policy attached to this transition/state (full json content)
-     long? PolicyId { get; }
-     string? PolicyHash { get; }
-     string? PolicyJson { get; }
- }
-
-
  public interface IWorkFlowEngine : ILifeCycleEngine, IAsyncDisposable {
      IStateMachine StateMachine { get; }                 // MUST exist (minimum engine)
      IBlueprintManager? BlueprintManager { get; }        // optional

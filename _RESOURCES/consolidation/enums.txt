@@ -1,41 +1,49 @@
-public enum LifeCycleAckOutcome { 
-    Success, 
-    Failure, 
-    Retry 
-}
- public enum LifeCycleEventKind { 
-     Transition, 
-     Hook, 
-     Notice 
+ public enum AckOutcome { 
+     Delivered = 1, 
+     Processed = 2, 
+     Failed = 3, 
+     Retry = 4 
  }
 
- [Flags]
-public enum LifeCycleInstanceFlag : int {
-    None = 0,
-    Active = 1 << 0,
-    Suspended = 1 << 1,
-    Completed = 1 << 2,
-    Failed = 1 << 3,
-    Archived = 1 << 4
-}
+  public enum AckStatus {
+     Pending =1,
+     Delivered=2,
+     Processed=3,
+     Failed=4
+ }
 
-public enum LifeCycleNoticeKind {
-    None = 0,
-    DuplicateRequest = 1,          // same RequestId / idempotency key already processed
-    NoOpAlreadyInState = 2,        // event valid, but results in no state change
-    TransitionSuppressed = 3,      // policy/rule suppressed raising transition / side effects
-    ReplayedFromStore = 4,         // you served prior result from DB/logs
-    InvalidRequest = 5,            // missing fields, bad event code, etc. (not exception)
-    Rejected = 6,                  
-    RateLimited = 7,               
-}
+ 
+    public enum LifeCycleDispatchKind { 
+       Lifecycle = 1, 
+       Hook = 2 
+   }
 
-[Flags]
-public enum LifeCycleStateFlag : int {
-    None =0,
-    IsInitial = 1 << 0, //1
-    IsFinal = 1 << 1, //2
-    IsSystem = 1 << 2, //4
-    IsError = 1 << 3 //8
-}
+       public enum LifeCycleEventKind { 
+        Transition, 
+        Hook
+    }
 
+     [Flags]
+ public enum LifeCycleInstanceFlag : int {
+     None = 0,
+     Active = 1 << 0,
+     Suspended = 1 << 1,
+     Completed = 1 << 2,
+     Failed = 1 << 3,
+     Archived = 1 << 4
+ }
+
+     public enum LifeCycleNoticeKind { 
+        Error = 1, 
+        Warning = 2, 
+        Info = 3 
+    }
+
+      [Flags]
+  public enum LifeCycleStateFlag : int {
+      None =0,
+      IsInitial = 1 << 0, //1
+      IsFinal = 1 << 1, //2
+      IsSystem = 1 << 2, //4
+      IsError = 1 << 3 //8
+  }
