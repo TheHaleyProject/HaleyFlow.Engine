@@ -288,6 +288,4 @@ namespace Haley.Services {
             return list.Count == 0 ? new long[] { defaultConsumerId } : list;
         }
     }
-
-
 }

@@ -154,7 +154,7 @@ namespace Haley.Services {
                 var catName = TryString(s, "category");
                 var catId = (!string.IsNullOrWhiteSpace(catName) && categoryMap.TryGetValue(N(catName!), out var cid)) ? cid : 0;
 
-                var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, timeoutMinutes, (uint)timeoutEventId, timeoutMode, load);
+                var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, timeoutMinutes, (uint)timeoutMode, timeoutEventId, load);
 
                 map[key] = new StateDef {
                     Id = id,
