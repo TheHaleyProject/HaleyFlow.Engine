@@ -51,7 +51,7 @@ namespace Haley.Internal {
             }
 
             try {
-                return await Db.ScalarAsync<long>(QRY_DEFVERSION.INSERT, load, (PARENT_ID, definitionId), (VERSION, version), (DATA, data));
+                return await Db.ScalarAsync<long>(QRY_DEFVERSION.INSERT, load, (PARENT_ID, definitionId), (VERSION, version), (DATA, data),(HASH,hash));
             } catch {
                 var rows = await Db.RowsAsync(QRY_DEFVERSION.LIST_BY_PARENT, load, (PARENT_ID, definitionId));
                 foreach (var r in rows) if (r.GetInt("version") == version) return r.GetLong("id");
