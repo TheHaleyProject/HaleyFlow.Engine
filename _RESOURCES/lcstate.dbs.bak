@@ -28,13 +28,12 @@
 			</column>
 			<column name="ack_id" type="BIGINT" mandatory="y" />
 			<column name="status" prior="ack_status" type="INT" mandatory="y" >
-				<defo><![CDATA[0]]></defo>
+				<defo><![CDATA[1]]></defo>
 				<comment><![CDATA[Flag:
-Pending = 0,
-Delivered = 1, 
-Processed = 2, 
-Failed = 3, 
-Retry = 4]]></comment>
+    Pending =1,
+    Delivered=2,
+    Processed=3,
+    Failed=4]]></comment>
 			</column>
 			<column name="last_retry" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>

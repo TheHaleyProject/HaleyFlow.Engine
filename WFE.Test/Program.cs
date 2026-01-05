@@ -46,28 +46,18 @@ Dictionary<string, int> HookAutoResponses = new(StringComparer.OrdinalIgnoreCase
 // -------------------------
 // 1) Create DAL (YOU FILL THIS)
 // -------------------------
-// You said: DB exists, AdapterGateway already has a key assigned.
-// So create your concrete IWorkFlowDAL here.
-//
-// Example (pseudo):
-//   var agw = new AdapterGateway { LogQueryInConsole = true };
-//   agw.SetAdapterKey("your-key"); // whatever your gateway uses
-//   var dal = new WorkflowDAL(agw, key: "your-key", logger: yourLogger);
-//
-// Must return an object implementing IWorkFlowDAL.
-IWorkFlowDAL dal = CreateDalOrThrow();
+IWorkFlowDAL dal = await CreateDalOrThrow();
 
 // -------------------------
 // 2) Build engine (BlueprintImporter is REQUIRED in options)
 // -------------------------
-var importer = new BlueprintImporter(dal);
+
 var opt = new WorkFlowEngineOptions {
     DefaultConsumerId = ConsumerId,
     MonitorInterval = TimeSpan.FromSeconds(10),
     MonitorPageSize = 200,
 
     // IMPORTANT: WorkFlowEngine constructor throws if BlueprintImporter is null
-    BlueprintImporter = importer,
     MonitorConsumers = new long[] { ConsumerId }
 };
 
@@ -138,10 +128,10 @@ const string DefName = "VendorRegistration";
 // So we inject defName (safe: PolicyEnforcer uses "routes", and ignores extra fields).
 polJson = EnsurePolicyHasDefName(polJson, DefName);
 
-var defVersionId = await importer.ImportDefinitionJsonAsync(EnvCode, EnvDisplayName, defJson, cts.Token);
+var defVersionId = await engine.BlueprintImporter.ImportDefinitionJsonAsync(EnvCode, EnvDisplayName, defJson, cts.Token);
 Console.WriteLine($"Imported definition: defVersionId={defVersionId}");
 
-var policyId = await importer.ImportPolicyJsonAsync(EnvCode, EnvDisplayName, polJson, cts.Token);
+var policyId = await engine.BlueprintImporter.ImportPolicyJsonAsync(EnvCode, EnvDisplayName, polJson, cts.Token);
 Console.WriteLine($"Imported/attached policy: policyId={policyId}");
 
 // Invalidate blueprint cache so latest import is used immediately
@@ -238,6 +228,11 @@ static string EnsurePolicyHasDefName(string policyJson, string defName) {
 
 // YOU implement this to return your concrete DAL.
 // Keep it throwing so you don't accidentally run with null.
-static IWorkFlowDAL CreateDalOrThrow() {
-    throw new NotImplementedException("Create and return your concrete IWorkFlowDAL here (e.g., WorkflowDAL).");
+static async Task<IWorkFlowDAL> CreateDalOrThrow() {
+    var constring = $"server=127.0.0.1;port=4307;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
+    //var response = await LifeCycleInitializer.InitializeAsync(new AdapterGateway(), "lcstate");
+    var agw = new AdapterGateway() { LogQueryInConsole = true };
+    var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, constring);
+    if (!response.Status) throw new ArgumentException("Unable to initialize the database for the lifecycle state machine");
+    return new MariaWorkFlowDAL(agw, response.Result);
 }

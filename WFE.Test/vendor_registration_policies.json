@@ -1,0 +1,23 @@
+{
+  "policy_name": "vendorregistration.policy",
+  "for": { "definition": "vendorregistration", "version": 1 },
+  "policies": [
+    { "code": "POL.REG.CHECK.REGISTERED" },
+    { "code": "POL.REG.CHECK.RECENT" },
+    { "code": "POL.REG.PQ.VALIDATE", "params": { "approval": { "rule": "any", "selector": { "mode": "role", "value": "procurement" } } } },
+    { "code": "POL.REG.CREATE.VENDOR" }
+  ],
+  "routes": [
+    { "state": "CheckVendorRegistered", "policy": "POL.REG.CHECK.REGISTERED", "emit": [ { "event": "APP.REG.CHECK.VENDOR_REGISTERED", "complete": { "success": 1001, "failure": 1002 } } ] },
+    { "state": "CheckRecentSubmission", "policy": "POL.REG.CHECK.RECENT", "emit": [ { "event": "APP.REG.CHECK.RECENT_SUBMISSION", "complete": { "success": 1003, "failure": 1004 } } ] },
+
+    { "state": "RequestAccepted", "auto": [ { "event": 1005 } ] },
+
+    { "state": "PendingPQValidation", "policy": "POL.REG.PQ.VALIDATE", "emit": [ { "event": "APP.REG.PQ.VALIDATION.REQUIRED", "complete": { "success": 1006, "failure": 1008 } } ] },
+
+    { "state": "Overdue", "via": 1010, "emit": [ { "event": "APP.REG.PQ.OVERDUE.ENTER" } ] },
+    { "state": "Overdue", "via": 1011, "emit": [ { "event": "APP.REG.PQ.OVERDUE.REMIND" } ] },
+
+    { "state": "VendorCreation", "policy": "POL.REG.CREATE.VENDOR", "emit": [ { "event": "APP.REG.VENDOR_CREATE", "complete": { "success": 1007 } } ] }
+  ]
+}

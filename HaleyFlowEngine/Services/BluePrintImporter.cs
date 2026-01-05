@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 using System.Xml;
 
 namespace Haley.Services {
-    public sealed class BlueprintImporter : IBlueprintImporter {
+    internal sealed class BlueprintImporter : IBlueprintImporter {
         private readonly IWorkFlowDAL _dal;
         public BlueprintImporter(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
         public async Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default) {
@@ -43,8 +43,8 @@ namespace Haley.Services {
                 var defId = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName, defDesc, load);
 
                 var nextVer = await _dal.Blueprint.GetNextDefVersionNumberByEnvCodeAndDefNameAsync(envCode, defName, load) ?? 1;
-                var verToUse = requestedVer > 0 ? requestedVer : nextVer;
-                if (requestedVer > 0 && requestedVer != nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected.");
+                var verToUse = requestedVer > 0 ? requestedVer : nextVer; //If version is not specified in the json, then automatically, next available version is accepted.
+                if (requestedVer > 0 && requestedVer < nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected. Requested version should either be equal to or greater than the next available version. Leave version empty in the json to automatically assign the version.");
 
                 var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, definitionJson, load);
 

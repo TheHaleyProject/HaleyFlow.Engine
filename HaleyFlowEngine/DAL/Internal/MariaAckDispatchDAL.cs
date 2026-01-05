@@ -7,7 +7,7 @@ namespace Haley.Internal {
         public MariaAckDispatchDAL(IWorkFlowDALUtil db) : base(db) { }
 
         public Task<DbRows> ListPendingLifecycleReadyPagedAsync(long consumer, int status, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default)
-            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_LC_READY_PAGED, load, (ACK_STATUS, status), (OLDER_THAN, utcOlderThan), (SKIP, skip), (TAKE, take));
+            => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_LC_READY_PAGED, load, (CONSUMER_ID,consumer), (ACK_STATUS, status), (OLDER_THAN, utcOlderThan), (SKIP, skip), (TAKE, take));
 
         public Task<DbRows> ListPendingHookReadyPagedAsync(long consumer, int status, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_ACK_DISPATCH.LIST_PENDING_HOOK_READY_PAGED, load, (ACK_STATUS, status), (OLDER_THAN, utcOlderThan), (SKIP, skip), (TAKE, take));

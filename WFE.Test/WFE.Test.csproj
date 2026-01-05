@@ -41,10 +41,14 @@
 
   <ItemGroup>
     <None Remove="vendor_registration.json" />
+    <None Remove="vendor_registration_policies.json" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="vendor_registration.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="vendor_registration_policies.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

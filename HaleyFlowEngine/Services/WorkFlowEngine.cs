@@ -214,6 +214,11 @@ namespace Haley.Services {
             await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, new DbExecutionLoad(ct));
         }
 
+        public async Task<string?> GetTimelineJsonAsync(long instanceId, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(instanceId, new DbExecutionLoad(ct));
+        }
+
         public Task ClearCacheAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Clear(); return Task.CompletedTask; }
 
         public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(envCode, defName); return Task.CompletedTask; }
