@@ -16,6 +16,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
+using Haley.Utils;
 
 namespace Haley.Services {
     internal sealed class BlueprintImporter : IBlueprintImporter {
@@ -33,6 +34,8 @@ namespace Haley.Services {
             var defDesc = TryString(defNode, "description");
             var requestedVer = TryInt(defNode, "version") ?? 0;
 
+
+
             var transaction = _dal.CreateNewTransaction();
             using var tx = transaction.Begin(false);
             var load = new DbExecutionLoad(ct, transaction);
@@ -42,11 +45,20 @@ namespace Haley.Services {
                 var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
                 var defId = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName, defDesc, load);
 
+                //Check if the definition has the version json already with the hash.
+                var defHash = root.BuildDefinitionHashMaterial().CreateGUID(HashMethod.Sha256).ToString();
+                var existing = await _dal.Blueprint.GetDefVersionByParentAndHashAsync(defId, defHash, load);
+                if (existing != null) {
+                    tx.Commit();
+                    committed = true;
+                    return existing.GetLong("id"); //Definition version already exists with the same hash. Return existing version id.
+                }
+
                 var nextVer = await _dal.Blueprint.GetNextDefVersionNumberByEnvCodeAndDefNameAsync(envCode, defName, load) ?? 1;
                 var verToUse = requestedVer > 0 ? requestedVer : nextVer; //If version is not specified in the json, then automatically, next available version is accepted.
                 if (requestedVer > 0 && requestedVer < nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected. Requested version should either be equal to or greater than the next available version. Leave version empty in the json to automatically assign the version.");
 
-                var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, definitionJson, load);
+                var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, definitionJson, defHash, load);
 
                 var categoryMap = await ImportCategoriesFromStatesAsync(root, load);
                 var eventsByCode = await ImportEventsAsync(defVersionId, root, load);
@@ -80,8 +92,11 @@ namespace Haley.Services {
                 var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
                 _ = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName!, description: null, load);
 
-                var hash = Hash48(policyJson);
-                var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyJson, load);
+                var policyHashmaterial = root.BuildPolicyHashMaterial(); //take only relevant blocks.
+                var hash = policyHashmaterial.CreateGUID(HashMethod.Sha256).ToString();
+                var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
+
+                //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
 
                 await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);
 
@@ -232,13 +247,5 @@ namespace Haley.Services {
             if (v.ValueKind == JsonValueKind.String && bool.TryParse(v.GetString(), out var b)) return b;
             return null;
         }
-
-        private static string Hash48(string input) {
-            using var sha = SHA256.Create();
-            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input ?? string.Empty));
-            var hex = BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
-            return hex.Length <= 48 ? hex : hex.Substring(0, 48);
-        }
     }
-
 }

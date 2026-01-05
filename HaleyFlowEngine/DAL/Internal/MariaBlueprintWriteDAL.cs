@@ -42,7 +42,7 @@ namespace Haley.Internal {
             }
         }
 
-        public async Task<long> InsertDefVersionAsync(int definitionId, int version, string data, DbExecutionLoad load = default) {
+        public async Task<long> InsertDefVersionAsync(int definitionId, int version, string data, string hash, DbExecutionLoad load = default) {
             var exists = await Db.ScalarAsync<int?>(QRY_DEFVERSION.EXISTS_BY_PARENT_AND_VERSION, load, (PARENT_ID, definitionId), (VERSION, version));
             if (exists.HasValue) {
                 var rows = await Db.RowsAsync(QRY_DEFVERSION.LIST_BY_PARENT, load, (PARENT_ID, definitionId));
@@ -135,6 +135,7 @@ namespace Haley.Internal {
                 var row = await Db.RowAsync(QRY_POLICY.GET_BY_HASH, load, (HASH, hash));
                 if (row == null) throw new InvalidOperationException($"policy not found after EXISTS. hash={hash}");
                 var id = row.GetLong("id");
+                //At this point, it is more than enough to return the id.. But, we are also comparing if the content is same.. if not, we update it. todo: check if we really need to do this or not..
                 var old = row.GetString("content");
                 if (!string.Equals(old, content, StringComparison.Ordinal)) await Db.ExecAsync(QRY_POLICY.UPDATE_CONTENT, load, (ID, id), (CONTENT, content));
                 return id;

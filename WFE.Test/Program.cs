@@ -229,7 +229,7 @@ static string EnsurePolicyHasDefName(string policyJson, string defName) {
 // YOU implement this to return your concrete DAL.
 // Keep it throwing so you don't accidentally run with null.
 static async Task<IWorkFlowDAL> CreateDalOrThrow() {
-    var constring = $"server=127.0.0.1;port=4307;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
+    var constring = $"server=127.0.0.1;port=3306;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
     //var response = await LifeCycleInitializer.InitializeAsync(new AdapterGateway(), "lcstate");
     var agw = new AdapterGateway() { LogQueryInConsole = true };
     var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, constring);
