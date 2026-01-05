@@ -128,6 +128,7 @@ const string DefName = "VendorRegistration";
 // So we inject defName (safe: PolicyEnforcer uses "routes", and ignores extra fields).
 polJson = EnsurePolicyHasDefName(polJson, DefName);
 
+//Rememer, we can either import definition/policy if the json is present or we can just read the latest defversion/policy info from the db
 var defVersionId = await engine.BlueprintImporter.ImportDefinitionJsonAsync(EnvCode, EnvDisplayName, defJson, cts.Token);
 Console.WriteLine($"Imported definition: defVersionId={defVersionId}");
 

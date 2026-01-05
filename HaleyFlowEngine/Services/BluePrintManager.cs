@@ -19,7 +19,7 @@ namespace Haley.Services {
 
         public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            var key = $"{envCode}:{(defName ?? string.Empty).Trim().ToLowerInvariant()}";
+            var key = $"{envCode}:{(defName ?? string.Empty).N()}";
             var lazy = _latestDefVersion.GetOrAdd(key, _ => new Lazy<Task<DbRow>>(() => LoadLatestDefVersionAsync(envCode, defName)));
             return AwaitCachedAsync(_latestDefVersion, key, lazy.Value, ct);
         }
@@ -45,7 +45,7 @@ namespace Haley.Services {
 
         public void Clear() { _latestDefVersion.Clear(); _blueprintsByVer.Clear(); }
 
-        public void Invalidate(int envCode, string defName) { _latestDefVersion.TryRemove($"{envCode}:{(defName ?? string.Empty).Trim().ToLowerInvariant()}", out _); }
+        public void Invalidate(int envCode, string defName) { _latestDefVersion.TryRemove($"{envCode}:{(defName ?? string.Empty).N()}", out _); }
 
         public void Invalidate(long defVersionId) { _blueprintsByVer.TryRemove(defVersionId, out _); }
 
