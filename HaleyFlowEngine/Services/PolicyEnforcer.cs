@@ -25,6 +25,7 @@ namespace Haley.Services {
             var pr = new PolicyResolution();
             if (!applied.Applied) return pr;
 
+            //Get either the latest policy or the policy id provided (not for the to state)
             var pol = await _dal.Blueprint.GetPolicyForStateAsync(bp.DefinitionId, applied.ToStateId, load);
             if (pol == null) return pr;
 
