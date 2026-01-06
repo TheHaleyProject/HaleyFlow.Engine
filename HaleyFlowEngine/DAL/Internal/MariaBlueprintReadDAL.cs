@@ -45,8 +45,11 @@ namespace Haley.Internal {
         public Task<DbRow?> GetPolicyByHashAsync(string hash, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_POLICY.GET_BY_HASH, load, (HASH, hash));
 
-        public Task<DbRow?> GetPolicyForStateAsync(long definitionId, long stateId, DbExecutionLoad load = default)
-            => Db.RowAsync(QRY_POLICY.GET_POLICY_FOR_STATE, load, (PARENT_ID, definitionId), (STATE_ID, stateId)); // you said this is correct
+        public Task<DbRow?> GetPolicyForDefinition(long definitionId, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_POLICY.GET_POLICY_FOR_DEFINITION, load, (PARENT_ID, definitionId)); // you said this is correct
+
+        public Task<DbRow?> GetPolicyForDefVersion(long defVersionId, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_POLICY.GET_POLICY_FOR_DEFVERSION, load, (ID, defVersionId)); // you said this is correct
 
         public Task<DbRow?> GetDefVersionByParentAndHashAsync(int definitionId, string hash, DbExecutionLoad load = default) => Db.RowAsync(QRY_DEFVERSION.GET_BY_PARENT_AND_HASH, load, (PARENT_ID,definitionId),(HASH,hash));
     }

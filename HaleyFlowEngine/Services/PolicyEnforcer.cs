@@ -23,10 +23,21 @@ namespace Haley.Services {
         public async Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             var pr = new PolicyResolution();
-            if (!applied.Applied) return pr;
+            if (!applied.Applied) return pr; //Applied is nothing but was policy already applied for this transition or not.. 
+            return await ResolvePolicyAsync(bp.DefinitionId, load);
+        }
+        public async Task<PolicyResolution> ResolvePolicyByIdAsync(long policyId, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return PreparePolicyResolution(await _dal.Blueprint.GetPolicyByIdAsync(policyId, load));
+        }
 
-            //Get either the latest policy or the policy id provided (not for the to state)
-            var pol = await _dal.Blueprint.GetPolicyForStateAsync(bp.DefinitionId, applied.ToStateId, load);
+        public async Task<PolicyResolution> ResolvePolicyAsync(long definitionId, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return PreparePolicyResolution(await _dal.Blueprint.GetPolicyForDefinition(definitionId, load));
+        }
+
+        PolicyResolution PreparePolicyResolution(DbRow? pol) {
+            var pr = new PolicyResolution();
             if (pol == null) return pr;
 
             pr.PolicyId = pol.GetNullableLong("id");
@@ -39,7 +50,7 @@ namespace Haley.Services {
             load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
 
-            var pol = await _dal.Blueprint.GetPolicyForStateAsync(bp.DefinitionId, applied.ToStateId, load);
+            var pol = await _dal.Blueprint.GetPolicyForDefinition(bp.DefinitionId ,load);
             var policyJson = pol?.GetString("content");
             if (string.IsNullOrWhiteSpace(policyJson)) return Array.Empty<ILifeCycleHookEmission>();
 

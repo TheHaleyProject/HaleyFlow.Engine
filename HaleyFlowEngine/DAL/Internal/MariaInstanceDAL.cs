@@ -15,9 +15,12 @@ namespace Haley.Internal {
         public Task<long?> GetIdByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default)
             => Db.ScalarAsync<long?>(QRY_INSTANCE.GET_ID_BY_PARENT_AND_EXTERNAL_REF, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef));
 
-        public Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default)
-            => Db.ScalarAsync<string?>(QRY_INSTANCE.UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef), (STATE_ID, currentStateId), (EVENT_ID, lastEventId), (POLICY_ID, policyId), (FLAGS, flags));
-
+        public async Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default) {
+            var exists = await Db.ScalarAsync<string?>(QRY_INSTANCE.GET_GUID_BY_PARENT_AND_EXTERNAL_REF, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef));
+            if (!string.IsNullOrWhiteSpace(exists)) return exists;
+            return await Db.ScalarAsync<string?>(QRY_INSTANCE.INSERT, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef), (STATE_ID, currentStateId), (EVENT_ID, lastEventId), (POLICY_ID, policyId), (FLAGS, flags));
+        }
+        
         public Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.UPDATE_CURRENT_STATE_CAS, load, (ID, instanceId), (FROM_ID, expectedFromStateId), (TO_ID, newToStateId), (EVENT_ID, lastEventId));
 

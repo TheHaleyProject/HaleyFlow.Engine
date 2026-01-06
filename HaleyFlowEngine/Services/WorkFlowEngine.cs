@@ -4,10 +4,11 @@ using Haley.Models;
 using Haley.Utils;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Tracing;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 
 namespace Haley.Services {
 
@@ -84,7 +85,10 @@ namespace Haley.Services {
             PolicyResolution pr = null!;
 
             try {
-                instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, load);
+                //Before generating the instance, check if policy is needed to be attached. This can be found out from definition version and it's latest policy.. (we always focus on the latest policy for the definition)
+                //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
+                var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); 
+                instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
                 applied = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
 
                 var result = new LifeCycleTriggerResult {
@@ -100,18 +104,22 @@ namespace Haley.Services {
                 };
 
                 // Even if transition not applied, instance may have been created/ensured -> commit that.
+                //Meaning, our goal was only to create an instance or just to ensure this exists.. not to make any transition at all. Like this is the first step.
                 if (!applied.Applied) {
-                    transaction.Commit();
+                    transaction.Commit(); 
                     committed = true;
                     return result;
                 }
 
                 var instanceId = result.InstanceId;
-
-                // Resolve policy (optional attach)
-                pr = await PolicyEnforcer.ResolvePolicyAsync(bp, instance, applied, load) ?? new PolicyResolution();
-                if (pr.PolicyId.HasValue) await _dal.Instance.SetPolicyAsync(instanceId, pr.PolicyId.Value, load);
-
+                // See.. We have the instance created or ensured above. Now, we need to make sure that the policy is also resolved and sent back to the caller. Because, caller might need to know which policy is attached to this instance.
+                // We should never take the latest policy here.. Because the instance might have been created several days back and at that time, the latest policy was something else. So, we need to get the policy that is attached to this instance.
+                
+                var pid = instance.GetLong("policy_id");
+                if (pid > 0) {
+                    pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
+                }
+               
                 // Transition consumers
                 var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, instanceId, ct);
                 var normTransitionConsumers = NormalizeConsumers(transitionConsumers, _opt.DefaultConsumerId);
@@ -124,30 +132,30 @@ namespace Haley.Services {
                     lcAckGuids.Add(lcAckGuid);
                 }
 
+                var lcEvent = new LifeCycleEvent() {
+                    InstanceGuid = result.InstanceGuid,
+                    DefinitionVersionId = bp.DefVersionId,
+                    ExternalRef = req.ExternalRef,
+                    RequestId = req.RequestId,
+                    OccurredAt = DateTimeOffset.UtcNow,
+                    AckGuid = lcAckGuid,
+                    AckRequired = req.AckRequired,
+                    Payload = req.Payload,
+                };
+
                 // Build transition events (dispatch after commit)
                 for (var i = 0; i < normTransitionConsumers.Count; i++) {
                     var consumerId = normTransitionConsumers[i];
-                    toDispatch.Add(new LifeCycleTransitionEvent {
-                        ConsumerId = consumerId,
-                        InstanceId = instanceId,
-                        DefinitionVersionId = bp.DefVersionId,
-                        ExternalRef = req.ExternalRef,
-                        RequestId = req.RequestId,
-                        OccurredAt = DateTimeOffset.UtcNow,
-                        AckGuid = lcAckGuid,
-                        AckRequired = req.AckRequired,
-                        Payload = req.Payload,
-                        LifeCycleId = applied.LifeCycleId.Value,
-                        FromStateId = applied.FromStateId,
-                        ToStateId = applied.ToStateId,
-                        EventId = applied.EventId,
-                        EventCode = applied.EventCode,
-                        EventName = applied.EventName ?? string.Empty,
-                        PrevStateMeta = new Dictionary<string, object>(),
-                        PolicyId = pr.PolicyId,
-                        PolicyHash = pr.PolicyHash ?? string.Empty,
-                        PolicyJson = pr.PolicyJson ?? string.Empty
-                    });
+                    var transitionEvent = LifeCycleTransitionEvent.Make(lcEvent); 
+                    transitionEvent.ConsumerId = consumerId;
+                    transitionEvent.LifeCycleId = applied.LifeCycleId.Value;
+                    transitionEvent.FromStateId = applied.FromStateId;
+                    transitionEvent.ToStateId = applied.ToStateId;
+                    transitionEvent.EventCode = applied.EventCode;
+                    transitionEvent.EventName = applied.EventName ?? string.Empty;
+                    transitionEvent.PrevStateMeta = new Dictionary<string, object>();
+                    transitionEvent.PolicyJson = pr.PolicyJson ?? string.Empty;
+                    toDispatch.Add(transitionEvent);
                 }
 
                 // Hooks (create hook rows in txn; dispatch after commit)
@@ -168,7 +176,7 @@ namespace Haley.Services {
                         var consumerId = normHookConsumers[i];
                         toDispatch.Add(new LifeCycleHookEvent {
                             ConsumerId = consumerId,
-                            InstanceId = instanceId,
+                            InstanceGuid = result.InstanceGuid,
                             DefinitionVersionId = bp.DefVersionId,
                             ExternalRef = req.ExternalRef,
                             RequestId = req.RequestId,

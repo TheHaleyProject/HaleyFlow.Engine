@@ -16,14 +16,14 @@ namespace Haley.Services {
 
         public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
 
-        public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, DbExecutionLoad load = default) {
+        public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, long policyId, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(externalRef)) throw new ArgumentNullException(nameof(externalRef));
 
             var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId, load.Ct);
             var initStateId = bp.InitialStateId;
 
-            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, initStateId, null, 0, (uint)LifeCycleInstanceFlag.Active, load);
+            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, initStateId, null, policyId, (uint)LifeCycleInstanceFlag.Active, load);
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException("Instance upsert failed (guid null).");
 
             var row = await _dal.Instance.GetByGuidAsync(guid, load);
@@ -58,6 +58,7 @@ namespace Haley.Services {
 
             res.ToStateId = t.ToStateId;
 
+            //Sometimes, we will have transitions that point to the same state (like re-trying, etc.), todo: handle it.
             if (res.ToStateId == res.FromStateId) { res.Reason = "NoOpAlreadyInState"; return res; }
 
             var cas = await _dal.Instance.UpdateCurrentStateCasAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);

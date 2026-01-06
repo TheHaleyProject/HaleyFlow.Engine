@@ -117,10 +117,10 @@ namespace Haley.Services {
                 load.Ct.ThrowIfCancellationRequested();
 
                 var evt = new LifeCycleTransitionEvent {
-                    ConsumerId = r.GetLong("consumer"),
-                    InstanceId = r.GetLong("instance_id"),
-                    DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
-                    ExternalRef = r.GetString("external_ref") ?? string.Empty,
+                    DefinitionVersionId = r.GetLong("def_version_id"), // may be needed to identify which version of definition
+                    ConsumerId = r.GetLong("consumer"), //may be needed when we have multi-tenant consumers
+                    InstanceGuid = r.GetString("instance_guid"), // application to know which instance
+                    ExternalRef = r.GetString("external_ref") ?? string.Empty, //application's main ref id
                     RequestId = null,
                     OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
@@ -129,12 +129,9 @@ namespace Haley.Services {
                     LifeCycleId = r.GetLong("lc_id"),
                     FromStateId = r.GetLong("from_state"),
                     ToStateId = r.GetLong("to_state"),
-                    EventId = r.GetLong("event_id"),
                     EventCode = r.GetNullableInt("event_code") ?? 0,
                     EventName = r.GetString("event_name") ?? string.Empty,
                     PrevStateMeta = null,
-                    PolicyId = r.GetNullableLong("policy_id"),
-                    PolicyHash = r.GetString("policy_hash"),
                     PolicyJson = r.GetString("policy_json")
                 };
 
@@ -163,7 +160,7 @@ namespace Haley.Services {
 
                 var evt = new LifeCycleHookEvent {
                     ConsumerId = r.GetLong("consumer"),
-                    InstanceId = r.GetLong("instance_id"),
+                    InstanceGuid = r.GetString("instance_guid"),
                     DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
                     ExternalRef = r.GetString("external_ref") ?? string.Empty,
                     RequestId = null,
@@ -172,7 +169,6 @@ namespace Haley.Services {
                     AckRequired = true,
                     Payload = null,
                     HookId = r.GetLong("hook_id"),
-                    StateId = r.GetLong("state_id"),
                     OnEntry = r.GetBool("on_entry"),
                     HookCode = r.GetString("route") ?? string.Empty,
                     OnSuccessEvent = null,

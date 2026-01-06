@@ -95,8 +95,11 @@ namespace Haley.Internal {
 
         public const string LIST_BY_DEFINITION = $@"SELECT p.*, dp.modified AS attached_modified FROM def_policies dp JOIN policy p ON p.id = dp.policy WHERE dp.definition = {PARENT_ID} ORDER BY dp.modified DESC, p.id ASC;";
 
-        public const string GET_POLICY_FOR_STATE = $@"SELECT p.*, dp.modified AS attached_modified FROM def_policies dp 
-JOIN policy p ON p.id = dp.policy JOIN def_version dv ON dv.parent = dp.definition JOIN state s ON s.def_version = dv.id WHERE dp.definition = {PARENT_ID} AND s.id = {STATE_ID} ORDER BY dp.modified DESC, p.id DESC LIMIT 1;";
+        public const string GET_POLICY_FOR_DEFINITION = $@"SELECT p.*, dp.modified AS attached_modified FROM def_policies dp 
+JOIN policy p ON p.id = dp.policy JOIN def_version dv ON dv.parent = dp.definition WHERE dp.definition = {PARENT_ID} ORDER BY dp.modified DESC, p.id DESC LIMIT 1;";
+
+        public const string GET_POLICY_FOR_DEFVERSION = $@"SELECT p.*, dp.modified AS attached_modified FROM def_policies dp 
+JOIN policy p ON p.id = dp.policy JOIN def_version dv ON dv.parent = dp.definition WHERE dv.id = {ID} ORDER BY dp.modified DESC, p.id DESC LIMIT 1;";
 
         // Latest policy lookups
 

@@ -8,28 +8,29 @@ namespace Haley.Internal {
 
         // GUID-first lookups
         public const string GET_BY_GUID = $@"SELECT * FROM instance WHERE guid = lower(trim({GUID})) LIMIT 1;";
-        public const string GET_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT * FROM instance WHERE def_version = {PARENT_ID} AND external_ref = trim({EXTERNAL_REF}) LIMIT 1;";
+        public const string GET_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT * FROM instance WHERE def_version = {PARENT_ID} AND external_ref = lower(trim({EXTERNAL_REF})) LIMIT 1;";
 
         public const string GET_ID_BY_GUID = $@"SELECT id FROM instance WHERE guid = lower(trim({GUID})) LIMIT 1;";
 
         public const string GET_BY_ID = $@"SELECT * FROM instance WHERE id = {ID} LIMIT 1;";
         public const string GET_GUID_BY_ID = $@"SELECT guid FROM instance WHERE id = {ID} LIMIT 1;";
-        public const string GET_ID_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT id FROM instance WHERE def_version = {PARENT_ID} AND external_ref = trim({EXTERNAL_REF}) LIMIT 1;";
+        public const string GET_ID_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT id FROM instance WHERE def_version = {PARENT_ID} AND external_ref = lower(trim({EXTERNAL_REF})) LIMIT 1;";
+        public const string GET_GUID_BY_PARENT_AND_EXTERNAL_REF = $@"SELECT guid FROM instance WHERE def_version = {PARENT_ID} AND external_ref = lower(trim({EXTERNAL_REF})) LIMIT 1;";
 
         // lists should be chronological newest-first
         public const string LIST_BY_PARENT = $@"SELECT * FROM instance WHERE def_version = {PARENT_ID} ORDER BY created DESC, id DESC;";
-        public const string LIST_BY_EXTERNAL_REF = $@"SELECT * FROM instance WHERE external_ref = trim({EXTERNAL_REF}) ORDER BY created DESC, id DESC;";
+        public const string LIST_BY_EXTERNAL_REF = $@"SELECT * FROM instance WHERE external_ref = lower(trim({EXTERNAL_REF})) ORDER BY created DESC, id DESC;";
         public const string LIST_BY_CURRENT_STATE = $@"SELECT * FROM instance WHERE current_state = {STATE_ID} ORDER BY created DESC, id DESC;";
 
         public const string LIST_WHERE_FLAGS_ANY = $@"SELECT * FROM instance WHERE (flags & {FLAGS}) <> 0 ORDER BY created DESC, id DESC;";
         public const string LIST_WHERE_FLAGS_NONE = $@"SELECT * FROM instance WHERE (flags & {FLAGS}) = 0 ORDER BY created DESC, id DESC;";
 
         // INSERT returns guid (first-class for external apps)
-        public const string INSERT = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, trim({EXTERNAL_REF}), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+        public const string INSERT = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, lower(trim({EXTERNAL_REF})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
 
         // Note: constant name says RETURN_ID, but we now return GUID
-        public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_ID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, trim({EXTERNAL_REF}), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
-        public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, {EXTERNAL_REF}, {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid AS guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+        public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_ID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, lower(trim({EXTERNAL_REF})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+        public const string UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID = $@"INSERT INTO instance (def_version, external_ref, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, lower(trim({EXTERNAL_REF})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid AS guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
 
         public const string UPDATE_CURRENT_STATE = $@"UPDATE instance SET current_state = {STATE_ID}, last_event = {EVENT_ID} WHERE id = {ID};";
         public const string UPDATE_CURRENT_STATE_CAS = $@"UPDATE instance SET current_state = {TO_ID}, last_event = {EVENT_ID} WHERE id = {ID} AND current_state = {FROM_ID};";
@@ -39,7 +40,7 @@ namespace Haley.Internal {
         public const string REMOVE_FLAGS = $@"UPDATE instance SET flags = (flags & ~{FLAGS}) WHERE id = {ID};";
 
         public const string SET_POLICY = $@"UPDATE instance SET policy_id = {POLICY_ID} WHERE id = {ID};";
-        public const string SET_EXTERNAL_REF = $@"UPDATE instance SET external_ref = trim({EXTERNAL_REF}) WHERE id = {ID};";
+        public const string SET_EXTERNAL_REF = $@"UPDATE instance SET external_ref = lower(trim({EXTERNAL_REF})) WHERE id = {ID};";
 
         public const string DELETE = $@"DELETE FROM instance WHERE id = {ID};";
 
