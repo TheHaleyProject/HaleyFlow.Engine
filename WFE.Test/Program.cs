@@ -70,14 +70,16 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 // -------------------------
 // 3) Subscribe to engine events
 // -------------------------
-engine.NoticeRaised += n => {
+engine.NoticeRaised += async n => {
+    await Task.Delay(TimeSpan.FromSeconds(10));
     Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}");
     if (n.Exception != null) Console.WriteLine(n.Exception);
-    return Task.CompletedTask;
+    //return Task.CompletedTask;
 };
 
 // Auto-ACK + optional auto-flow driver for hook events
 engine.EventRaised += async evt => {
+    await Task.Delay(TimeSpan.FromSeconds(10));
     if (evt.Kind == LifeCycleEventKind.Transition) {
         var t = (ILifeCycleTransitionEvent)evt;
         Console.WriteLine($"[TRN] ext={t.ExternalRef} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
