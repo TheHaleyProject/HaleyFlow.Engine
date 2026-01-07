@@ -52,7 +52,7 @@ namespace Haley.Services {
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
             _monitorConsumers = _opt.MonitorConsumers ?? new long[] { _opt.DefaultConsumerId };
-            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex, ct) => RaiseNoticeSafeAsync(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex), ct));
+            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
         }
 
         public Task StartAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
@@ -201,7 +201,7 @@ namespace Haley.Services {
                 throw;
             } catch (Exception ex) {
                 if (!committed) { try { transaction.Rollback(); } catch { } }
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Error("TRIGGER_ERROR", "TRIGGER_ERROR", ex.Message, ex), ct);
+                FireNotice(LifeCycleNotice.Error("TRIGGER_ERROR", "TRIGGER_ERROR", ex.Message, ex));
                 throw;
             }
         }
@@ -250,8 +250,8 @@ namespace Haley.Services {
                 ct.ThrowIfCancellationRequested();
                 var item = lc[i];
 
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"), ct);
-                await RaiseEventSafeAsync(item.Event, ct);
+                FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                FireEvent(item.Event);
                 await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
 
@@ -261,29 +261,45 @@ namespace Haley.Services {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"), ct);
-                await RaiseEventSafeAsync(item.Event, ct);
+                FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                FireEvent(item.Event);
                 await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
         }
 
         private async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
-            for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); await RaiseEventSafeAsync(events[i], ct); }
+            for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); FireEvent(events[i]); }
         }
 
-        private async Task RaiseEventSafeAsync(ILifeCycleEvent e, CancellationToken ct) {
-            ct.ThrowIfCancellationRequested();
+        private void FireEvent(ILifeCycleEvent e) {
             var h = EventRaised;
             if (h == null) return;
-            try { await h.Invoke(e); } catch (Exception ex) { await RaiseNoticeSafeAsync(LifeCycleNotice.Error("EVENT_HANDLER_ERROR", "EVENT_HANDLER_ERROR", ex.Message, ex), ct); }
+
+            foreach (Func<ILifeCycleEvent, Task> sub in h.GetInvocationList()) {
+                _ = RunHandlerSafeAsync(() => sub(e)); //Dont await.. we are deliberately running this task in synchornous mode , so that it runs in background.
+            }
         }
 
-        private async Task RaiseNoticeSafeAsync(LifeCycleNotice n, CancellationToken ct) {
-            ct.ThrowIfCancellationRequested();
+        private void FireNotice(LifeCycleNotice n) {
             var h = NoticeRaised;
             if (h == null) return;
-            try { await h.Invoke(n); } catch { }
+
+            foreach (Func<LifeCycleNotice, Task> sub in h.GetInvocationList()) {
+                _ = RunHandlerSafeAsync(() => sub(n), swallow: true); //Error should not be propagated , else it will end up in infinite loop.
+            }
         }
+
+        private async Task RunHandlerSafeAsync(Func<Task> work, bool swallow = false) {
+            try {
+                await work().ConfigureAwait(false);
+            } catch (Exception ex) {
+                if (swallow) return;
+                try {
+                    FireNotice(LifeCycleNotice.Error("EVENT_HANDLER_ERROR", "EVENT_HANDLER_ERROR", ex.Message, ex));
+                } catch { }
+            }
+        }
+
 
         private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers, long defaultConsumerId) {
             if (consumers == null || consumers.Count == 0) return new long[] { defaultConsumerId };

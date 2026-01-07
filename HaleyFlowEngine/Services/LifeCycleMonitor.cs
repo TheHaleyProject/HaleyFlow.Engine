@@ -12,7 +12,7 @@ namespace Haley.Services {
     internal sealed class LifeCycleMonitor : ILifeCycleMonitor {
         private readonly TimeSpan _interval;
         private readonly Func<CancellationToken, Task> _runOnce;
-        private readonly Func<Exception, CancellationToken, Task>? _onError;
+        private readonly Action<Exception>? _onError;
 
         private PeriodicTimer? _timer;
         private CancellationTokenSource? _cts;
@@ -22,7 +22,7 @@ namespace Haley.Services {
 
         public bool IsRunning => Volatile.Read(ref _running) == 1;
 
-        public LifeCycleMonitor(TimeSpan interval, Func<CancellationToken, Task> runOnce, Func<Exception, CancellationToken, Task>? onError = null) {
+        public LifeCycleMonitor(TimeSpan interval, Func<CancellationToken, Task> runOnce, Action<Exception>? onError = null) {
             if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
             _interval = interval;
             _runOnce = runOnce ?? throw new ArgumentNullException(nameof(runOnce));
@@ -64,7 +64,7 @@ namespace Haley.Services {
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
                 throw;
             } catch (Exception ex) {
-                if (_onError != null) await _onError(ex, ct);
+                if (_onError != null) _onError.Invoke(ex);
             } finally {
                 Interlocked.Exchange(ref _runGate, 0);
             }
@@ -79,7 +79,7 @@ namespace Haley.Services {
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
                 // expected on stop
             } catch (Exception ex) {
-                if (_onError != null) await _onError(ex, ct);
+                if (_onError != null) _onError.Invoke(ex);
             }
         }
 

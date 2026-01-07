@@ -83,7 +83,7 @@ engine.EventRaised += async evt => {
         Console.WriteLine($"[TRN] ext={t.ExternalRef} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
 
         if (t.AckRequired && !string.IsNullOrWhiteSpace(t.AckGuid))
-            await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Processed, "transition-processed", ct: CancellationToken.None);
+            await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Delivered, "transition-received", ct: CancellationToken.None);
         return;
     }
 
@@ -165,39 +165,39 @@ var first = new LifeCycleTriggerRequest {
 var firstRes = await engine.TriggerAsync(first, cts.Token);
 Console.WriteLine($"Trigger(1000) applied={firstRes.Applied} instanceId={firstRes.InstanceId} lcId={firstRes.LifeCycleId} {firstRes.FromState}->{firstRes.ToState}");
 
-// Optional: show timeline JSON
-var timeline = await dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(firstRes.InstanceId);
-if (!string.IsNullOrWhiteSpace(timeline))
-    Console.WriteLine($"Timeline JSON:\n{timeline}");
+//// Optional: show timeline JSON
+//var timeline = await dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(firstRes.InstanceId);
+//if (!string.IsNullOrWhiteSpace(timeline))
+//    Console.WriteLine($"Timeline JSON:\n{timeline}");
 
-// -------------------------
-// 6) Interactive loop
-// -------------------------
-Console.WriteLine("\nType an event code (e.g., 1002) and press Enter. Type 'q' to quit.");
-while (!cts.IsCancellationRequested) {
-    var line = Console.ReadLine();
-    if (line == null) continue;
-    if (string.Equals(line.Trim(), "q", StringComparison.OrdinalIgnoreCase)) break;
+//// -------------------------
+//// 6) Interactive loop
+//// -------------------------
+//Console.WriteLine("\nType an event code (e.g., 1002) and press Enter. Type 'q' to quit.");
+//while (!cts.IsCancellationRequested) {
+//    var line = Console.ReadLine();
+//    if (line == null) continue;
+//    if (string.Equals(line.Trim(), "q", StringComparison.OrdinalIgnoreCase)) break;
 
-    if (!int.TryParse(line.Trim(), out var code)) continue;
+//    if (!int.TryParse(line.Trim(), out var code)) continue;
 
-    var req = new LifeCycleTriggerRequest {
-        EnvCode = EnvCode,
-        DefName = DefName,
-        ExternalRef = externalRef,
-        Event = code.ToString(),
-        Actor = "console-manual",
-        RequestId = Guid.NewGuid().ToString(),
-        AckRequired = AckRequired,
-        Payload = new Dictionary<string, object> { ["manual"] = true }
-    };
+//    var req = new LifeCycleTriggerRequest {
+//        EnvCode = EnvCode,
+//        DefName = DefName,
+//        ExternalRef = externalRef,
+//        Event = code.ToString(),
+//        Actor = "console-manual",
+//        RequestId = Guid.NewGuid().ToString(),
+//        AckRequired = AckRequired,
+//        Payload = new Dictionary<string, object> { ["manual"] = true }
+//    };
 
-    var r = await engine.TriggerAsync(req, cts.Token);
-    Console.WriteLine($"Trigger({code}) applied={r.Applied} lcId={r.LifeCycleId} {r.FromState}->{r.ToState}");
-}
+//    var r = await engine.TriggerAsync(req, cts.Token);
+//    Console.WriteLine($"Trigger({code}) applied={r.Applied} lcId={r.LifeCycleId} {r.FromState}->{r.ToState}");
+//}
 
 Console.WriteLine("Done.");
-
+Console.ReadKey();
 // -------------------------
 // Helpers
 // -------------------------
