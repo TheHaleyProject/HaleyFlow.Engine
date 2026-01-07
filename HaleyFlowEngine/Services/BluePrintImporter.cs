@@ -31,7 +31,7 @@ namespace Haley.Services {
             var root = doc.RootElement;
 
             var defNode = root.TryGetProperty("definition", out var d) ? d : root;
-            var defName = defNode.ReqString("name") ?? defNode.ReqString("displayName") ?? defNode.ReqString("defName") ?? throw new InvalidOperationException("definition.name/displayName missing.");
+            var defName = defNode.GetString("name") ?? defNode.GetString("displayName") ?? defNode.GetString("defName") ?? throw new InvalidOperationException("definition.name/displayName missing.");
             var defDesc = defNode.GetString("description");
             var requestedVer = defNode.GetInt("version") ?? 0;
 

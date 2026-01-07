@@ -81,7 +81,7 @@ namespace Haley.Services {
             var hookAckGuids = new List<string>(8);
 
             DbRow instance = null!;
-            ApplyTransitionResult applied = null!;
+            ApplyTransitionResult transition = null!;
             PolicyResolution pr = null!;
 
             try {
@@ -89,23 +89,23 @@ namespace Haley.Services {
                 //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
                 var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); 
                 instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
-                applied = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
+                transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
 
                 var result = new LifeCycleTriggerResult {
-                    Applied = applied.Applied,
+                    Applied = transition.Applied,
                     InstanceGuid = instance.GetString("guid") ?? string.Empty,
                     InstanceId = instance.GetLong("id"),
-                    LifeCycleId = applied.LifeCycleId,
-                    FromState = bp.StatesById.TryGetValue(applied.FromStateId, out var fs) ? (fs.Name ?? string.Empty) : string.Empty,
-                    ToState = bp.StatesById.TryGetValue(applied.ToStateId, out var ts) ? (ts.Name ?? string.Empty) : string.Empty,
-                    Reason = applied.Reason ?? string.Empty,
+                    LifeCycleId = transition.LifeCycleId,
+                    FromState = bp.StatesById.TryGetValue(transition.FromStateId, out var fs) ? (fs.Name ?? string.Empty) : string.Empty,
+                    ToState = bp.StatesById.TryGetValue(transition.ToStateId, out var ts) ? (ts.Name ?? string.Empty) : string.Empty,
+                    Reason = transition.Reason ?? string.Empty,
                     LifecycleAckGuids = Array.Empty<string>(),
                     HookAckGuids = Array.Empty<string>()
                 };
 
                 // Even if transition not applied, instance may have been created/ensured -> commit that.
                 //Meaning, our goal was only to create an instance or just to ensure this exists.. not to make any transition at all. Like this is the first step.
-                if (!applied.Applied) {
+                if (!transition.Applied) {
                     transaction.Commit(); 
                     committed = true;
                     return result;
@@ -116,10 +116,8 @@ namespace Haley.Services {
                 // We should never take the latest policy here.. Because the instance might have been created several days back and at that time, the latest policy was something else. So, we need to get the policy that is attached to this instance.
                 
                 var pid = instance.GetLong("policy_id");
-                if (pid > 0) {
-                    pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
-                }
-               
+                if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
+
                 // Transition consumers
                 var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, instanceId, ct);
                 var normTransitionConsumers = NormalizeConsumers(transitionConsumers, _opt.DefaultConsumerId);
@@ -127,7 +125,7 @@ namespace Haley.Services {
                 // Create lifecycle ACK (one ack guid, multiple consumers) if required
                 var lcAckGuid = string.Empty;
                 if (req.AckRequired) {
-                    var ackRef = await AckManager.CreateLifecycleAckAsync(applied.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
+                    var ackRef = await AckManager.CreateLifecycleAckAsync(transition.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
                     lcAckGuid = ackRef.AckGuid ?? string.Empty;
                     lcAckGuids.Add(lcAckGuid);
                 }
@@ -146,20 +144,21 @@ namespace Haley.Services {
                 // Build transition events (dispatch after commit)
                 for (var i = 0; i < normTransitionConsumers.Count; i++) {
                     var consumerId = normTransitionConsumers[i];
-                    var transitionEvent = LifeCycleTransitionEvent.Make(lcEvent); 
-                    transitionEvent.ConsumerId = consumerId;
-                    transitionEvent.LifeCycleId = applied.LifeCycleId.Value;
-                    transitionEvent.FromStateId = applied.FromStateId;
-                    transitionEvent.ToStateId = applied.ToStateId;
-                    transitionEvent.EventCode = applied.EventCode;
-                    transitionEvent.EventName = applied.EventName ?? string.Empty;
-                    transitionEvent.PrevStateMeta = new Dictionary<string, object>();
-                    transitionEvent.PolicyJson = pr.PolicyJson ?? string.Empty;
+                    var transitionEvent = new LifeCycleTransitionEvent(lcEvent) {
+                        ConsumerId = consumerId,
+                        LifeCycleId = transition.LifeCycleId.Value,
+                        FromStateId = transition.FromStateId,
+                        ToStateId = transition.ToStateId,
+                        EventCode = transition.EventCode,
+                        EventName = transition.EventName ?? string.Empty,
+                        PrevStateMeta = new Dictionary<string, object>(),
+                        PolicyJson = pr.PolicyJson ?? string.Empty
+                    };
                     toDispatch.Add(transitionEvent);
                 }
 
                 // Hooks (create hook rows in txn; dispatch after commit)
-                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, applied, load);
+                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load); //CHECK ONCE MORE
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                     var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, instanceId, he.HookCode, ct);
@@ -174,25 +173,17 @@ namespace Haley.Services {
 
                     for (var i = 0; i < normHookConsumers.Count; i++) {
                         var consumerId = normHookConsumers[i];
-                        toDispatch.Add(new LifeCycleHookEvent {
+                        var hookEvent = new LifeCycleHookEvent(lcEvent) {
                             ConsumerId = consumerId,
-                            InstanceGuid = result.InstanceGuid,
-                            DefinitionVersionId = bp.DefVersionId,
-                            ExternalRef = req.ExternalRef,
-                            RequestId = req.RequestId,
-                            OccurredAt = DateTimeOffset.UtcNow,
-                            AckGuid = hookAckGuid,
-                            AckRequired = req.AckRequired,
-                            Payload = he.Payload as IReadOnlyDictionary<string, object?>,
                             HookId = he.HookId,
-                            StateId = he.StateId,
                             OnEntry = he.OnEntry,
                             HookCode = he.HookCode ?? string.Empty,
                             OnSuccessEvent = he.OnSuccessEvent ?? string.Empty,
                             OnFailureEvent = he.OnFailureEvent ?? string.Empty,
                             NotBefore = he.NotBefore,
                             Deadline = he.Deadline
-                        });
+                        };
+                        toDispatch.Add(hookEvent);
                     }
                 }
 
@@ -259,7 +250,7 @@ namespace Haley.Services {
                 ct.ThrowIfCancellationRequested();
                 var item = lc[i];
 
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceId}"), ct);
+                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"), ct);
                 await RaiseEventSafeAsync(item.Event, ct);
                 await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
@@ -270,7 +261,7 @@ namespace Haley.Services {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
-                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceId}"), ct);
+                await RaiseNoticeSafeAsync(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"), ct);
                 await RaiseEventSafeAsync(item.Event, ct);
                 await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
