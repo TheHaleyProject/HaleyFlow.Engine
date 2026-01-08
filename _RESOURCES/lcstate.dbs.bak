@@ -619,9 +619,6 @@ is_error = 8]]></comment>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 		<entity schema="lcstate" name="transition" color="1A4D4D" x="912" y="152" />
 		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="95" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="684" y="988" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="912" y="950" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="893" y="741" />
 		<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="836" />
 		<entity schema="lcstate" name="events" color="1A4D4D" x="912" y="342" />
 		<entity schema="lcstate" name="state" color="1A4D4D" x="684" y="228" />
@@ -632,18 +629,21 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="hook" color="FFFF00" x="437" y="456" />
 		<entity schema="lcstate" name="lc_data" color="FFFF00" x="57" y="627" />
 		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="57" y="437" />
-		<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="114" />
-		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="190" y="247" />
-		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="57" y="247" />
-		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="437" y="114" />
+		<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
+		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="190" y="228" />
+		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="57" y="228" />
+		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="437" y="95" />
 		<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="608" />
 		<entity schema="lcstate" name="instance" color="FFFF00" x="247" y="494" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="684" y="969" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="912" y="950" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="893" y="741" />
 		<group name="Blueprint - Definition" color="0000FF" >
+			<entity schema="lcstate" name="def_policies" />
+			<entity schema="lcstate" name="def_version" />
 			<entity schema="lcstate" name="policy" />
 			<entity schema="lcstate" name="environment" />
 			<entity schema="lcstate" name="definition" />
-			<entity schema="lcstate" name="def_policies" />
-			<entity schema="lcstate" name="def_version" />
 		</group>
 		<group name="Instance Core" color="FFFF00" >
 			<entity schema="lcstate" name="hook" />
