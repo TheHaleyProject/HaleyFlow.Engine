@@ -141,8 +141,8 @@ namespace Haley.Services {
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     ConsumerId = r.GetLong("consumer"),
                     AckStatus = r.GetInt("status"),
-                    RetryCount = r.GetInt("retry_count"),
-                    LastRetryUtc = r.GetDateTime("last_retry") ?? DateTime.UtcNow,
+                    TriggerCount = r.GetInt("retry_count"),
+                    LastTrigger = r.GetDateTime("last_retry") ?? DateTime.UtcNow,
                     Event = evt
                 });
             }
@@ -183,8 +183,8 @@ namespace Haley.Services {
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     ConsumerId = r.GetLong("consumer"),
                     AckStatus = r.GetInt("status"),
-                    RetryCount = r.GetInt("retry_count"),
-                    LastRetryUtc = r.GetDateTime("last_retry") ?? DateTime.UtcNow,
+                    TriggerCount = r.GetInt("retry_count"),
+                    LastTrigger = r.GetDateTime("last_retry") ?? DateTime.UtcNow,
                     Event = evt
                 });
             }

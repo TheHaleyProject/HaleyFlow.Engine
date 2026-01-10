@@ -94,4 +94,16 @@ namespace Haley.Internal {
         public const string DELETE = $@"DELETE FROM lifecycle WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM lifecycle WHERE instance_id = {INSTANCE_ID};";
     }
+
+    internal class QRY_LC_TIMEOUT {
+
+        public const string EXISTS_BY_LC_ID = $@"SELECT 1 FROM lc_timeout WHERE lc_id = {LC_ID} LIMIT 1;";
+        public const string INSERT_IGNORE = $@"INSERT IGNORE INTO lc_timeout (lc_id) VALUES ({LC_ID});";
+        public const string DELETE_BY_LC_ID = $@"DELETE FROM lc_timeout WHERE lc_id = {LC_ID};";
+
+        // Due timeouts (no record yet) based on latest lifecycle entry == current state
+        // NOTE: requires each instance to have at least one lifecycle row for current_state (recommended: insert creation lifecycle row).
+        public const string LIST_DUE_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.external_ref AS external_ref, i.def_version AS def_version_id, i.current_state AS state_id, l.id AS entry_lc_id, l.created AS entered_at, s.timeout_minutes AS timeout_minutes, s.timeout_mode AS timeout_mode, s.timeout_event AS timeout_event_id, DATE_ADD(l.created, INTERVAL s.timeout_minutes MINUTE) AS due_at FROM instance i JOIN lifecycle l ON l.id = (SELECT MAX(l2.id) FROM lifecycle l2 WHERE l2.instance_id = i.id) JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version LEFT JOIN lc_timeout t ON t.lc_id = l.id WHERE (i.flags & {FLAGS}) = 0 AND l.to_state = i.current_state AND s.timeout_minutes IS NOT NULL AND s.timeout_minutes > 0 AND s.timeout_event IS NOT NULL AND t.lc_id IS NULL AND DATE_ADD(l.created, INTERVAL s.timeout_minutes MINUTE) <= UTC_TIMESTAMP() ORDER BY due_at ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
+    }
+
 }
