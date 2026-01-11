@@ -23,7 +23,7 @@
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
-			<column name="consumer" type="BIGINT" mandatory="y" >
+			<column name="consumer" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
 			<column name="status" prior="ack_status" type="INT" mandatory="y" >
@@ -116,6 +116,32 @@
 			</index>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
+		<table name="consumer" prior="consumer_beat" >
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="env" prior="env_id" type="INT" mandatory="y" />
+			<column name="consumer_guid" prior="consumer" type="VARCHAR" length="38" mandatory="y" >
+				<comment><![CDATA[guid expected]]></comment>
+			</column>
+			<column name="last_beat" type="DATETIME" mandatory="y" >
+				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<comment><![CDATA[consumer is nothing but the application.. application should notify that it is still running.. by updating itself, here.. if this application has crashed down, we should identify, when it was last working..
+
+lets say every 10 seconds, we expect the beat..]]></comment>
+			</column>
+			<index name="pk_consumer_beat" unique="PRIMARY_KEY" >
+				<column name="id" />
+			</index>
+			<index name="unq_consumer_beat" unique="UNIQUE_KEY" >
+				<column name="env" />
+				<column name="consumer_guid" />
+			</index>
+			<fk name="fk_consumer_beat_environment" to_schema="lcstate" to_table="environment" >
+				<fk_column name="env" pk="id" />
+			</fk>
+			<options><![CDATA[engine=InnoDB]]></options>
+		</table>
 		<table name="def_policies" prior="definition_policies" >
 			<column name="definition" type="INT" mandatory="y" />
 			<column name="policy" type="INT" mandatory="y" />
@@ -135,11 +161,11 @@
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="def_version" prior="def_versio" >
-			<column name="guid" type="CHAR" length="36" mandatory="y" >
-				<defo><![CDATA[uuid()]]></defo>
-			</column>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="guid" type="CHAR" length="36" mandatory="y" >
+				<defo><![CDATA[uuid()]]></defo>
 			</column>
 			<column name="version" type="INT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
@@ -185,12 +211,15 @@
 ]]></options>
 		</table>
 		<table name="definition" prior="definit" >
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-				<comment><![CDATA[it should be a code provided by the user.]]></comment>
+			<column name="env" type="INT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
 			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
+			</column>
+			<column name="id" type="INT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[it should be a code provided by the user.]]></comment>
 			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
@@ -199,9 +228,6 @@
 			<column name="description" type="TEXT" />
 			<column name="created" prior="created_at" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
-			</column>
-			<column name="env" type="INT" mandatory="y" >
-				<defo><![CDATA[0]]></defo>
 			</column>
 			<index name="pk_definition" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -358,13 +384,16 @@ archive = 16]]></comment>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
+			<column name="def_version" type="INT" mandatory="y" />
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
+			<column name="message" type="TEXT" >
+				<comment><![CDATA[any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..]]></comment>
 			</column>
 			<index name="pk_instance" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -642,41 +671,43 @@ is_error = 8]]></comment>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="transition" color="1A4D4D" x="893" y="114" />
+		<entity schema="lcstate" name="transition" color="1A4D4D" x="893" y="95" />
 		<entity schema="lcstate" name="def_policies" color="0000FF" x="665" y="855" />
 		<entity schema="lcstate" name="policy" color="0000FF" x="665" y="988" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="893" y="969" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="874" y="760" />
-		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="399" />
-		<entity schema="lcstate" name="events" color="1A4D4D" x="893" y="361" />
+		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="380" />
+		<entity schema="lcstate" name="events" color="1A4D4D" x="893" y="342" />
 		<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="570" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="665" y="627" />
 		<entity schema="lcstate" name="activity" color="00FF00" x="57" y="874" />
 		<entity schema="lcstate" name="runtime_data" color="00FF00" x="76" y="1007" />
 		<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="950" />
 		<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="874" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="513" />
 		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="285" y="247" />
 		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
 		<entity schema="lcstate" name="ack" color="FF00FF" x="171" y="114" />
 		<entity schema="lcstate" name="lc_data" color="FFFF00" x="76" y="437" />
 		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="589" />
 		<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="475" />
-		<entity schema="lcstate" name="state" color="1A4D4D" x="665" y="133" />
+		<entity schema="lcstate" name="state" color="1A4D4D" x="665" y="114" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="874" y="760" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="893" y="969" />
+		<entity schema="lcstate" name="consumer" color="0000FF" x="874" y="608" />
 		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="665" y="627" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="475" />
 		<group name="Blueprint - Definition" color="0000FF" >
 			<entity schema="lcstate" name="def_policies" />
 			<entity schema="lcstate" name="policy" />
-			<entity schema="lcstate" name="environment" />
 			<entity schema="lcstate" name="definition" />
+			<entity schema="lcstate" name="environment" />
+			<entity schema="lcstate" name="consumer" />
 			<entity schema="lcstate" name="def_version" />
 		</group>
 		<group name="Instance Core" color="FFFF00" >
 			<entity schema="lcstate" name="hook" />
-			<entity schema="lcstate" name="instance" />
 			<entity schema="lcstate" name="lc_data" />
 			<entity schema="lcstate" name="lifecycle" />
 			<entity schema="lcstate" name="lc_timeout" />
+			<entity schema="lcstate" name="instance" />
 		</group>
 		<group name="Runtime Activities" color="00FF00" >
 			<entity schema="lcstate" name="activity" />
