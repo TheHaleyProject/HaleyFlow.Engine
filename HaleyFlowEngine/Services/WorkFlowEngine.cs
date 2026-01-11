@@ -226,51 +226,53 @@ namespace Haley.Services {
 
         public async Task RunMonitorOnceAsync(CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-
-            // NOTE: stale-state / timeout-trigger monitor needs dedicated DAL queries; this run focuses on ACK resend.
-            var nowUtc = DateTime.UtcNow;
-            var pendingOlderThan = nowUtc.Subtract(_ackPendingResendAfter);
-            var deliveredOlderThan = nowUtc.Subtract(_ackDeliveredResendAfter);
-
             for (var i = 0; i < _monitorConsumers.Count; i++) {
                 ct.ThrowIfCancellationRequested();
                 var consumerId = _monitorConsumers[i];
-
-                await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, pendingOlderThan, ct);
-                await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, deliveredOlderThan, ct);
+                await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
+                await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
             }
         }
 
-        private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, DateTime olderThanUtc, CancellationToken ct) {
+
+        private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
+            var nowUtc = DateTime.UtcNow;
+            var nextDueUtc = ackStatus == (int)AckStatus.Pending
+                ? nowUtc.Add(_ackPendingResendAfter)
+                : nowUtc.Add(_ackDeliveredResendAfter);
+
             // Lifecycle
-            var lc = await AckManager.ListPendingLifecycleDispatchAsync(consumerId, ackStatus, olderThanUtc, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
+            var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
             for (var i = 0; i < lc.Count; i++) {
                 ct.ThrowIfCancellationRequested();
                 var item = lc[i];
 
+                // IMPORTANT: update trigger_count/last_trigger and schedule next_due (or NULL for terminal statuses)
+                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, new DbExecutionLoad(ct));
+
                 FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
                 FireEvent(item.Event);
-                await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
 
             // Hook
-            var hk = await AckManager.ListPendingHookDispatchAsync(consumerId, ackStatus, olderThanUtc, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
+            var hk = await AckManager.ListDueHookDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
             for (var i = 0; i < hk.Count; i++) {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
+                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, new DbExecutionLoad(ct));
+
                 FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
                 FireEvent(item.Event);
-                await AckManager.MarkRetryAsync(item.AckId, item.ConsumerId, null, new DbExecutionLoad(ct));
             }
         }
+
 
         private async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
             for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); FireEvent(events[i]); }
         }
-
         private void FireEvent(ILifeCycleEvent e) {
             var h = EventRaised;
             if (h == null) return;
@@ -279,7 +281,6 @@ namespace Haley.Services {
                 _ = RunHandlerSafeAsync(() => sub(e)); //Dont await.. we are deliberately running this task in synchornous mode , so that it runs in background.
             }
         }
-
         private void FireNotice(LifeCycleNotice n) {
             var h = NoticeRaised;
             if (h == null) return;
@@ -288,7 +289,6 @@ namespace Haley.Services {
                 _ = RunHandlerSafeAsync(() => sub(n), swallow: true); //Error should not be propagated , else it will end up in infinite loop.
             }
         }
-
         private async Task RunHandlerSafeAsync(Func<Task> work, bool swallow = false) {
             try {
                 await work().ConfigureAwait(false);
@@ -299,8 +299,6 @@ namespace Haley.Services {
                 } catch { }
             }
         }
-
-
         private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers, long defaultConsumerId) {
             if (consumers == null || consumers.Count == 0) return new long[] { defaultConsumerId };
             var list = new List<long>(consumers.Count);

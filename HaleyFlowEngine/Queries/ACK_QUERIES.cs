@@ -42,6 +42,11 @@ namespace Haley.Internal {
         public const string SET_STATUS_AND_DUE = $@"UPDATE ack_consumer SET status = {ACK_STATUS}, next_due = {NEXT_DUE}, modified = CURRENT_TIMESTAMP WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID};";
         public const string SET_STATUS_AND_DUE_BY_GUID = $@"UPDATE ack_consumer ac JOIN ack a ON a.id = ac.ack_id SET ac.status = {ACK_STATUS}, ac.next_due = {NEXT_DUE}, ac.modified = CURRENT_TIMESTAMP WHERE a.guid = lower(trim({GUID})) AND ac.consumer = {CONSUMER_ID};";
 
+        public const string LIST_BY_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.modified DESC, ac.id DESC LIMIT {TAKE} OFFSET {SKIP};";
+        public const string LIST_BY_CONSUMER_AND_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.consumer = {CONSUMER_ID} AND ac.status = {ACK_STATUS} ORDER BY ac.modified DESC, ac.id DESC LIMIT {TAKE} OFFSET {SKIP};";
+
+
+
         public const string DELETE = $@"DELETE FROM ack_consumer WHERE id = {ID};";
         public const string DELETE_BY_ACK_ID = $@"DELETE FROM ack_consumer WHERE ack_id = {ACK_ID};";
     }

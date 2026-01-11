@@ -15,13 +15,26 @@ using System.Threading.Tasks;
 namespace Haley.Services {
     internal sealed class AckManager : IAckManager {
         private readonly IWorkFlowDAL _dal;
+
         private readonly Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> _transitionConsumers;
         private readonly Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> _hookConsumers;
 
-        public AckManager(IWorkFlowDAL dal, Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? transitionConsumers = null, Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? hookConsumers = null) {
+        // scheduling policy
+        private readonly TimeSpan _pendingNextDue;    // T + 40s
+        private readonly TimeSpan _deliveredNextDue;  // T + 4m
+
+        public AckManager(
+            IWorkFlowDAL dal,
+            Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? transitionConsumers = null,
+            Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? hookConsumers = null,
+            TimeSpan? pendingNextDue = null,
+            TimeSpan? deliveredNextDue = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _transitionConsumers = transitionConsumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
             _hookConsumers = hookConsumers ?? ((dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+
+            _pendingNextDue = pendingNextDue ?? TimeSpan.FromSeconds(40);
+            _deliveredNextDue = deliveredNextDue ?? TimeSpan.FromMinutes(4);
         }
 
         public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, long instanceId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _transitionConsumers(defVersionId, instanceId, ct); }
@@ -34,7 +47,8 @@ namespace Haley.Services {
 
             var existingAckId = await _dal.LcAck.GetAckIdByLcIdAsync(lifecycleId, load);
             if (existingAckId.HasValue && existingAckId.Value > 0) {
-                await EnsureConsumersAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
+                // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
+                await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
                 return await GetAckRefByIdAsync(existingAckId.Value, load);
             }
 
@@ -46,7 +60,7 @@ namespace Haley.Services {
             if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
 
             await _dal.LcAck.AttachAsync(ackId, lifecycleId, load);
-            await EnsureConsumersAsync(ackId, consumerIds, initialAckStatus, load);
+            await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
 
             return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
@@ -57,7 +71,8 @@ namespace Haley.Services {
 
             var existingAckId = await _dal.HookAck.GetAckIdByHookIdAsync(hookId, load);
             if (existingAckId.HasValue && existingAckId.Value > 0) {
-                await EnsureConsumersAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
+                // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
+                await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
                 return await GetAckRefByIdAsync(existingAckId.Value, load);
             }
 
@@ -69,58 +84,64 @@ namespace Haley.Services {
             if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
 
             await _dal.HookAck.AttachAsync(ackId, hookId, load);
-            await EnsureConsumersAsync(ackId, consumerIds, initialAckStatus, load);
+            await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
 
             return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
 
+        // ACK FROM CONSUMER
         public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
             if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
 
-            var status = outcome == AckOutcome.Delivered ? AckStatus.Delivered :
-                         outcome == AckOutcome.Processed ? AckStatus.Processed :
-                         outcome == AckOutcome.Failed ? AckStatus.Failed :
-                         AckStatus.Pending;
+            // Decide status + due scheduling
+            var (status, nextDueUtc) = ComputeOutcomeStatusAndDue(outcome, retryAt);
 
-            var affected = await _dal.AckConsumer.SetStatusByGuidAsync(ackGuid, consumerId, (int)status, load);
+            // Single DB call; no ackId fetch needed.
+            var affected = await _dal.AckConsumer.SetStatusAndDueByGuidAsync(ackGuid, consumerId, (int)status, nextDueUtc, load);
             if (affected <= 0) throw new InvalidOperationException($"AckConsumer not found. guid={ackGuid}, consumer={consumerId}");
 
-            if (outcome == AckOutcome.Retry) {
-                var ackId = await _dal.Ack.GetIdByGuidAsync(ackGuid, load);
-                if (!ackId.HasValue || ackId.Value <= 0) throw new InvalidOperationException($"Ack not found. guid={ackGuid}");
-                await _dal.AckConsumer.SetStatusAsync(ackId.Value, consumerId, (int)AckStatus.Pending, load);
-                await _dal.AckConsumer.MarkRetryAsync(ackId.Value, consumerId, load);
-            }
-
-            _ = message; _ = retryAt;
+            _ = message;
         }
 
         public async Task MarkRetryAsync(long ackId, long consumerId, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (ackId <= 0) throw new ArgumentOutOfRangeException(nameof(ackId));
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
-            await _dal.AckConsumer.SetStatusAsync(ackId, consumerId, (int)AckStatus.Pending, load);
-            await _dal.AckConsumer.MarkRetryAsync(ackId, consumerId, load);
-            _ = retryAt;
+
+            var nextDueUtc = (retryAt?.UtcDateTime) ?? (DateTime.UtcNow + _pendingNextDue);
+            await _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, (int)AckStatus.Pending, nextDueUtc, load);
         }
 
-        public Task SetStatusAsync(long ackId, long consumerId, int ackStatus, DbExecutionLoad load = default) { load.Ct.ThrowIfCancellationRequested(); return _dal.AckConsumer.SetStatusAsync(ackId, consumerId, ackStatus, load); }
-
-        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListPendingLifecycleDispatchAsync(long consumerId, int ackStatus, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default) {
+        public Task SetStatusAsync(long ackId, long consumerId, int ackStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-            var rows = await _dal.AckDispatch.ListPendingLifecycleReadyPagedAsync(consumerId, ackStatus, utcOlderThan, skip, take, load);
+
+            // NOTE: status-only is dangerous now; caller must decide due semantics.
+            // Keep it for compatibility but do NOT touch next_due (pass NULL only when moving to terminal states).
+            DateTime? nextDueUtc = null;
+            if (ackStatus == (int)AckStatus.Pending) nextDueUtc = DateTime.UtcNow + _pendingNextDue;
+            else if (ackStatus == (int)AckStatus.Delivered) nextDueUtc = DateTime.UtcNow + _deliveredNextDue;
+            else nextDueUtc = null;
+
+            return _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, ackStatus, nextDueUtc, load);
+        }
+
+        // DISPATCH LISTING (monitor uses these)
+        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+
+            var rows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, skip, take, load);
             var list = new List<ILifeCycleDispatchItem>(rows.Count);
 
             foreach (var r in rows) {
                 load.Ct.ThrowIfCancellationRequested();
 
                 var evt = new LifeCycleTransitionEvent {
-                    DefinitionVersionId = r.GetLong("def_version_id"), // may be needed to identify which version of definition
-                    ConsumerId = r.GetLong("consumer"), //may be needed when we have multi-tenant consumers
-                    InstanceGuid = r.GetString("instance_guid"), // application to know which instance
-                    ExternalRef = r.GetString("external_ref") ?? string.Empty, //application's main ref id
+                    DefinitionVersionId = r.GetLong("def_version_id"),
+                    ConsumerId = r.GetLong("consumer"),
+                    InstanceGuid = r.GetString("instance_guid"),
+                    ExternalRef = r.GetString("external_ref") ?? string.Empty,
                     RequestId = null,
                     OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
@@ -141,8 +162,9 @@ namespace Haley.Services {
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     ConsumerId = r.GetLong("consumer"),
                     AckStatus = r.GetInt("status"),
-                    TriggerCount = r.GetInt("retry_count"),
-                    LastTrigger = r.GetDateTime("last_retry") ?? DateTime.UtcNow,
+                    TriggerCount = r.GetInt("trigger_count"),
+                    LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
+                    NextDue = r.GetDateTime("next_due"), // nullable now
                     Event = evt
                 });
             }
@@ -150,9 +172,10 @@ namespace Haley.Services {
             return list;
         }
 
-        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListPendingHookDispatchAsync(long consumerId, int ackStatus, DateTime utcOlderThan, int skip, int take, DbExecutionLoad load = default) {
+        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueHookDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-            var rows = await _dal.AckDispatch.ListPendingHookReadyPagedAsync(consumerId, ackStatus, utcOlderThan, skip, take, load);
+
+            var rows = await _dal.AckDispatch.ListDueHookPagedAsync(consumerId, ackStatus, skip, take, load);
             var list = new List<ILifeCycleDispatchItem>(rows.Count);
 
             foreach (var r in rows) {
@@ -183,8 +206,9 @@ namespace Haley.Services {
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     ConsumerId = r.GetLong("consumer"),
                     AckStatus = r.GetInt("status"),
-                    TriggerCount = r.GetInt("retry_count"),
-                    LastTrigger = r.GetDateTime("last_retry") ?? DateTime.UtcNow,
+                    TriggerCount = r.GetInt("trigger_count"),
+                    LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
+                    NextDue = r.GetDateTime("next_due"), // nullable now
                     Event = evt
                 });
             }
@@ -192,25 +216,67 @@ namespace Haley.Services {
             return list;
         }
 
-        public async Task<int> CountPendingLifecycleDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) { load.Ct.ThrowIfCancellationRequested(); return (await _dal.AckDispatch.CountPendingLifecycleReadyAsync(ackStatus, utcOlderThan, load)) ?? 0; }
+        public async Task<int> CountDueLifecycleDispatchAsync(int ackStatus, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return (await _dal.AckDispatch.CountDueLifecycleAsync(ackStatus, load)) ?? 0;
+        }
 
-        public async Task<int> CountPendingHookDispatchAsync(int ackStatus, DateTime utcOlderThan, DbExecutionLoad load = default) { load.Ct.ThrowIfCancellationRequested(); return (await _dal.AckDispatch.CountPendingHookReadyAsync(ackStatus, utcOlderThan, load)) ?? 0; }
+        public async Task<int> CountDueHookDispatchAsync(int ackStatus, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return (await _dal.AckDispatch.CountDueHookAsync(ackStatus, load)) ?? 0;
+        }
 
-        private async Task EnsureConsumersAsync(long ackId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load) {
+        private (AckStatus status, DateTime? nextDueUtc) ComputeOutcomeStatusAndDue(AckOutcome outcome, DateTimeOffset? retryAt) {
+            // Use next_due to drive monitor. Terminal states => next_due NULL.
+            // Pending/Delivered => schedule next_due (either retryAt or defaults).
+            if (outcome == AckOutcome.Delivered)
+                return (AckStatus.Delivered, DateTime.UtcNow + _deliveredNextDue);
+
+            if (outcome == AckOutcome.Processed)
+                return (AckStatus.Processed, null);
+
+            if (outcome == AckOutcome.Failed)
+                return (AckStatus.Failed, null);
+
+            if (outcome == AckOutcome.Retry)
+                return (AckStatus.Pending, retryAt?.UtcDateTime ?? (DateTime.UtcNow + _pendingNextDue));
+
+            return (AckStatus.Pending, DateTime.UtcNow + _pendingNextDue);
+        }
+
+        private async Task EnsureConsumersInsertOnlyAsync(long ackId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load) {
             load.Ct.ThrowIfCancellationRequested();
             var ids = NormalizeConsumers(consumerIds);
+            if (ids.Count == 0) return;
+
+            // Only INSERT missing rows. Do not overwrite existing status/next_due.
+            // (This prevents rescheduling acks on every startup or re-attach call.)
             for (var i = 0; i < ids.Count; i++) {
                 load.Ct.ThrowIfCancellationRequested();
-                await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, ids[i], initialAckStatus, load); // DAL does EXISTS->INSERT
+                var consumerId = ids[i];
+
+                var existing = await _dal.AckConsumer.GetByKeyAsync(ackId, consumerId, load);
+                if (existing != null) continue;
+
+                var nextDueUtc = ComputeInitialNextDueUtc(initialAckStatus);
+                await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerId, initialAckStatus, nextDueUtc, load);
             }
+        }
+
+        private DateTime? ComputeInitialNextDueUtc(int ackStatus) {
+            if (ackStatus == (int)AckStatus.Pending) return DateTime.UtcNow + _pendingNextDue;
+            if (ackStatus == (int)AckStatus.Delivered) return DateTime.UtcNow + _deliveredNextDue;
+            return null; // Processed/Failed etc.
         }
 
         private async Task<ILifeCycleAckRef> GetAckRefByIdAsync(long ackId, DbExecutionLoad load) {
             load.Ct.ThrowIfCancellationRequested();
             var row = await _dal.Ack.GetByIdAsync(ackId, load);
             if (row == null) throw new InvalidOperationException($"Ack not found. id={ackId}");
+
             var guid = row.GetString("guid");
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException($"Ack guid missing. id={ackId}");
+
             return new LifeCycleAckRef { AckId = ackId, AckGuid = guid! };
         }
 
