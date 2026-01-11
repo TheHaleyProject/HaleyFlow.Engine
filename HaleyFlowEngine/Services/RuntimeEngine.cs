@@ -61,5 +61,4 @@ namespace Haley.Services {
             return row != null ? row.GetLong("id") : await _dal.ActivityStatus.InsertAsync(displayName, load);
         }
     }
-
 }

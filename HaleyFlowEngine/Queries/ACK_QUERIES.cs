@@ -50,7 +50,6 @@ namespace Haley.Internal {
         public const string DELETE = $@"DELETE FROM ack_consumer WHERE id = {ID};";
         public const string DELETE_BY_ACK_ID = $@"DELETE FROM ack_consumer WHERE ack_id = {ACK_ID};";
     }
-
     internal class QRY_ACK_HOOK {
         public const string EXISTS_BY_ACK_ID = $@"SELECT 1 FROM hook_ack WHERE ack_id = {ACK_ID} LIMIT 1;";
         public const string EXISTS_BY_HOOK_ID = $@"SELECT 1 FROM hook_ack WHERE hook_id = {HOOK_ID} LIMIT 1;";
@@ -98,5 +97,4 @@ namespace Haley.Internal {
 
         public const string COUNT_DUE_HOOK = $@"SELECT COUNT(1) AS pending_count FROM hook_ack ha JOIN ack_consumer ac ON ac.ack_id = ha.ack_id WHERE ac.status = {ACK_STATUS} AND ac.next_due IS NOT NULL AND ac.next_due <= UTC_TIMESTAMP();";
     }
-
 }

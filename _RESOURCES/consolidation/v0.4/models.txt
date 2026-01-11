@@ -1,0 +1,300 @@
+public interface ILifeCycleDispatchItem {
+    LifeCycleEventKind Kind { get; }
+    long AckId { get; }
+    string AckGuid { get; }
+    long ConsumerId { get; }
+    int AckStatus { get; }
+    int TriggerCount { get; }
+    DateTime LastTrigger { get; }
+    DateTime? NextDue { get; }
+    ILifeCycleEvent Event { get; }
+}
+
+ public interface ILifeCycleEvent {
+    LifeCycleEventKind Kind { get; }
+    long ConsumerId { get; }
+    string InstanceGuid { get; }
+    string ExternalRef { get; }
+    string? RequestId { get; }
+    string AckGuid { get; }
+    DateTimeOffset OccurredAt { get; }
+    bool AckRequired { get; }
+    IReadOnlyDictionary<string, object?>? Payload { get; }
+}
+
+   public interface ILifeCycleHookEmission {
+     long HookId { get; }
+     long StateId { get; }
+     bool OnEntry { get; }
+     string HookCode { get; }
+     string? OnSuccessEvent { get; }
+     string? OnFailureEvent { get; }
+     DateTimeOffset? NotBefore { get; }
+     DateTimeOffset? Deadline { get; }
+     IReadOnlyDictionary<string, object?>? Payload { get; } // ephemeral (NOT stored)
+ }
+
+   public interface ILifeCycleHookEvent : ILifeCycleEvent {
+     long HookId { get; }
+     bool OnEntry { get; }
+     string HookCode { get; }
+     string? OnSuccessEvent { get; }
+     string? OnFailureEvent { get; }
+     DateTimeOffset? NotBefore { get; }
+     DateTimeOffset? Deadline { get; }
+ }
+
+  public interface ILifeCycleTransitionEvent : ILifeCycleEvent {
+     long LifeCycleId { get; }
+     long FromStateId { get; }
+     long ToStateId { get; }
+     int EventCode { get; }
+     string EventName { get; }
+     IReadOnlyDictionary<string, object?>? PrevStateMeta { get; }
+     string? PolicyJson { get; }
+ }
+
+   public interface ILifeCycleAckRef {
+      long AckId { get; }
+      string AckGuid { get; }
+  }
+
+public sealed class LifeCycleAckRef : ILifeCycleAckRef {
+    public long AckId { get; set; }
+    public string AckGuid { get; set; }
+}
+
+  public sealed class LifeCycleDispatchItem : ILifeCycleDispatchItem {
+      public LifeCycleEventKind Kind { get; set; }
+      public long AckId { get; set; }
+      public string AckGuid { get; set; } = string.Empty;
+      public long ConsumerId { get; set; }
+      public int AckStatus { get; set; }
+      public int TriggerCount { get; set; }
+      public DateTime LastTrigger { get; set; }
+      public DateTime? NextDue { get; set; }
+      public ILifeCycleEvent Event { get; set; } = default!;
+  }
+
+public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
+    public long HookId { get; set; }
+    public long StateId { get; set; }
+    public bool OnEntry { get; set; }
+    public string HookCode { get; set; }
+    public string OnSuccessEvent { get; set; }
+    public string OnFailureEvent { get; set; }
+    public DateTimeOffset? NotBefore { get; set; }
+    public DateTimeOffset? Deadline { get; set; }
+    public IReadOnlyDictionary<string, object> Payload { get; set; }
+}
+
+
+
+ public sealed class EventDef {
+    public long Id { get; set; }
+    public int Code { get; set; }
+    public string Name { get; set; }
+    public string DisplayName { get; set; }
+    public EventDef() { }
+}
+
+   public sealed class LifeCycleBlueprint {
+     public long DefVersionId { get; set; }
+     public long DefinitionId { get; set; }
+     public int EnvCode { get; set; }
+     public string DefName { get; set; }
+     public IReadOnlyDictionary<long, StateDef> StatesById { get; set; }
+     public IReadOnlyDictionary<long, EventDef> EventsById { get; set; }
+     public IReadOnlyDictionary<string, EventDef> EventsByName { get; set; }
+     public IReadOnlyDictionary<int, EventDef> EventsByCode { get; set; }
+     public IReadOnlyDictionary<Tuple<long, int>, TransitionDef> Transitions { get; set; }
+     public long InitialStateId { get; set; }
+     public LifeCycleBlueprint() { }
+ }
+
+   public sealed class LifeCycleNotice {
+     public LifeCycleNoticeKind Kind { get; }
+     public string NoticeType { get; }          // machine-readable category (string)
+     public string Code { get; }                // short code (stable)
+     public string Message { get; }             // human readable
+     public Exception? Exception { get; }
+     public DateTimeOffset OccurredAt { get; }
+     public IReadOnlyDictionary<string, object?>? Data { get; }  // optional structured payload
+
+     public LifeCycleNotice(LifeCycleNoticeKind kind, string noticeType, string code, string message, Exception? exception = null, IReadOnlyDictionary<string, object?>? data = null) {
+         Kind = kind;
+         NoticeType = noticeType ?? string.Empty;
+         Code = code ?? string.Empty;
+         Message = message ?? string.Empty;
+         Exception = exception;
+         Data = data;
+         OccurredAt = DateTimeOffset.UtcNow;
+     }
+
+     public static LifeCycleNotice Error(string noticeType, string code, string message, Exception ex, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Error, noticeType, code, message, ex, data);
+     public static LifeCycleNotice Warn(string noticeType, string code, string message, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Warning, noticeType, code, message, null, data);
+     public static LifeCycleNotice Info(string noticeType, string code, string message, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Info, noticeType, code, message, null, data);
+ }
+
+ public sealed class StateDef {
+     public long Id { get; set; }
+     public string Name { get; set; }
+     public string DisplayName { get; set; }
+     public uint Flags { get; set; }
+     public int? TimeoutMinutes { get; set; }
+     public long? TimeoutEventId { get; set; }
+     public bool IsInitial { get; set; }
+     public StateDef() { }
+ }
+
+  public sealed class TransitionDef {
+     public long FromStateId { get; set; }
+     public long ToStateId { get; set; }
+     public long EventId { get; set; }
+     public uint Flags { get; set; }
+     public TransitionDef() { }
+ }
+
+    public class LifeCycleEvent : ILifeCycleEvent {
+       public virtual LifeCycleEventKind Kind { get; }
+       public long ConsumerId { get; set; }
+       //public long InstanceId { get; set; } 
+       public string InstanceGuid { get; set; }
+       public long DefinitionVersionId { get; set; }
+       public string ExternalRef { get; set; }
+       public string AckGuid { get; set; }
+       public string? RequestId { get; set; }
+       public DateTimeOffset OccurredAt { get; set; }
+       public bool AckRequired { get; set; }
+       public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+       public LifeCycleEvent() { }
+       public LifeCycleEvent(LifeCycleEvent source) {
+           Kind = source.Kind;
+           ConsumerId = source.ConsumerId;
+           InstanceGuid = source.InstanceGuid;
+           DefinitionVersionId = source.DefinitionVersionId;
+           ExternalRef = source.ExternalRef;
+           AckGuid = source.AckGuid;
+           RequestId = source.RequestId;
+           Payload = source.Payload;
+           OccurredAt = source.OccurredAt;
+           AckRequired = source.AckRequired;
+       }
+   }
+
+  public sealed class LifeCycleHookEvent : LifeCycleEvent, ILifeCycleHookEvent {
+     public LifeCycleEventKind Kind { get { return LifeCycleEventKind.Hook; } }
+     public long HookId { get; set; }
+     public bool OnEntry { get; set; }
+     public string HookCode { get; set; } //Route or identifier for the hook
+     public string OnSuccessEvent { get; set; }
+     public string OnFailureEvent { get; set; }
+     public DateTimeOffset? NotBefore { get; set; }
+     public DateTimeOffset? Deadline { get; set; }
+     public LifeCycleHookEvent() { }
+     public LifeCycleHookEvent(LifeCycleEvent evt) :base(evt){
+         
+     }
+ }
+
+  public sealed class LifeCycleTransitionEvent : LifeCycleEvent, ILifeCycleTransitionEvent {
+     public LifeCycleEventKind Kind { get { return LifeCycleEventKind.Transition; } }
+     public long LifeCycleId { get; set; }
+     public long FromStateId { get; set; }
+     public long ToStateId { get; set; }
+     public int EventCode { get; set; }
+     public string EventName { get; set; }
+     public IReadOnlyDictionary<string, object> PrevStateMeta { get; set; }
+     public string PolicyJson { get; set; }
+     public LifeCycleTransitionEvent() : base() { }
+     public LifeCycleTransitionEvent(LifeCycleEvent evt) : base(evt) { }
+ }
+
+  public sealed class ApplyTransitionResult {
+     public bool Applied { get; set; }
+     public long? LifeCycleId { get; set; }
+     public long FromStateId { get; set; }
+     public long ToStateId { get; set; }
+     public long EventId { get; set; }
+     public int EventCode { get; set; }
+     public string EventName { get; set; }
+     public string Reason { get; set; }
+     public ApplyTransitionResult() { }
+ }
+
+   public sealed class LifeCycleTriggerRequest {
+     public int EnvCode { get; set; }
+     public string DefName { get; set; }
+     public string ExternalRef { get; set; }
+     public string Event { get; set; }
+     public string Actor { get; set; }
+     public string RequestId { get; set; }
+     public bool AckRequired { get; set; } = true;
+     public IReadOnlyDictionary<string, object> Payload { get; set; }
+     public LifeCycleTriggerRequest() { }
+ }
+
+  public sealed class LifeCycleTriggerResult {
+     public bool Applied { get; set; }
+     public string InstanceGuid { get; set; }
+     public long InstanceId { get; set; }
+     public long? LifeCycleId { get; set; }
+     public string FromState { get; set; }
+     public string ToState { get; set; }
+     public string Reason { get; set; }
+     public IReadOnlyList<string> LifecycleAckGuids { get; set; }
+     public IReadOnlyList<string> HookAckGuids { get; set; }
+     public LifeCycleTriggerResult() { }
+ }
+
+ public sealed class RuntimeUpsertRequest {
+    public string InstanceGuid { get; set; }
+    public long ActivityId { get; set; }
+    public long StateId { get; set; }
+    public string ActorId { get; set; }
+    public long StatusId { get; set; }
+    public long LcId { get; set; }
+    public bool Frozen { get; set; }
+    public object Data { get; set; }
+    public object Payload { get; set; }
+    public RuntimeUpsertRequest() { }
+}
+
+ public sealed class PolicyResolution {
+     public long? PolicyId { get; set; }
+     public string PolicyHash { get; set; }
+     public string PolicyJson { get; set; }
+     public PolicyResolution() { }
+ }
+
+     public sealed class WorkFlowEngineOptions {
+        public TimeSpan MonitorInterval { get; set; } = TimeSpan.FromMinutes(2);
+        public int MonitorPageSize { get; set; } = 200;
+        public TimeSpan AckPendingResendAfter { get; set; }= TimeSpan.FromSeconds(50);
+        public TimeSpan AckDeliveredResendAfter { get; set; } = TimeSpan.FromMinutes(6);
+
+        // Ack consumer resolution (fallbacks)
+        public long DefaultConsumerId { get; set; } = 1857; //Year of sepoy mutiny
+        public Func<long, long, IReadOnlyList<long>>? ResolveTransitionConsumers { get; set; } // (defVersionId, instanceId) => consumers
+        public Func<long, long, string, IReadOnlyList<long>>? ResolveHookConsumers { get; set; } // (defVersionId, instanceId, hookCode) => consumers
+        public IReadOnlyList<long>? MonitorConsumers { get; set; }
+
+        // Optional overrides (if you want to inject your own concrete implementations)
+        public IBlueprintManager? BlueprintManager { get; set; }
+        public IBlueprintImporter? BlueprintImporter { get; set; }
+        public IStateMachine? StateMachine { get; set; }
+        public IPolicyEnforcer? PolicyEnforcer { get; set; }
+        public IAckManager? AckManager { get; set; }
+        public IRuntimeEngine? RuntimeEngine { get; set; }
+    }
+
+ public readonly struct DbExecutionLoad {
+    public ITransactionHandler? Handler { get; }
+    public CancellationToken Ct { get; }
+
+    public DbExecutionLoad(CancellationToken ct, ITransactionHandler? th = null) {
+        Ct = ct;
+        Handler = th;
+    }
+    public static DbExecutionLoad None => default;
+}

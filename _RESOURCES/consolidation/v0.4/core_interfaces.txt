@@ -1,0 +1,66 @@
+public interface IAckManager {
+    Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, long instanceId, CancellationToken ct = default);
+    Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, long instanceId, string hookCode, CancellationToken ct = default);
+    Task<ILifeCycleAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default);
+    Task<ILifeCycleAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default);
+    Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default);
+    Task MarkRetryAsync(long ackId, long consumerId, DateTimeOffset? retryAt = null, DbExecutionLoad load = default);
+    Task SetStatusAsync(long ackId, long consumerId, int ackStatus, DbExecutionLoad load = default);
+    Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default);
+    Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueHookDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default);
+    Task<int> CountDueLifecycleDispatchAsync(int ackStatus, DbExecutionLoad load = default);
+    Task<int> CountDueHookDispatchAsync(int ackStatus, DbExecutionLoad load = default);
+}
+
+public interface IBlueprintImporter {
+    Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default);
+    Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default);
+}
+
+ public interface IBlueprintManager {
+     Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default);
+     Task<DbRow> GetDefVersionByIdAsync(long defVersionId, CancellationToken ct = default);
+     Task<LifeCycleBlueprint> GetBlueprintLatestAsync(int envCode, string defName, CancellationToken ct = default);
+     Task<LifeCycleBlueprint> GetBlueprintByVersionIdAsync(long defVersionId, CancellationToken ct = default);
+     void Clear();
+     void Invalidate(int envCode, string defName);
+     void Invalidate(long defVersionId);
+ }
+
+     public interface ILifeCycleEngine {
+        event Func<ILifeCycleEvent, Task>? EventRaised;
+        event Func<LifeCycleNotice, Task>? NoticeRaised;
+        Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default);
+        Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default);
+        Task ClearCacheAsync(CancellationToken ct = default);
+        Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default);
+        Task InvalidateAsync(long defVersionId, CancellationToken ct = default);
+        Task<string?> GetTimelineJsonAsync(long instanceId, CancellationToken ct = default);
+        Task RunMonitorOnceAsync(CancellationToken ct = default);
+    }
+
+      public interface ILifeCycleMonitor : IAsyncDisposable {
+      bool IsRunning { get; }
+      Task StartAsync(CancellationToken ct = default);
+      Task StopAsync(CancellationToken ct = default);
+      Task RunOnceAsync(CancellationToken ct = default);
+  }
+
+     public interface IPolicyEnforcer {
+       Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
+       Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
+       Task<PolicyResolution> ResolvePolicyAsync(long definitionId, DbExecutionLoad load = default);
+       Task<PolicyResolution> ResolvePolicyByIdAsync(long policyId, DbExecutionLoad load = default);
+   }
+
+     public interface IRuntimeEngine {
+      Task<long> UpsertAsync(RuntimeUpsertRequest req, CancellationToken ct = default);
+      Task<int> SetStatusAsync(long runtimeId, long statusId, CancellationToken ct = default);
+      Task<int> SetFrozenAsync(long runtimeId, bool frozen, CancellationToken ct = default);
+      Task<int> SetLcIdAsync(long runtimeId, long lcId, CancellationToken ct = default);
+  }
+
+   public interface IStateMachine {
+     Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, long policyId, DbExecutionLoad load = default);
+     Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DbExecutionLoad load = default);
+ }

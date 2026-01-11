@@ -1,0 +1,46 @@
+ public enum AckOutcome {
+     //Just the application input.. Application sends this to the engine to indicate the outcome of processing an event.
+     Delivered = 1, 
+     Processed = 2, 
+     Failed = 3, 
+     Retry = 4 
+ }
+
+  public enum AckStatus {
+    //This is for DB persistence only. If application sends (retry), then we shift the ackstatus to pending and then increase the retry count.
+    Pending = 1,
+    Delivered=2,
+    Processed=3,
+    Failed=4
+}
+  public enum LifeCycleEventKind {
+     //lifecycle events are macro items, hook are for micro orchestration. 
+     //lifecycle events are generic for a given state change.. we dont exactly know what steps should be followed.. so we just raise one event.. application should listen to this and then decide what to do. Here, the decision inside application is hard-coded.
+     //hooks are exact application method that should be called. Application should merely listen to these hooks and then invoke the methods.. Preferably, we will implement a way to auto-invoke these methods using reflection.. but for now, application should listen and invoke the methods. Later, we will implement auto-invocation using reflection inside HaleyEngineItself.. Application merely has to register the methods with HaleyEngine.
+     Transition = 1,
+     Hook = 2
+ }
+     [Flags]
+ public enum LifeCycleInstanceFlag : int {
+     None = 0,
+     Active = 1 << 0,
+     Suspended = 1 << 1,
+     Completed = 1 << 2,
+     Failed = 1 << 3,
+     Archived = 1 << 4
+ }
+
+     public enum LifeCycleNoticeKind { 
+        Error = 1, 
+        Warning = 2, 
+        Info = 3 
+    }
+
+      [Flags]
+  public enum LifeCycleStateFlag : int {
+      None =0,
+      IsInitial = 1 << 0, //1
+      IsFinal = 1 << 1, //2
+      IsSystem = 1 << 2, //4
+      IsError = 1 << 3 //8
+  }

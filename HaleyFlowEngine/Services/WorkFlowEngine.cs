@@ -11,14 +11,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
-
     public sealed class WorkFlowEngine : IWorkFlowEngine {
         private readonly IWorkFlowDAL _dal;
         private readonly WorkFlowEngineOptions _opt;
         private readonly IReadOnlyList<long> _monitorConsumers;
-        private readonly TimeSpan _ackPendingResendAfter = TimeSpan.FromSeconds(30);  // TODO: move to options
-        private readonly TimeSpan _ackDeliveredResendAfter = TimeSpan.FromMinutes(5); // TODO: move to options
-
         public IStateMachine StateMachine { get; }
         public IBlueprintManager BlueprintManager { get; }
         public IBlueprintImporter BlueprintImporter { get; }
@@ -48,18 +44,19 @@ namespace Haley.Services {
             Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> transitionConsumers = (dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(tc?.Invoke(dv, iid) ?? new long[] { _opt.DefaultConsumerId });
             Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> hookConsumers = (dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(hc?.Invoke(dv, iid, code) ?? new long[] { _opt.DefaultConsumerId });
 
-            AckManager = _opt.AckManager ?? new AckManager(_dal, transitionConsumers, hookConsumers);
+            AckManager = _opt.AckManager ?? new AckManager(_dal, transitionConsumers, hookConsumers,_opt.AckPendingResendAfter,_opt.AckDeliveredResendAfter);
+
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
             _monitorConsumers = _opt.MonitorConsumers ?? new long[] { _opt.DefaultConsumerId };
             Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
         }
 
-        public Task StartAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
+        public Task StartMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
 
-        public Task StopAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StopAsync(ct); }
+        public Task StopMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StopAsync(ct); }
 
-        public async ValueTask DisposeAsync() { try { await StopAsync(CancellationToken.None); } catch { } await Monitor.DisposeAsync(); await _dal.DisposeAsync(); }
+        public async ValueTask DisposeAsync() { try { await StopMonitorAsync(CancellationToken.None); } catch { } await Monitor.DisposeAsync(); await _dal.DisposeAsync(); }
 
         public async Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
@@ -240,8 +237,8 @@ namespace Haley.Services {
 
             var nowUtc = DateTime.UtcNow;
             var nextDueUtc = ackStatus == (int)AckStatus.Pending
-                ? nowUtc.Add(_ackPendingResendAfter)
-                : nowUtc.Add(_ackDeliveredResendAfter);
+                ? nowUtc.Add(_opt.AckPendingResendAfter)
+                : nowUtc.Add(_opt.AckDeliveredResendAfter);
 
             // Lifecycle
             var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));

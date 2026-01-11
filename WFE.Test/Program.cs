@@ -56,6 +56,8 @@ var opt = new WorkFlowEngineOptions {
     DefaultConsumerId = ConsumerId,
     MonitorInterval = TimeSpan.FromSeconds(10),
     MonitorPageSize = 200,
+    AckDeliveredResendAfter = TimeSpan.FromSeconds(30),
+    AckPendingResendAfter  = TimeSpan.FromSeconds(20),
 
     // IMPORTANT: WorkFlowEngine constructor throws if BlueprintImporter is null
     MonitorConsumers = new long[] { ConsumerId }
@@ -79,7 +81,7 @@ engine.NoticeRaised += async n => {
 
 // Auto-ACK + optional auto-flow driver for hook events
 engine.EventRaised += async evt => {
-    await Task.Delay(TimeSpan.FromSeconds(10));
+   // await Task.Delay(TimeSpan.FromSeconds(10));
     if (evt.Kind == LifeCycleEventKind.Transition) {
         var t = (ILifeCycleTransitionEvent)evt;
         Console.WriteLine($"[TRN] ext={t.ExternalRef} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
@@ -93,8 +95,9 @@ engine.EventRaised += async evt => {
         var h = (ILifeCycleHookEvent)evt;
         Console.WriteLine($"[HOOK] ext={h.ExternalRef} code={h.HookCode} onSuccess={h.OnSuccessEvent} onFailure={h.OnFailureEvent} ack={h.AckGuid}");
 
+        return;
         if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
-            await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Processed, "hook-processed", ct: CancellationToken.None);
+            await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Delivered, "hook-processed", ct: CancellationToken.None);
 
         // OPTIONAL: auto-complete the workflow by triggering the next event based on hook code.
         // This simulates your application processing the hook and calling TriggerAsync again.
@@ -163,6 +166,8 @@ var first = new LifeCycleTriggerRequest {
         ["startedAtUtc"] = DateTime.UtcNow.ToString("O")
     }
 };
+
+await engine.StartMonitorAsync(); //Start the moni
 
 var firstRes = await engine.TriggerAsync(first, cts.Token);
 Console.WriteLine($"Trigger(1000) applied={firstRes.Applied} instanceId={firstRes.InstanceId} lcId={firstRes.LifeCycleId} {firstRes.FromState}->{firstRes.ToState}");
@@ -234,7 +239,7 @@ static string EnsurePolicyHasDefName(string policyJson, string defName) {
 static async Task<IWorkFlowDAL> CreateDalOrThrow() {
     var constring = $"server=127.0.0.1;port=3306;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
     //var response = await LifeCycleInitializer.InitializeAsync(new AdapterGateway(), "lcstate");
-    var agw = new AdapterGateway() { LogQueryInConsole = true };
+    var agw = new AdapterGateway() { LogQueryInConsole = false };
     var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, constring);
     if (!response.Status) throw new ArgumentException("Unable to initialize the database for the lifecycle state machine");
     return new MariaWorkFlowDAL(agw, response.Result);

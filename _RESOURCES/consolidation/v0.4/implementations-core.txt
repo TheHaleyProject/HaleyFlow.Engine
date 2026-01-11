@@ -1,0 +1,1236 @@
+internal sealed class AckManager : IAckManager {
+    private readonly IWorkFlowDAL _dal;
+
+    private readonly Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> _transitionConsumers;
+    private readonly Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> _hookConsumers;
+
+    // scheduling policy
+    private readonly TimeSpan _pendingNextDue;    // T + 40s
+    private readonly TimeSpan _deliveredNextDue;  // T + 4m
+
+    public AckManager(
+        IWorkFlowDAL dal,
+        Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? transitionConsumers = null,
+        Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? hookConsumers = null,
+        TimeSpan? pendingNextDue = null,
+        TimeSpan? deliveredNextDue = null) {
+        _dal = dal ?? throw new ArgumentNullException(nameof(dal));
+        _transitionConsumers = transitionConsumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+        _hookConsumers = hookConsumers ?? ((dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+
+        _pendingNextDue = pendingNextDue ?? TimeSpan.FromSeconds(40);
+        _deliveredNextDue = deliveredNextDue ?? TimeSpan.FromMinutes(4);
+    }
+
+    public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, long instanceId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _transitionConsumers(defVersionId, instanceId, ct); }
+
+    public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, long instanceId, string hookCode, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _hookConsumers(defVersionId, instanceId, hookCode, ct); }
+
+    public async Task<ILifeCycleAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        if (lifecycleId <= 0) throw new ArgumentOutOfRangeException(nameof(lifecycleId));
+
+        var existingAckId = await _dal.LcAck.GetAckIdByLcIdAsync(lifecycleId, load);
+        if (existingAckId.HasValue && existingAckId.Value > 0) {
+            // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
+            await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
+            return await GetAckRefByIdAsync(existingAckId.Value, load);
+        }
+
+        var ack = await _dal.Ack.InsertReturnRowAsync(load);
+        if (ack == null) throw new InvalidOperationException("Ack insert failed.");
+
+        var ackId = ack.GetLong("id");
+        var ackGuid = ack.GetString("guid");
+        if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
+
+        await _dal.LcAck.AttachAsync(ackId, lifecycleId, load);
+        await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
+
+        return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid! };
+    }
+
+    public async Task<ILifeCycleAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        if (hookId <= 0) throw new ArgumentOutOfRangeException(nameof(hookId));
+
+        var existingAckId = await _dal.HookAck.GetAckIdByHookIdAsync(hookId, load);
+        if (existingAckId.HasValue && existingAckId.Value > 0) {
+            // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
+            await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
+            return await GetAckRefByIdAsync(existingAckId.Value, load);
+        }
+
+        var ack = await _dal.Ack.InsertReturnRowAsync(load);
+        if (ack == null) throw new InvalidOperationException("Ack insert failed.");
+
+        var ackId = ack.GetLong("id");
+        var ackGuid = ack.GetString("guid");
+        if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
+
+        await _dal.HookAck.AttachAsync(ackId, hookId, load);
+        await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
+
+        return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid! };
+    }
+
+    // ACK FROM CONSUMER
+    public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
+        if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
+
+        // Decide status + due scheduling
+        var (status, nextDueUtc) = ComputeOutcomeStatusAndDue(outcome, retryAt);
+
+        // Single DB call; no ackId fetch needed.
+        var affected = await _dal.AckConsumer.SetStatusAndDueByGuidAsync(ackGuid, consumerId, (int)status, nextDueUtc, load);
+        if (affected <= 0) throw new InvalidOperationException($"AckConsumer not found. guid={ackGuid}, consumer={consumerId}");
+
+        _ = message;
+    }
+
+    public async Task MarkRetryAsync(long ackId, long consumerId, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        if (ackId <= 0) throw new ArgumentOutOfRangeException(nameof(ackId));
+        if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
+
+        var nextDueUtc = (retryAt?.UtcDateTime) ?? (DateTime.UtcNow + _pendingNextDue);
+        await _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, (int)AckStatus.Pending, nextDueUtc, load);
+    }
+
+    public Task SetStatusAsync(long ackId, long consumerId, int ackStatus, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+
+        // NOTE: status-only is dangerous now; caller must decide due semantics.
+        // Keep it for compatibility but do NOT touch next_due (pass NULL only when moving to terminal states).
+        DateTime? nextDueUtc = null;
+        if (ackStatus == (int)AckStatus.Pending) nextDueUtc = DateTime.UtcNow + _pendingNextDue;
+        else if (ackStatus == (int)AckStatus.Delivered) nextDueUtc = DateTime.UtcNow + _deliveredNextDue;
+        else nextDueUtc = null;
+
+        return _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, ackStatus, nextDueUtc, load);
+    }
+
+    // DISPATCH LISTING (monitor uses these)
+    public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+
+        var rows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, skip, take, load);
+        var list = new List<ILifeCycleDispatchItem>(rows.Count);
+
+        foreach (var r in rows) {
+            load.Ct.ThrowIfCancellationRequested();
+
+            var evt = new LifeCycleTransitionEvent {
+                DefinitionVersionId = r.GetLong("def_version_id"),
+                ConsumerId = r.GetLong("consumer"),
+                InstanceGuid = r.GetString("instance_guid"),
+                ExternalRef = r.GetString("external_ref") ?? string.Empty,
+                RequestId = null,
+                OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
+                AckGuid = r.GetString("ack_guid") ?? string.Empty,
+                AckRequired = true,
+                Payload = null,
+                LifeCycleId = r.GetLong("lc_id"),
+                FromStateId = r.GetLong("from_state"),
+                ToStateId = r.GetLong("to_state"),
+                EventCode = r.GetNullableInt("event_code") ?? 0,
+                EventName = r.GetString("event_name") ?? string.Empty,
+                PrevStateMeta = null,
+                PolicyJson = r.GetString("policy_json")
+            };
+
+            list.Add(new LifeCycleDispatchItem {
+                Kind = LifeCycleEventKind.Transition,
+                AckId = r.GetLong("ack_id"),
+                AckGuid = r.GetString("ack_guid") ?? string.Empty,
+                ConsumerId = r.GetLong("consumer"),
+                AckStatus = r.GetInt("status"),
+                TriggerCount = r.GetInt("trigger_count"),
+                LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
+                NextDue = r.GetDateTime("next_due"), // nullable now
+                Event = evt
+            });
+        }
+
+        return list;
+    }
+
+    public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueHookDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+
+        var rows = await _dal.AckDispatch.ListDueHookPagedAsync(consumerId, ackStatus, skip, take, load);
+        var list = new List<ILifeCycleDispatchItem>(rows.Count);
+
+        foreach (var r in rows) {
+            load.Ct.ThrowIfCancellationRequested();
+
+            var evt = new LifeCycleHookEvent {
+                ConsumerId = r.GetLong("consumer"),
+                InstanceGuid = r.GetString("instance_guid"),
+                DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
+                ExternalRef = r.GetString("external_ref") ?? string.Empty,
+                RequestId = null,
+                OccurredAt = r.GetDateTimeOffset("hook_created") ?? DateTimeOffset.UtcNow,
+                AckGuid = r.GetString("ack_guid") ?? string.Empty,
+                AckRequired = true,
+                Payload = null,
+                HookId = r.GetLong("hook_id"),
+                OnEntry = r.GetBool("on_entry"),
+                HookCode = r.GetString("route") ?? string.Empty,
+                OnSuccessEvent = null,
+                OnFailureEvent = null,
+                NotBefore = null,
+                Deadline = null
+            };
+
+            list.Add(new LifeCycleDispatchItem {
+                Kind = LifeCycleEventKind.Hook,
+                AckId = r.GetLong("ack_id"),
+                AckGuid = r.GetString("ack_guid") ?? string.Empty,
+                ConsumerId = r.GetLong("consumer"),
+                AckStatus = r.GetInt("status"),
+                TriggerCount = r.GetInt("trigger_count"),
+                LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
+                NextDue = r.GetDateTime("next_due"), // nullable now
+                Event = evt
+            });
+        }
+
+        return list;
+    }
+
+    public async Task<int> CountDueLifecycleDispatchAsync(int ackStatus, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        return (await _dal.AckDispatch.CountDueLifecycleAsync(ackStatus, load)) ?? 0;
+    }
+
+    public async Task<int> CountDueHookDispatchAsync(int ackStatus, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        return (await _dal.AckDispatch.CountDueHookAsync(ackStatus, load)) ?? 0;
+    }
+
+    private (AckStatus status, DateTime? nextDueUtc) ComputeOutcomeStatusAndDue(AckOutcome outcome, DateTimeOffset? retryAt) {
+        // Use next_due to drive monitor. Terminal states => next_due NULL.
+        // Pending/Delivered => schedule next_due (either retryAt or defaults).
+        if (outcome == AckOutcome.Delivered)
+            return (AckStatus.Delivered, DateTime.UtcNow + _deliveredNextDue);
+
+        if (outcome == AckOutcome.Processed)
+            return (AckStatus.Processed, null);
+
+        if (outcome == AckOutcome.Failed)
+            return (AckStatus.Failed, null);
+
+        if (outcome == AckOutcome.Retry)
+            return (AckStatus.Pending, retryAt?.UtcDateTime ?? (DateTime.UtcNow + _pendingNextDue));
+
+        return (AckStatus.Pending, DateTime.UtcNow + _pendingNextDue);
+    }
+
+    private async Task EnsureConsumersInsertOnlyAsync(long ackId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load) {
+        load.Ct.ThrowIfCancellationRequested();
+        var ids = NormalizeConsumers(consumerIds);
+        if (ids.Count == 0) return;
+
+        // Only INSERT missing rows. Do not overwrite existing status/next_due.
+        // (This prevents rescheduling acks on every startup or re-attach call.)
+        for (var i = 0; i < ids.Count; i++) {
+            load.Ct.ThrowIfCancellationRequested();
+            var consumerId = ids[i];
+
+            var existing = await _dal.AckConsumer.GetByKeyAsync(ackId, consumerId, load);
+            if (existing != null) continue;
+
+            var nextDueUtc = ComputeInitialNextDueUtc(initialAckStatus);
+            await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerId, initialAckStatus, nextDueUtc, load);
+        }
+    }
+
+    private DateTime? ComputeInitialNextDueUtc(int ackStatus) {
+        if (ackStatus == (int)AckStatus.Pending) return DateTime.UtcNow + _pendingNextDue;
+        if (ackStatus == (int)AckStatus.Delivered) return DateTime.UtcNow + _deliveredNextDue;
+        return null; // Processed/Failed etc.
+    }
+
+    private async Task<ILifeCycleAckRef> GetAckRefByIdAsync(long ackId, DbExecutionLoad load) {
+        load.Ct.ThrowIfCancellationRequested();
+        var row = await _dal.Ack.GetByIdAsync(ackId, load);
+        if (row == null) throw new InvalidOperationException($"Ack not found. id={ackId}");
+
+        var guid = row.GetString("guid");
+        if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException($"Ack guid missing. id={ackId}");
+
+        return new LifeCycleAckRef { AckId = ackId, AckGuid = guid! };
+    }
+
+    private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long> consumerIds) {
+        if (consumerIds == null || consumerIds.Count == 0) return Array.Empty<long>();
+        var set = new HashSet<long>();
+        for (var i = 0; i < consumerIds.Count; i++) if (consumerIds[i] > 0) set.Add(consumerIds[i]);
+        if (set.Count == 0) return Array.Empty<long>();
+        var arr = new long[set.Count];
+        set.CopyTo(arr);
+        return arr;
+    }
+}
+
+ internal sealed class BlueprintImporter : IBlueprintImporter {
+     private readonly IWorkFlowDAL _dal;
+     public BlueprintImporter(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+     public async Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default) {
+         ct.ThrowIfCancellationRequested();
+         if (string.IsNullOrWhiteSpace(definitionJson)) throw new ArgumentNullException(nameof(definitionJson));
+
+         using var doc = JsonDocument.Parse(definitionJson);
+         var root = doc.RootElement;
+
+         var defNode = root.TryGetProperty("definition", out var d) ? d : root;
+         var defName = defNode.GetString("name") ?? defNode.GetString("displayName") ?? defNode.GetString("defName") ?? throw new InvalidOperationException("definition.name/displayName missing.");
+         var defDesc = defNode.GetString("description");
+         var requestedVer = defNode.GetInt("version") ?? 0;
+
+
+
+         var transaction = _dal.CreateNewTransaction();
+         using var tx = transaction.Begin(false);
+         var load = new DbExecutionLoad(ct, transaction);
+         var committed = false;
+
+         try {
+             var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
+             var defId = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName, defDesc, load);
+
+             //Check if the definition has the version json already with the hash.
+             var defhashMaterial = root.BuildDefinitionHashMaterial();
+             var defHash = defhashMaterial.CreateGUID(HashMethod.Sha256).ToString();
+             var existing = await _dal.Blueprint.GetDefVersionByParentAndHashAsync(defId, defHash, load);
+             if (existing != null) {
+                 tx.Commit();
+                 committed = true;
+                 return existing.GetLong("id"); //Definition version already exists with the same hash. Return existing version id.
+             }
+
+             var nextVer = await _dal.Blueprint.GetNextDefVersionNumberByEnvCodeAndDefNameAsync(envCode, defName, load) ?? 1;
+             var verToUse = requestedVer > 0 ? requestedVer : nextVer; //If version is not specified in the json, then automatically, next available version is accepted.
+             if (requestedVer > 0 && requestedVer < nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected. Requested version should either be equal to or greater than the next available version. Leave version empty in the json to automatically assign the version.");
+
+             var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, defhashMaterial, defHash, load);
+
+             var categoryMap = await ImportCategoriesFromStatesAsync(root, load);
+             var eventsByCode = await ImportEventsAsync(defVersionId, root, load);
+             var statesByName = await ImportStatesAsync(defVersionId, root, categoryMap, eventsByCode, load);
+             await ImportTransitionsAsync(defVersionId, root, statesByName, eventsByCode, load);
+
+             tx.Commit();
+             committed = true;
+             return defVersionId;
+         } catch {
+             if (!committed) tx.Rollback();
+             throw;
+         }
+     }
+
+     public async Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default) {
+         ct.ThrowIfCancellationRequested();
+         if (string.IsNullOrWhiteSpace(policyJson)) throw new ArgumentNullException(nameof(policyJson));
+
+         using var doc = JsonDocument.Parse(policyJson);
+         var root = doc.RootElement;
+
+         var defName = root.GetString("defName") ?? root.GetString("definitionName") ?? root.GetString("name") ?? root.GetString("displayName");
+         if (string.IsNullOrWhiteSpace(defName)) throw new InvalidOperationException("Policy JSON missing defName/definitionName/name/displayName.");
+
+         var transaction = _dal.CreateNewTransaction();
+         using var tx = transaction.Begin(false);
+         var load = new DbExecutionLoad(ct, transaction);
+         var committed = false;
+         try {
+             var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
+             _ = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName!, description: null, load);
+
+             var policyHashmaterial = root.BuildPolicyHashMaterial(); //take only relevant blocks.
+             var hash = policyHashmaterial.CreateGUID(HashMethod.Sha256).ToString();
+             var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
+
+             //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
+
+             await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);
+
+             tx.Commit();
+             committed = true;
+             return policyId;
+         } catch {
+             if (!committed) tx.Rollback();
+             throw;
+         }
+     }
+
+     private async Task<Dictionary<string, int>> ImportCategoriesFromStatesAsync(JsonElement root, DbExecutionLoad load) {
+         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+         if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
+
+         foreach (var s in states.EnumerateArray()) {
+             var cat = s.GetString("category");
+             if (string.IsNullOrWhiteSpace(cat)) continue;
+
+             var key = cat.N();
+             if (map.ContainsKey(key)) continue;
+
+             var id = await _dal.BlueprintWrite.EnsureCategoryByNameAsync(cat!, load);
+             map[key] = id;
+         }
+
+         return map;
+     }
+
+     private async Task<Dictionary<int, EventDef>> ImportEventsAsync(long defVersionId, JsonElement root, DbExecutionLoad load) {
+         var byCode = new Dictionary<int, EventDef>();
+         if (!root.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array) return byCode;
+
+         foreach (var e in events.EnumerateArray()) {
+             var code = e.GetInt("code") ?? 0;
+             var name = e.GetString("name") ?? e.GetString("displayName");
+             if (code <= 0 || string.IsNullOrWhiteSpace(name)) continue;
+             if (byCode.ContainsKey(code)) throw new InvalidOperationException($"Duplicate event code in JSON: {code}");
+
+             var id = await _dal.BlueprintWrite.InsertEventAsync(defVersionId, name!, code, load);
+             byCode[code] = new EventDef { Id = id, Code = code, Name = name!.N(), DisplayName = name! };
+         }
+
+         return byCode;
+     }
+
+     private async Task<Dictionary<string, StateDef>> ImportStatesAsync(long defVersionId, JsonElement root, Dictionary<string, int> categoryMap, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
+         var map = new Dictionary<string, StateDef>(StringComparer.OrdinalIgnoreCase);
+         if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
+
+         foreach (var s in states.EnumerateArray()) {
+             var name = s.GetString("name") ?? s.GetString("displayName");
+             if (string.IsNullOrWhiteSpace(name)) continue;
+
+             var key = name!.N();
+             if (map.ContainsKey(key)) throw new InvalidOperationException($"Duplicate state name in JSON: {name}");
+
+             var flags = (uint)(s.GetInt("flags") ?? 0);
+             if (s.GetBool("is_initial") == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
+             if (s.GetBool("is_final") == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
+
+             var timeoutMinutes = ParseTimeoutMinutes(s);
+             var timeoutMode = ParseTimeoutMode(s);
+
+             long timeoutEventId = 0;
+             var timeoutEventCode = s.GetInt("timeout_event") ?? s.GetInt("timeoutEventCode");
+             if (timeoutEventCode.HasValue && eventsByCode.TryGetValue(timeoutEventCode.Value, out var tev)) timeoutEventId = tev.Id;
+
+             var catName = s.GetString("category");
+             var catId = (!string.IsNullOrWhiteSpace(catName) && categoryMap.TryGetValue(catName!.N(), out var cid)) ? cid : 0;
+
+             var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, timeoutMinutes, (uint)timeoutMode, timeoutEventId, load);
+
+             map[key] = new StateDef {
+                 Id = id,
+                 Name = key,
+                 DisplayName = name!,
+                 Flags = flags,
+                 TimeoutMinutes = timeoutMinutes,
+                 TimeoutEventId = timeoutEventId,
+                 IsInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0
+             };
+         }
+
+         return map;
+     }
+
+     private async Task ImportTransitionsAsync(long defVersionId, JsonElement root, Dictionary<string, StateDef> statesByName, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
+         if (!root.TryGetProperty("transitions", out var trans) || trans.ValueKind != JsonValueKind.Array) return;
+
+         foreach (var t in trans.EnumerateArray()) {
+             var fromName = t.GetString("from") ?? t.GetString("fromState");
+             var toName = t.GetString("to") ?? t.GetString("toState");
+             var evCode = t.GetInt("event") ?? t.GetInt("eventCode");
+             if (string.IsNullOrWhiteSpace(fromName) || string.IsNullOrWhiteSpace(toName) || !evCode.HasValue) continue;
+
+             if (!statesByName.TryGetValue(fromName!.N(), out var from)) throw new InvalidOperationException($"Transition from-state not found: {fromName}");
+             if (!statesByName.TryGetValue(toName!.N(), out var to)) throw new InvalidOperationException($"Transition to-state not found: {toName}");
+             if (!eventsByCode.TryGetValue(evCode.Value, out var ev)) throw new InvalidOperationException($"Transition event code not found: {evCode}");
+
+             var flags = (uint)(t.GetInt("flags") ?? 0);
+             await _dal.BlueprintWrite.InsertTransitionAsync(defVersionId, from.Id, to.Id, ev.Id, load);
+         }
+     }
+
+     private static int? ParseTimeoutMinutes(JsonElement stateNode) {
+         var tm = stateNode.GetInt("timeout_minutes") ?? stateNode.GetInt("timeoutMinutes");
+         if (tm.HasValue) return tm;
+
+         var dur = stateNode.GetString("timeout");
+         if (string.IsNullOrWhiteSpace(dur)) return null;
+
+         //We can use XMLConvert, but it cannot handle all cases like months and years properly.
+         //var ts = XmlConvert.ToTimeSpan(dur!);
+         //var mins = (int)Math.Ceiling(ts.TotalMinutes);
+         if (!ISODurationUtils.TryToMinutes(dur!, out var mins) || mins <=0) return null;
+         return mins;
+     }
+
+     private static int ParseTimeoutMode(JsonElement stateNode) {
+         var n = stateNode.GetInt("timeout_mode") ?? stateNode.GetInt("timeoutMode");
+         if (n.HasValue) return n.Value;
+
+         var s = stateNode.GetString("timeout_mode") ?? stateNode.GetString("timeoutMode");
+         if (string.IsNullOrWhiteSpace(s)) return 0;
+         return string.Equals(s.Trim(), "repeat", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+     }
+        
+ }
+
+ internal sealed class BlueprintManager : IBlueprintManager {
+    private readonly IWorkFlowDAL _dal;
+    private readonly ConcurrentDictionary<string, Lazy<Task<DbRow>>> _latestDefVersion = new();
+    private readonly ConcurrentDictionary<long, Lazy<Task<LifeCycleBlueprint>>> _blueprintsByVer = new();
+
+    public BlueprintManager(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        var key = $"{envCode}:{(defName ?? string.Empty).N()}";
+        var lazy = _latestDefVersion.GetOrAdd(key, _ => new Lazy<Task<DbRow>>(() => LoadLatestDefVersionAsync(envCode, defName)));
+        return AwaitCachedAsync(_latestDefVersion, key, lazy.Value, ct);
+    }
+
+    public async Task<DbRow> GetDefVersionByIdAsync(long defVersionId, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        var row = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, DbExecutionLoad.None);
+        if (row == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
+        return row;
+    }
+
+    public async Task<LifeCycleBlueprint> GetBlueprintLatestAsync(int envCode, string defName, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        var dv = await GetLatestDefVersionAsync(envCode, defName, ct);
+        return await GetBlueprintByVersionIdAsync(dv.GetLong("id"), ct);
+    }
+
+    public Task<LifeCycleBlueprint> GetBlueprintByVersionIdAsync(long defVersionId, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        var lazy = _blueprintsByVer.GetOrAdd(defVersionId, _ => new Lazy<Task<LifeCycleBlueprint>>(() => BuildBlueprintAsync(defVersionId)));
+        return AwaitCachedAsync(_blueprintsByVer, defVersionId, lazy.Value, ct);
+    }
+
+    public void Clear() { _latestDefVersion.Clear(); _blueprintsByVer.Clear(); }
+
+    public void Invalidate(int envCode, string defName) { _latestDefVersion.TryRemove($"{envCode}:{(defName ?? string.Empty).N()}", out _); }
+
+    public void Invalidate(long defVersionId) { _blueprintsByVer.TryRemove(defVersionId, out _); }
+
+    private async Task<DbRow> LoadLatestDefVersionAsync(int envCode, string defName) {
+        var row = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(envCode, defName, DbExecutionLoad.None);
+        if (row == null) throw new InvalidOperationException($"def_version not found. env={envCode}, def={defName}");
+        return row;
+    }
+
+    private async Task<LifeCycleBlueprint> BuildBlueprintAsync(long defVersionId) {
+        var dv = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, DbExecutionLoad.None);
+        if (dv == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
+
+        var bp = new LifeCycleBlueprint { DefVersionId = defVersionId, DefinitionId = dv.GetLong("parent"), EnvCode = dv.GetInt("env_code"), DefName = dv.GetString("def_name") ?? dv.GetString("name") ?? "unknown" };
+
+        var stateRows = await _dal.Blueprint.ListStatesAsync(defVersionId, DbExecutionLoad.None);
+        var eventRows = await _dal.Blueprint.ListEventsAsync(defVersionId, DbExecutionLoad.None);
+        var transRows = await _dal.Blueprint.ListTransitionsAsync(defVersionId, DbExecutionLoad.None);
+
+        var statesById = new Dictionary<long, StateDef>();
+        long initialStateId = 0;
+
+        foreach (var r in stateRows) {
+            var flags = r.Get<uint>("flags");
+            var isInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0;
+            var st = new StateDef { Id = r.GetInt("id"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "", Flags = flags, TimeoutMinutes = r.GetNullableInt("timeout_minutes"), TimeoutEventId = r.GetNullableLong("timeout_event"), IsInitial = isInitial };
+            if (statesById.ContainsKey(st.Id)) throw new InvalidOperationException($"Duplicate state id in DB rows. id={st.Id}");
+            statesById[st.Id] = st;
+            if (isInitial) { if (initialStateId != 0) throw new InvalidOperationException($"Multiple initial states detected. defVersionId={defVersionId}"); initialStateId = st.Id; }
+        }
+
+        if (initialStateId == 0 && statesById.Count > 0) initialStateId = statesById.Values.First().Id; // keep fallback if you want; otherwise throw
+
+        var eventsById = new Dictionary<long, EventDef>();
+        var eventsByName = new Dictionary<string, EventDef>(StringComparer.OrdinalIgnoreCase);
+        var eventsByCode = new Dictionary<int, EventDef>();
+
+        foreach (var r in eventRows) {
+            var ev = new EventDef { Id = r.GetInt("id"), Code = r.GetInt("code"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "" };
+            if (eventsById.ContainsKey(ev.Id)) throw new InvalidOperationException($"Duplicate event id in DB rows. id={ev.Id}");
+            eventsById[ev.Id] = ev;
+            if (!string.IsNullOrWhiteSpace(ev.Name)) eventsByName[ev.Name.Trim().ToLowerInvariant()] = ev;
+            if (eventsByCode.ContainsKey(ev.Code)) throw new InvalidOperationException($"Duplicate event code in DB rows. code={ev.Code}");
+            eventsByCode[ev.Code] = ev;
+        }
+
+        var transitions = new Dictionary<(long fromStateId, int eventId), TransitionDef>();
+        foreach (var r in transRows) {
+            var fromId = r.GetLong("from_state");
+            var toId = r.GetLong("to_state");
+            var evId = r.GetInt("event");
+            var key = (fromId, evId);
+            if (transitions.ContainsKey(key)) throw new InvalidOperationException($"Duplicate transition detected. defVersionId={defVersionId}, from={fromId}, event={evId}");
+            transitions[key] = new TransitionDef { FromStateId = fromId, ToStateId = toId, EventId = evId, Flags = r.Get<uint>("flags") };
+        }
+
+        bp.StatesById = statesById;
+        bp.EventsById = eventsById;
+        bp.EventsByName = eventsByName;
+        bp.EventsByCode = eventsByCode;
+        bp.Transitions = transitions.ToDictionary(k => Tuple.Create(k.Key.fromStateId, k.Key.eventId), v => v.Value); // if your blueprint type requires Tuple keys
+        bp.InitialStateId = initialStateId;
+
+        return bp;
+    }
+
+    private static async Task<T> AwaitCachedAsync<TKey, T>(ConcurrentDictionary<TKey, Lazy<Task<T>>> dict, TKey key, Task<T> task, CancellationToken ct) {
+        try { return await task.WaitAsync(ct); } catch { dict.TryRemove(key, out _); throw; }
+    }
+}
+
+internal sealed class LifeCycleMonitor : ILifeCycleMonitor {
+    private readonly TimeSpan _interval;
+    private readonly Func<CancellationToken, Task> _runOnce;
+    private readonly Action<Exception>? _onError;
+
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+    private Task? _loop;
+    private int _running;
+    private int _runGate;
+
+    public bool IsRunning => Volatile.Read(ref _running) == 1;
+
+    public LifeCycleMonitor(TimeSpan interval, Func<CancellationToken, Task> runOnce, Action<Exception>? onError = null) {
+        if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
+        _interval = interval;
+        _runOnce = runOnce ?? throw new ArgumentNullException(nameof(runOnce));
+        _onError = onError;
+    }
+
+    public Task StartAsync(CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return Task.CompletedTask;
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _timer = new PeriodicTimer(_interval);
+        _loop = LoopAsync(_cts.Token);
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        if (Interlocked.CompareExchange(ref _running, 0, 1) != 1) return;
+
+        try { _cts?.Cancel(); } catch { }
+        var loop = _loop;
+        if (loop != null) await loop;
+
+        _timer?.Dispose();
+        _timer = null;
+        _cts?.Dispose();
+        _cts = null;
+        _loop = null;
+        Interlocked.Exchange(ref _runGate, 0);
+    }
+
+    public async Task RunOnceAsync(CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        if (Interlocked.CompareExchange(ref _runGate, 1, 0) != 0) return;
+
+        try {
+            await _runOnce(ct);
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            if (_onError != null) _onError.Invoke(ex);
+        } finally {
+            Interlocked.Exchange(ref _runGate, 0);
+        }
+    }
+
+    private async Task LoopAsync(CancellationToken ct) {
+        try {
+            while (!ct.IsCancellationRequested && _timer != null) {
+                if (!await _timer.WaitForNextTickAsync(ct)) break;
+                await RunOnceAsync(ct);
+            }
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            // expected on stop
+        } catch (Exception ex) {
+            if (_onError != null) { 
+                _onError.Invoke(ex); 
+            } else {
+                Console.WriteLine(ex.StackTrace);
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync() { await StopAsync(CancellationToken.None); }
+}
+
+internal sealed class PolicyEnforcer : IPolicyEnforcer {
+    private readonly IWorkFlowDAL _dal;
+
+    public PolicyEnforcer(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public async Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        var pr = new PolicyResolution();
+        if (!applied.Applied) return pr; //Applied is nothing but was policy already applied for this transition or not.. 
+        return await ResolvePolicyAsync(bp.DefinitionId, load);
+    }
+    public async Task<PolicyResolution> ResolvePolicyByIdAsync(long policyId, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        return PreparePolicyResolution(await _dal.Blueprint.GetPolicyByIdAsync(policyId, load));
+    }
+
+    public async Task<PolicyResolution> ResolvePolicyAsync(long definitionId, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        return PreparePolicyResolution(await _dal.Blueprint.GetPolicyForDefinition(definitionId, load));
+    }
+
+    PolicyResolution PreparePolicyResolution(DbRow? pol) {
+        var pr = new PolicyResolution();
+        if (pol == null) return pr;
+
+        pr.PolicyId = pol.GetNullableLong("id");
+        pr.PolicyHash = pol.GetString("hash");
+        pr.PolicyJson = pol.GetString("content");
+        return pr;
+    }
+
+    public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+        load.Ct.ThrowIfCancellationRequested();
+        if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
+
+        var pol = await _dal.Blueprint.GetPolicyForDefinition(bp.DefinitionId ,load);
+        var policyJson = pol?.GetString("content");
+        if (string.IsNullOrWhiteSpace(policyJson)) return Array.Empty<ILifeCycleHookEmission>();
+
+        if (!bp.StatesById.TryGetValue(applied.ToStateId, out var toState)) return Array.Empty<ILifeCycleHookEmission>();
+        bp.EventsById.TryGetValue(applied.EventId, out var viaEvent);
+
+        var instanceId = instance.GetLong("id");
+        var emissions = new List<ILifeCycleHookEmission>();
+
+        using var doc = JsonDocument.Parse(policyJson);
+        //If there are no routes, then nothing to emit..
+        if (!doc.RootElement.TryGetProperty("routes", out var routes) || routes.ValueKind != JsonValueKind.Array) return Array.Empty<ILifeCycleHookEmission>();
+
+        foreach (var route in routes.EnumerateArray()) {
+            load.Ct.ThrowIfCancellationRequested();
+
+            var routeState = route.GetString("state");
+            if (string.IsNullOrWhiteSpace(routeState)) continue;
+
+            if (!IsStateMatch(routeState!, toState)) continue;
+
+            if (route.TryGetProperty("via", out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined) {
+                if (viaEvent == null) continue;
+                var viaCode = viaEl.GetInt();
+                if (!viaCode.HasValue || viaCode.Value != viaEvent.Code) continue;
+            }
+
+            if (!route.TryGetProperty("emit", out var emitEl) || emitEl.ValueKind != JsonValueKind.Array) continue;
+
+            foreach (var e in emitEl.EnumerateArray()) {
+                load.Ct.ThrowIfCancellationRequested();
+
+                var hookCode = e.GetString("event");
+                if (string.IsNullOrWhiteSpace(hookCode)) continue;
+
+                var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, load);
+
+                var (onSuccess, onFailure) = ReadCompletionEvents(e);
+                var notBefore = e.GetDatetimeOffset("notBefore");
+                var deadline = e.GetDatetimeOffset("deadline");
+                var payload = e.GetDictionary("payload");
+
+                emissions.Add(new LifeCycleHookEmission {
+                    HookId = hookId,
+                    StateId = applied.ToStateId,
+                    OnEntry = true,
+                    HookCode = hookCode!,
+                    OnSuccessEvent = onSuccess,
+                    OnFailureEvent = onFailure,
+                    NotBefore = notBefore,
+                    Deadline = deadline,
+                    Payload = payload
+                });
+            }
+        }
+        return emissions;
+    }
+
+    private static bool IsStateMatch(string routeState, StateDef toState) {
+        if (string.Equals(routeState, toState.Name, StringComparison.OrdinalIgnoreCase)) return true;
+        if (!string.IsNullOrWhiteSpace(toState.DisplayName) && string.Equals(routeState, toState.DisplayName, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    private static (string? onSuccess, string? onFailure) ReadCompletionEvents(JsonElement emitObj) {
+        if (!emitObj.TryGetProperty("complete", out var compEl) || compEl.ValueKind != JsonValueKind.Object) return (null, null);
+        string? onSuccess = null;
+        string? onFailure = null;
+        if (compEl.TryGetProperty("success", out var sEl)) onSuccess = sEl.ValueKind == JsonValueKind.String ? sEl.GetString() : sEl.ToString();
+        if (compEl.TryGetProperty("failure", out var fEl)) onFailure = fEl.ValueKind == JsonValueKind.String ? fEl.GetString() : fEl.ToString();
+        return (onSuccess, onFailure);
+    }
+}
+
+internal sealed class RuntimeEngine : IRuntimeEngine {
+    private readonly IWorkFlowDAL _dal;
+
+    public RuntimeEngine(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+    public async Task<long> UpsertAsync(RuntimeUpsertRequest req, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+
+        var transaction = _dal.CreateNewTransaction();
+        using var tx = transaction.Begin(false);
+        var load = new DbExecutionLoad(ct, transaction);
+        var committed = false;
+
+        try {
+            var instanceId = await _dal.Instance.GetIdByGuidAsync(req.InstanceGuid, load);
+            if (!instanceId.HasValue || instanceId.Value <= 0) throw new InvalidOperationException($"Instance not found: {req.InstanceGuid}");
+
+            var runtimeId = await _dal.Runtime.UpsertByKeyReturnIdAsync(instanceId.Value, req.ActivityId, req.StateId, req.ActorId, req.StatusId, req.LcId, req.Frozen, load);
+
+            var dataJson = req.Data == null ? null : JsonSerializer.Serialize(req.Data);
+            var payloadJson = req.Payload == null ? null : JsonSerializer.Serialize(req.Payload);
+            await _dal.RuntimeData.UpsertAsync(runtimeId, dataJson, payloadJson, load);
+
+            tx.Commit();
+            committed = true;
+            return runtimeId;
+        } catch {
+            if (!committed) tx.Rollback();
+            throw;
+        }
+    }
+
+    public Task<int> SetStatusAsync(long runtimeId, long statusId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetStatusAsync(runtimeId, statusId, new DbExecutionLoad(ct)); }
+
+    public Task<int> SetFrozenAsync(long runtimeId, bool frozen, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetFrozenAsync(runtimeId, frozen, new DbExecutionLoad(ct)); }
+
+    public Task<int> SetLcIdAsync(long runtimeId, long lcId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _dal.Runtime.SetLcIdAsync(runtimeId, lcId, new DbExecutionLoad(ct)); }
+
+    public async Task<long> EnsureActivityAsync(string displayName, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        var load = new DbExecutionLoad(ct);
+        var row = await _dal.Activity.GetByNameAsync(displayName, load);
+        return row != null ? row.GetLong("id") : await _dal.Activity.InsertAsync(displayName, load);
+    }
+
+    public async Task<long> EnsureActivityStatusAsync(string displayName, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        var load = new DbExecutionLoad(ct);
+        var row = await _dal.ActivityStatus.GetByNameAsync(displayName, load);
+        return row != null ? row.GetLong("id") : await _dal.ActivityStatus.InsertAsync(displayName, load);
+    }
+}
+
+ internal sealed class StateMachine : IStateMachine {
+     private readonly IWorkFlowDAL _dal;
+     private readonly IBlueprintManager _bp;
+
+     public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
+
+     public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, long policyId, DbExecutionLoad load = default) {
+         load.Ct.ThrowIfCancellationRequested();
+         if (string.IsNullOrWhiteSpace(externalRef)) throw new ArgumentNullException(nameof(externalRef));
+
+         var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId, load.Ct);
+         var initStateId = bp.InitialStateId;
+
+         var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, initStateId, null, policyId, (uint)LifeCycleInstanceFlag.Active, load);
+         if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException("Instance upsert failed (guid null).");
+
+         var row = await _dal.Instance.GetByGuidAsync(guid, load);
+         if (row == null) throw new InvalidOperationException("Instance row missing after upsert.");
+         return row;
+     }
+
+     public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DbExecutionLoad load = default) {
+         load.Ct.ThrowIfCancellationRequested();
+         if (bp == null) throw new ArgumentNullException(nameof(bp));
+         if (instance == null) throw new ArgumentNullException(nameof(instance));
+         if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentNullException(nameof(eventName));
+
+         var res = new ApplyTransitionResult { Applied = false, EventName = string.Empty, Reason = string.Empty };
+
+         var instanceId = instance.GetLong("id");
+         var fromStateId = instance.GetLong("current_state");
+         var ev = ResolveEvent(bp, eventName);
+
+         res.FromStateId = fromStateId;
+         res.EventId = ev?.Id ?? 0;
+         res.EventCode = ev?.Code ?? 0;
+         res.EventName = ev?.Name ?? string.Empty;
+
+         if (ev == null) { res.Reason = "UnknownEvent"; res.ToStateId = fromStateId; return res; }
+
+         if (!bp.Transitions.TryGetValue(Tuple.Create(fromStateId, ev.Id), out var t)) {
+             res.Reason = "InvalidTransition";
+             res.ToStateId = fromStateId;
+             return res;
+         }
+
+         res.ToStateId = t.ToStateId;
+
+         //Sometimes, we will have transitions that point to the same state (like re-trying, etc.), todo: handle it.
+         if (res.ToStateId == res.FromStateId) { res.Reason = "NoOpAlreadyInState"; return res; }
+
+         var cas = await _dal.Instance.UpdateCurrentStateCasAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);
+         if (cas != 1) { res.Reason = "ConcurrencyConflict"; return res; }
+
+         var lcId = await _dal.LifeCycle.InsertAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);
+         res.Applied = true;
+         res.LifeCycleId = lcId;
+
+         var store = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+         if (!string.IsNullOrWhiteSpace(requestId)) store["requestId"] = requestId;
+         if (payload != null && payload.Count > 0) store["payload"] = payload;
+
+         var payloadJson = store.Count == 0 ? null : JsonSerializer.Serialize(store);
+         await _dal.LifeCycleData.UpsertAsync(lcId, actor, payloadJson, load);
+
+         return res;
+     }
+
+     private static EventDef? ResolveEvent(LifeCycleBlueprint bp, string eventNameOrCode) {
+         if (string.IsNullOrWhiteSpace(eventNameOrCode)) return null;
+         var s = eventNameOrCode.Trim();
+         if (int.TryParse(s, out var code) && bp.EventsByCode.TryGetValue(code, out var byCode)) return byCode;
+         var key = s.ToLowerInvariant();
+         if (bp.EventsByName.TryGetValue(key, out var byName)) return byName;
+         return null;
+     }
+ }
+
+ public sealed class WorkFlowEngine : IWorkFlowEngine {
+    private readonly IWorkFlowDAL _dal;
+    private readonly WorkFlowEngineOptions _opt;
+    private readonly IReadOnlyList<long> _monitorConsumers;
+    public IStateMachine StateMachine { get; }
+    public IBlueprintManager BlueprintManager { get; }
+    public IBlueprintImporter BlueprintImporter { get; }
+    public IPolicyEnforcer PolicyEnforcer { get; }
+    public IAckManager AckManager { get; }
+    public IRuntimeEngine Runtime { get; }
+    public ILifeCycleMonitor Monitor { get; }
+    public IWorkFlowDAL Dal { get { return _dal; } }
+
+    public event Func<ILifeCycleEvent, Task>? EventRaised;
+    public event Func<LifeCycleNotice, Task>? NoticeRaised;
+
+    public WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
+        _dal = dal ?? throw new ArgumentNullException(nameof(dal));
+        _opt = options ?? new WorkFlowEngineOptions();
+
+        BlueprintManager = _opt.BlueprintManager ?? new BlueprintManager(_dal);
+
+        // If you don't want engine to auto-create importer, pass it via options.
+        BlueprintImporter = _opt.BlueprintImporter ?? new BlueprintImporter(_dal);
+
+        StateMachine = _opt.StateMachine ?? new StateMachine(_dal, BlueprintManager);
+        PolicyEnforcer = _opt.PolicyEnforcer ?? new PolicyEnforcer(_dal);
+
+        var tc = _opt.ResolveTransitionConsumers;
+        var hc = _opt.ResolveHookConsumers;
+        Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> transitionConsumers = (dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(tc?.Invoke(dv, iid) ?? new long[] { _opt.DefaultConsumerId });
+        Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> hookConsumers = (dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(hc?.Invoke(dv, iid, code) ?? new long[] { _opt.DefaultConsumerId });
+
+        AckManager = _opt.AckManager ?? new AckManager(_dal, transitionConsumers, hookConsumers,_opt.AckPendingResendAfter,_opt.AckDeliveredResendAfter);
+
+        Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
+
+        _monitorConsumers = _opt.MonitorConsumers ?? new long[] { _opt.DefaultConsumerId };
+        Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
+    }
+
+    public Task StartMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
+
+    public Task StopMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StopAsync(ct); }
+
+    public async ValueTask DisposeAsync() { try { await StopMonitorAsync(CancellationToken.None); } catch { } await Monitor.DisposeAsync(); await _dal.DisposeAsync(); }
+
+    public async Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        if (req == null) throw new ArgumentNullException(nameof(req));
+        if (string.IsNullOrWhiteSpace(req.DefName)) throw new ArgumentNullException(nameof(req.DefName));
+        if (string.IsNullOrWhiteSpace(req.ExternalRef)) throw new ArgumentNullException(nameof(req.ExternalRef));
+        if (string.IsNullOrWhiteSpace(req.Event)) throw new ArgumentNullException(nameof(req.Event));
+
+        // Blueprint read can be outside txn (pure read + cached).
+        var bp = await BlueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct);
+
+        var transaction = _dal.CreateNewTransaction();
+        using var tx = transaction.Begin(false);
+        var load = new DbExecutionLoad(ct, transaction);
+        var committed = false;
+
+        var toDispatch = new List<ILifeCycleEvent>(8);
+        var lcAckGuids = new List<string>(4);
+        var hookAckGuids = new List<string>(8);
+
+        DbRow instance = null!;
+        ApplyTransitionResult transition = null!;
+        PolicyResolution pr = null!;
+
+        try {
+            //Before generating the instance, check if policy is needed to be attached. This can be found out from definition version and it's latest policy.. (we always focus on the latest policy for the definition)
+            //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
+            var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); 
+            instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
+            transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
+
+            var result = new LifeCycleTriggerResult {
+                Applied = transition.Applied,
+                InstanceGuid = instance.GetString("guid") ?? string.Empty,
+                InstanceId = instance.GetLong("id"),
+                LifeCycleId = transition.LifeCycleId,
+                FromState = bp.StatesById.TryGetValue(transition.FromStateId, out var fs) ? (fs.Name ?? string.Empty) : string.Empty,
+                ToState = bp.StatesById.TryGetValue(transition.ToStateId, out var ts) ? (ts.Name ?? string.Empty) : string.Empty,
+                Reason = transition.Reason ?? string.Empty,
+                LifecycleAckGuids = Array.Empty<string>(),
+                HookAckGuids = Array.Empty<string>()
+            };
+
+            // Even if transition not applied, instance may have been created/ensured -> commit that.
+            //Meaning, our goal was only to create an instance or just to ensure this exists.. not to make any transition at all. Like this is the first step.
+            if (!transition.Applied) {
+                transaction.Commit(); 
+                committed = true;
+                return result;
+            }
+
+            var instanceId = result.InstanceId;
+            // See.. We have the instance created or ensured above. Now, we need to make sure that the policy is also resolved and sent back to the caller. Because, caller might need to know which policy is attached to this instance.
+            // We should never take the latest policy here.. Because the instance might have been created several days back and at that time, the latest policy was something else. So, we need to get the policy that is attached to this instance.
+            
+            var pid = instance.GetLong("policy_id");
+            if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
+
+            // Transition consumers
+            var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, instanceId, ct);
+            var normTransitionConsumers = NormalizeConsumers(transitionConsumers, _opt.DefaultConsumerId);
+
+            // Create lifecycle ACK (one ack guid, multiple consumers) if required
+            var lcAckGuid = string.Empty;
+            if (req.AckRequired) {
+                var ackRef = await AckManager.CreateLifecycleAckAsync(transition.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
+                lcAckGuid = ackRef.AckGuid ?? string.Empty;
+                lcAckGuids.Add(lcAckGuid);
+            }
+
+            var lcEvent = new LifeCycleEvent() {
+                InstanceGuid = result.InstanceGuid,
+                DefinitionVersionId = bp.DefVersionId,
+                ExternalRef = req.ExternalRef,
+                RequestId = req.RequestId,
+                OccurredAt = DateTimeOffset.UtcNow,
+                AckGuid = lcAckGuid,
+                AckRequired = req.AckRequired,
+                Payload = req.Payload,
+            };
+
+            // Build transition events (dispatch after commit)
+            for (var i = 0; i < normTransitionConsumers.Count; i++) {
+                var consumerId = normTransitionConsumers[i];
+                var transitionEvent = new LifeCycleTransitionEvent(lcEvent) {
+                    ConsumerId = consumerId,
+                    LifeCycleId = transition.LifeCycleId.Value,
+                    FromStateId = transition.FromStateId,
+                    ToStateId = transition.ToStateId,
+                    EventCode = transition.EventCode,
+                    EventName = transition.EventName ?? string.Empty,
+                    PrevStateMeta = new Dictionary<string, object>(),
+                    PolicyJson = pr.PolicyJson ?? string.Empty
+                };
+                toDispatch.Add(transitionEvent);
+            }
+
+            // Hooks (create hook rows in txn; dispatch after commit)
+            var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load); //CHECK ONCE MORE
+            for (var h = 0; h < hookEmissions.Count; h++) {
+                var he = hookEmissions[h];
+                var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, instanceId, he.HookCode, ct);
+                var normHookConsumers = NormalizeConsumers(hookConsumers, _opt.DefaultConsumerId);
+
+                var hookAckGuid = string.Empty;
+                if (req.AckRequired) {
+                    var hookAck = await AckManager.CreateHookAckAsync(he.HookId, normHookConsumers, (int)AckStatus.Pending, load);
+                    hookAckGuid = hookAck.AckGuid ?? string.Empty;
+                    hookAckGuids.Add(hookAckGuid);
+                }
+
+                for (var i = 0; i < normHookConsumers.Count; i++) {
+                    var consumerId = normHookConsumers[i];
+                    var hookEvent = new LifeCycleHookEvent(lcEvent) {
+                        ConsumerId = consumerId,
+                        HookId = he.HookId,
+                        OnEntry = he.OnEntry,
+                        HookCode = he.HookCode ?? string.Empty,
+                        OnSuccessEvent = he.OnSuccessEvent ?? string.Empty,
+                        OnFailureEvent = he.OnFailureEvent ?? string.Empty,
+                        NotBefore = he.NotBefore,
+                        Deadline = he.Deadline
+                    };
+                    toDispatch.Add(hookEvent);
+                }
+            }
+
+            transaction.Commit();
+            committed = true;
+
+            // Dispatch AFTER commit (failures become notices; monitor will resend due to pending ACK rows).
+            await DispatchEventsSafeAsync(toDispatch, ct);
+
+            result.LifecycleAckGuids = lcAckGuids;
+            result.HookAckGuids = hookAckGuids;
+            return result;
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            if (!committed) { try { transaction.Rollback(); } catch { } }
+            throw;
+        } catch (Exception ex) {
+            if (!committed) { try { transaction.Rollback(); } catch { } }
+            FireNotice(LifeCycleNotice.Error("TRIGGER_ERROR", "TRIGGER_ERROR", ex.Message, ex));
+            throw;
+        }
+    }
+
+    public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
+        if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
+        await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, new DbExecutionLoad(ct));
+    }
+
+    public async Task<string?> GetTimelineJsonAsync(long instanceId, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(instanceId, new DbExecutionLoad(ct));
+    }
+
+    public Task ClearCacheAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Clear(); return Task.CompletedTask; }
+
+    public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(envCode, defName); return Task.CompletedTask; }
+
+    public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(defVersionId); return Task.CompletedTask; }
+
+    public async Task RunMonitorOnceAsync(CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
+        for (var i = 0; i < _monitorConsumers.Count; i++) {
+            ct.ThrowIfCancellationRequested();
+            var consumerId = _monitorConsumers[i];
+            await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
+            await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
+        }
+    }
+
+
+    private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
+        ct.ThrowIfCancellationRequested();
+
+        var nowUtc = DateTime.UtcNow;
+        var nextDueUtc = ackStatus == (int)AckStatus.Pending
+            ? nowUtc.Add(_opt.AckPendingResendAfter)
+            : nowUtc.Add(_opt.AckDeliveredResendAfter);
+
+        // Lifecycle
+        var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
+        for (var i = 0; i < lc.Count; i++) {
+            ct.ThrowIfCancellationRequested();
+            var item = lc[i];
+
+            // IMPORTANT: update trigger_count/last_trigger and schedule next_due (or NULL for terminal statuses)
+            await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, new DbExecutionLoad(ct));
+
+            FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+            FireEvent(item.Event);
+        }
+
+        // Hook
+        var hk = await AckManager.ListDueHookDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
+        for (var i = 0; i < hk.Count; i++) {
+            ct.ThrowIfCancellationRequested();
+            var item = hk[i];
+
+            await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, new DbExecutionLoad(ct));
+
+            FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+            FireEvent(item.Event);
+        }
+    }
+
+
+    private async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
+        for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); FireEvent(events[i]); }
+    }
+    private void FireEvent(ILifeCycleEvent e) {
+        var h = EventRaised;
+        if (h == null) return;
+
+        foreach (Func<ILifeCycleEvent, Task> sub in h.GetInvocationList()) {
+            _ = RunHandlerSafeAsync(() => sub(e)); //Dont await.. we are deliberately running this task in synchornous mode , so that it runs in background.
+        }
+    }
+    private void FireNotice(LifeCycleNotice n) {
+        var h = NoticeRaised;
+        if (h == null) return;
+
+        foreach (Func<LifeCycleNotice, Task> sub in h.GetInvocationList()) {
+            _ = RunHandlerSafeAsync(() => sub(n), swallow: true); //Error should not be propagated , else it will end up in infinite loop.
+        }
+    }
+    private async Task RunHandlerSafeAsync(Func<Task> work, bool swallow = false) {
+        try {
+            await work().ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (swallow) return;
+            try {
+                FireNotice(LifeCycleNotice.Error("EVENT_HANDLER_ERROR", "EVENT_HANDLER_ERROR", ex.Message, ex));
+            } catch { }
+        }
+    }
+    private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers, long defaultConsumerId) {
+        if (consumers == null || consumers.Count == 0) return new long[] { defaultConsumerId };
+        var list = new List<long>(consumers.Count);
+        for (var i = 0; i < consumers.Count; i++) { var c = consumers[i]; if (c > 0 && !list.Contains(c)) list.Add(c); }
+        return list.Count == 0 ? new long[] { defaultConsumerId } : list;
+    }
+}
+
+ internal static class InternalUtils {
+     public static string BuildDefinitionHashMaterial(this JsonElement root) {
+         // keep ONLY states/events/transitions
+         var obj = new JsonObject {
+             ["states"] = root.TryGetProperty("states", out var s) ? JsonNode.Parse(s.GetRawText()) : new JsonArray(),
+             ["events"] = root.TryGetProperty("events", out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
+             ["transitions"] = root.TryGetProperty("transitions", out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
+         };
+
+         var canon = obj.Canonicalize(); //ignore case..
+         return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+     }
+
+     public static string BuildPolicyHashMaterial(this JsonElement root) {
+         // keep ONLY policy_name/policies/routes (ignore "for")
+         var obj = new JsonObject {
+             ["policy_name"] = root.TryGetProperty("policy_name", out var pn) ? pn.GetString() : (string?)null,
+             ["policies"] = root.TryGetProperty("policies", out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
+             ["routes"] = root.TryGetProperty("routes", out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
+         };
+
+         var canon = obj.Canonicalize();
+         return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+     }
+ }
+ 

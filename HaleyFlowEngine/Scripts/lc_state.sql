@@ -34,14 +34,17 @@ CREATE TABLE IF NOT EXISTS `ack` (
 CREATE TABLE IF NOT EXISTS `ack_consumer` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `consumer` bigint(20) NOT NULL DEFAULT 0,
-  `ack_id` bigint(20) NOT NULL,
   `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n    Pending =1,\n    Delivered=2,\n    Processed=3,\n    Failed=4',
-  `last_retry` datetime NOT NULL DEFAULT current_timestamp(),
-  `retry_count` int(11) NOT NULL DEFAULT 0,
+  `ack_id` bigint(20) NOT NULL,
+  `last_trigger` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'when was the last time, this trigger was initiated.. Whenever we send the ack to consumer, we mark it.',
+  `trigger_count` int(11) NOT NULL DEFAULT 0 COMMENT 'how many times did we try to send this acknowledgement to the consumer',
+  `next_due` datetime DEFAULT NULL,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_ack_consumer` (`ack_id`,`consumer`),
+  KEY `idx_ack_consumer` (`next_due`,`status`),
+  KEY `idx_ack_consumer_0` (`consumer`,`next_due`,`status`),
   CONSTRAINT `fk_ack_consumer_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -50,8 +53,8 @@ CREATE TABLE IF NOT EXISTS `ack_consumer` (
 -- Dumping structure for table lcstate.activity
 CREATE TABLE IF NOT EXISTS `activity` (
   `display_name` varchar(140) NOT NULL,
-  `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are minor applicatoin managed activies which the statemachine doens''t have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..';
 
@@ -112,8 +115,8 @@ CREATE TABLE IF NOT EXISTS `def_policies` (
 -- Dumping structure for table lcstate.def_version
 CREATE TABLE IF NOT EXISTS `def_version` (
   `guid` char(36) NOT NULL DEFAULT uuid(),
-  `version` int(11) NOT NULL DEFAULT 1,
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `version` int(11) NOT NULL DEFAULT 1,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `parent` int(11) NOT NULL,
@@ -164,12 +167,12 @@ CREATE TABLE IF NOT EXISTS `events` (
 -- Dumping structure for table lcstate.hook
 CREATE TABLE IF NOT EXISTS `hook` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `instance_id` bigint(20) NOT NULL,
   `state_id` int(11) NOT NULL,
   `via_event` int(11) NOT NULL,
   `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'by default, the hooks are for entry.. we can also, setup on leave.\n0 - on leaving\n1 - on entry',
   `route` varchar(180) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `instance_id` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hooks` (`instance_id`,`state_id`,`via_event`,`on_entry`,`route`),
   CONSTRAINT `fk_hooks_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
@@ -191,9 +194,8 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
 
 -- Dumping structure for table lcstate.instance
 CREATE TABLE IF NOT EXISTS `instance` (
-  `current_state` int(11) NOT NULL,
+  `current_state` int(11) NOT NULL DEFAULT 0,
   `last_event` int(11) DEFAULT NULL,
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `policy_id` int(11) DEFAULT 0,
   `external_ref` char(36) DEFAULT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
@@ -201,6 +203,7 @@ CREATE TABLE IF NOT EXISTS `instance` (
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `def_version` int(11) NOT NULL,
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_instance` (`guid`),
   UNIQUE KEY `unq_instance_0` (`def_version`,`external_ref`),
@@ -232,6 +235,16 @@ CREATE TABLE IF NOT EXISTS `lc_data` (
   `payload` longtext DEFAULT NULL COMMENT 'Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)',
   PRIMARY KEY (`lc_id`),
   CONSTRAINT `fk_transition_data_transition_log` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.lc_timeout
+CREATE TABLE IF NOT EXISTS `lc_timeout` (
+  `lc_id` bigint(20) NOT NULL,
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`lc_id`),
+  CONSTRAINT `fk_timeout_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
@@ -299,7 +312,6 @@ CREATE TABLE IF NOT EXISTS `runtime_data` (
 
 -- Dumping structure for table lcstate.state
 CREATE TABLE IF NOT EXISTS `state` (
-  `category` int(11) NOT NULL DEFAULT 0,
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(200) NOT NULL,
   `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
@@ -309,6 +321,7 @@ CREATE TABLE IF NOT EXISTS `state` (
   `timeout_mode` int(11) NOT NULL DEFAULT 0 COMMENT '0 = Once\n1 = Repeat',
   `timeout_event` int(11) DEFAULT NULL,
   `def_version` int(11) NOT NULL,
+  `category` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_state` (`def_version`,`name`),
   KEY `fk_state_category` (`category`),
