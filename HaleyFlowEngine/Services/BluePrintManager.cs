@@ -14,7 +14,20 @@ namespace Haley.Services {
         private readonly IWorkFlowDAL _dal;
         private readonly ConcurrentDictionary<string, Lazy<Task<DbRow>>> _latestDefVersion = new();
         private readonly ConcurrentDictionary<long, Lazy<Task<LifeCycleBlueprint>>> _blueprintsByVer = new();
+        private readonly ConcurrentDictionary<string, Lazy<Task<long>>> _consumerIdByEnvGuid = new();
+        private readonly ConcurrentDictionary<int, Lazy<Task<long>>> _defaultConsumerByEnv = new();
 
+        private static string NormalizeGuid(string guid) => (guid ?? string.Empty).Trim().ToLowerInvariant();
+        private static string DefaultConsumerGuid(int envCode) {
+            using var md5 = System.Security.Cryptography.MD5.Create();
+            var bytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes($"lc:default-consumer:{envCode}"));
+            return new Guid(bytes).ToString();
+        }
+
+        private async Task<int> EnsureEnvIdAsync(int envCode, DbExecutionLoad load) {
+            // you don’t have envDisplayName at runtime; keep it simple/consistent
+            return await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envCode.ToString(), load);
+        }
         public BlueprintManager(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
         public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
@@ -110,6 +123,69 @@ namespace Haley.Services {
             bp.InitialStateId = initialStateId;
 
             return bp;
+        }
+
+        public Task<long> ResolveConsumerIdAsync(int envCode, string? consumerGuid, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(consumerGuid)) return EnsureDefaultConsumerIdAsync(envCode, ct);
+            return EnsureConsumerIdAsync(envCode, consumerGuid!, ct);
+        }
+
+        public Task<long> EnsureDefaultConsumerIdAsync(int envCode, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            var lazy = _defaultConsumerByEnv.GetOrAdd(envCode, _ => new Lazy<Task<long>>(() => EnsureConsumerIdAsync(envCode, DefaultConsumerGuid(envCode), ct)));
+            return AwaitCachedAsync(_defaultConsumerByEnv, envCode, lazy.Value, ct);
+        }
+
+        public Task<long> EnsureConsumerIdAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
+
+            var key = $"{envCode}:{NormalizeGuid(consumerGuid)}";
+            var lazy = _consumerIdByEnvGuid.GetOrAdd(key, _ => new Lazy<Task<long>>(() => EnsureConsumerIdCoreAsync(envCode, consumerGuid, ct)));
+            return AwaitCachedAsync(_consumerIdByEnvGuid, key, lazy.Value, ct);
+        }
+
+        public async Task BeatConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
+
+            var tx0 = _dal.CreateNewTransaction();
+            using var tx = tx0.Begin(false);
+            var load = new DbExecutionLoad(ct, tx0);
+            var committed = false;
+
+            try {
+                var envId = await EnsureEnvIdAsync(envCode, load);
+                await _dal.Consumer.UpsertBeatByEnvIdAndGuidAsync(envId, consumerGuid, load); // always refresh beat
+                tx.Commit();
+                committed = true;
+            } finally {
+                if (!committed) { try { tx.Rollback(); } catch { } }
+            }
+        }
+
+        private async Task<long> EnsureConsumerIdCoreAsync(int envCode, string consumerGuid, CancellationToken ct) {
+            var tx0 = _dal.CreateNewTransaction();
+            using var tx = tx0.Begin(false);
+            var load = new DbExecutionLoad(ct, tx0);
+            var committed = false;
+
+            try {
+                var envId = await EnsureEnvIdAsync(envCode, load);
+
+                // ensure row exists -> id
+                var id = await _dal.Consumer.EnsureByEnvIdAndGuidReturnIdAsync(envId, consumerGuid, load);
+
+                // also “register/beat” on ensure (so RegisterConsumer = single call)
+                await _dal.Consumer.UpsertBeatByEnvIdAndGuidAsync(envId, consumerGuid, load);
+
+                tx.Commit();
+                committed = true;
+                return id;
+            } finally {
+                if (!committed) { try { tx.Rollback(); } catch { } }
+            }
         }
 
         private static async Task<T> AwaitCachedAsync<TKey, T>(ConcurrentDictionary<TKey, Lazy<Task<T>>> dict, TKey key, Task<T> task, CancellationToken ct) {

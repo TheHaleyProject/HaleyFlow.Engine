@@ -31,5 +31,20 @@ namespace Haley.Internal {
 
         public Task<DateTime?> GetLastBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default)
             => Db.ScalarAsync<DateTime?>(QRY_CONSUMER.GET_LAST_BEAT_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));
+        public async Task<int> EnsureByEnvIdAndGuidReturnIdAsync(int envId, string consumerGuid, DbExecutionLoad load = default) {
+            var id = await GetIdByEnvIdAndGuidAsync(envId, consumerGuid, load);
+            if (id.HasValue && id.Value > 0) return id.Value;
+
+            // Insert OR upsert; choose what you have
+            if (!string.IsNullOrWhiteSpace(QRY_CONSUMER.UPSERT_BEAT_BY_ENV_ID_AND_GUID)) {
+                await UpsertBeatByEnvIdAndGuidAsync(envId, consumerGuid, load);
+            } else {
+                await Db.ExecAsync(QRY_CONSUMER.INSERT, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));
+            }
+
+            id = await GetIdByEnvIdAndGuidAsync(envId, consumerGuid, load);
+            if (!id.HasValue || id.Value <= 0) throw new InvalidOperationException($"consumer ensure failed. env={envId}, guid={consumerGuid}");
+            return id.Value;
+        }
     }
 }

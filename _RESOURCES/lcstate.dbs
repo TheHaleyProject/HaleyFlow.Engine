@@ -385,11 +385,11 @@ archive = 16]]></comment>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 			</column>
+			<column name="def_version" type="INT" mandatory="y" />
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
@@ -692,9 +692,9 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="environment" color="0000FF" x="893" y="969" />
 		<entity schema="lcstate" name="consumer" color="0000FF" x="874" y="608" />
 		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="665" y="627" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="475" />
 		<entity schema="lcstate" name="transition" color="1A4D4D" x="874" y="95" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="665" y="608" />
+		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="475" />
 		<group name="Blueprint - Definition" color="0000FF" >
 			<entity schema="lcstate" name="def_policies" />
 			<entity schema="lcstate" name="policy" />

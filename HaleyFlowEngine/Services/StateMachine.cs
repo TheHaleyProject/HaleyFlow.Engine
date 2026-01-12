@@ -78,6 +78,28 @@ namespace Haley.Services {
             return res;
         }
 
+        public Task<int> SetInstanceMessageAsync(long instanceId, string? message, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return _dal.Instance.SetMessageAsync(instanceId, message, load);
+        }
+
+        public Task<int> ClearInstanceMessageAsync(long instanceId, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return _dal.Instance.ClearMessageAsync(instanceId, load);
+        }
+
+        public Task<int> SetInstanceFlagsWithMessageAsync(long instanceId, uint flagsToSet, string? message, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            // caller decides whether flags represent Suspended/Failed/Completed/Archive
+            return _dal.Instance.SuspendWithMessageAsync(instanceId, flagsToSet, message, load); // or route to the specific DAL method you added
+        }
+
+        public Task<int> UnsetInstanceFlagsAsync(long instanceId, uint flagsToClear, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            return _dal.Instance.UnsetFlagsAsync(instanceId, flagsToClear, load);
+        }
+
+
         private static EventDef? ResolveEvent(LifeCycleBlueprint bp, string eventNameOrCode) {
             if (string.IsNullOrWhiteSpace(eventNameOrCode)) return null;
             var s = eventNameOrCode.Trim();

@@ -41,8 +41,9 @@ namespace Haley.Services {
 
             var tc = _opt.ResolveTransitionConsumers;
             var hc = _opt.ResolveHookConsumers;
-            Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> transitionConsumers = (dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(tc?.Invoke(dv, iid) ?? new long[] { _opt.DefaultConsumerId });
-            Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> hookConsumers = (dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(hc?.Invoke(dv, iid, code) ?? new long[] { _opt.DefaultConsumerId });
+            Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> transitionConsumers = (dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(tc?.Invoke(dv, iid) ?? Array.Empty<long>());
+            Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> hookConsumers = (dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(hc?.Invoke(dv, iid, code) ?? Array.Empty<long>());
+
 
             AckManager = _opt.AckManager ?? new AckManager(_dal, transitionConsumers, hookConsumers,_opt.AckPendingResendAfter,_opt.AckDeliveredResendAfter);
 
@@ -117,7 +118,8 @@ namespace Haley.Services {
 
                 // Transition consumers
                 var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, instanceId, ct);
-                var normTransitionConsumers = NormalizeConsumers(transitionConsumers, _opt.DefaultConsumerId);
+                var envDefaultConsumerId = await BlueprintManager.EnsureDefaultConsumerIdAsync(req.EnvCode, ct);
+                var normTransitionConsumers = NormalizeConsumers(transitionConsumers, envDefaultConsumerId);
 
                 // Create lifecycle ACK (one ack guid, multiple consumers) if required
                 var lcAckGuid = string.Empty;
@@ -159,7 +161,7 @@ namespace Haley.Services {
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                     var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, instanceId, he.HookCode, ct);
-                    var normHookConsumers = NormalizeConsumers(hookConsumers, _opt.DefaultConsumerId);
+                    var normHookConsumers = NormalizeConsumers(hookConsumers, envDefaultConsumerId);
 
                     var hookAckGuid = string.Empty;
                     if (req.AckRequired) {
@@ -230,6 +232,27 @@ namespace Haley.Services {
                 await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
             }
         }
+
+        public Task<long> RegisterConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
+            return BlueprintManager.EnsureConsumerIdAsync(envCode, consumerGuid, ct); // or BlueprintManager.EnsureConsumerIdAsync if interface exposes it
+        }
+
+        public Task BeatConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
+            return BlueprintManager.BeatConsumerAsync(envCode, consumerGuid, ct);
+        }
+
+        // client-friendly ACK (guid)
+        public async Task AckAsync(int envCode, string consumerGuid, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
+            var consumerId = await BlueprintManager.EnsureConsumerIdAsync(envCode, consumerGuid, ct);
+            await AckAsync(consumerId, ackGuid, outcome, message, retryAt, ct);
+        }
+
 
 
         private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
