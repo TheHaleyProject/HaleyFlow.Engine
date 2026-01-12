@@ -53,7 +53,6 @@ IWorkFlowDAL dal = await CreateDalOrThrow();
 // -------------------------
 
 var opt = new WorkFlowEngineOptions {
-    DefaultConsumerId = ConsumerId,
     MonitorInterval = TimeSpan.FromSeconds(10),
     MonitorPageSize = 200,
     AckDeliveredResendAfter = TimeSpan.FromSeconds(30),

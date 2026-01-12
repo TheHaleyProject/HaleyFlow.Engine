@@ -49,7 +49,7 @@ namespace Haley.Services {
 
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
-            _monitorConsumers = _opt.MonitorConsumers ?? new long[] { _opt.DefaultConsumerId };
+            _monitorConsumers = _opt.MonitorConsumers;
             Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
         }
 
