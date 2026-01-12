@@ -128,15 +128,12 @@ namespace Haley.Services {
         }
 
         // DISPATCH LISTING (monitor uses these)
-        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default) {
+        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int ttlSeconds, int skip, int take, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-
-            var rows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, skip, take, load);
+            var rows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);
             var list = new List<ILifeCycleDispatchItem>(rows.Count);
-
             foreach (var r in rows) {
                 load.Ct.ThrowIfCancellationRequested();
-
                 var evt = new LifeCycleTransitionEvent {
                     DefinitionVersionId = r.GetLong("def_version_id"),
                     ConsumerId = r.GetLong("consumer"),
@@ -155,7 +152,6 @@ namespace Haley.Services {
                     PrevStateMeta = null,
                     PolicyJson = r.GetString("policy_json")
                 };
-
                 list.Add(new LifeCycleDispatchItem {
                     Kind = LifeCycleEventKind.Transition,
                     AckId = r.GetLong("ack_id"),
@@ -164,23 +160,19 @@ namespace Haley.Services {
                     AckStatus = r.GetInt("status"),
                     TriggerCount = r.GetInt("trigger_count"),
                     LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
-                    NextDue = r.GetDateTime("next_due"), // nullable now
+                    NextDue = r.GetDateTime("next_due"),
                     Event = evt
                 });
             }
-
             return list;
         }
 
-        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueHookDispatchAsync(long consumerId, int ackStatus, int skip, int take, DbExecutionLoad load = default) {
+        public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueHookDispatchAsync(long consumerId, int ackStatus, int ttlSeconds, int skip, int take, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-
-            var rows = await _dal.AckDispatch.ListDueHookPagedAsync(consumerId, ackStatus, skip, take, load);
+            var rows = await _dal.AckDispatch.ListDueHookPagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);
             var list = new List<ILifeCycleDispatchItem>(rows.Count);
-
             foreach (var r in rows) {
                 load.Ct.ThrowIfCancellationRequested();
-
                 var evt = new LifeCycleHookEvent {
                     ConsumerId = r.GetLong("consumer"),
                     InstanceGuid = r.GetString("instance_guid"),
@@ -199,7 +191,6 @@ namespace Haley.Services {
                     NotBefore = null,
                     Deadline = null
                 };
-
                 list.Add(new LifeCycleDispatchItem {
                     Kind = LifeCycleEventKind.Hook,
                     AckId = r.GetLong("ack_id"),
@@ -208,11 +199,10 @@ namespace Haley.Services {
                     AckStatus = r.GetInt("status"),
                     TriggerCount = r.GetInt("trigger_count"),
                     LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
-                    NextDue = r.GetDateTime("next_due"), // nullable now
+                    NextDue = r.GetDateTime("next_due"),
                     Event = evt
                 });
             }
-
             return list;
         }
 

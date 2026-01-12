@@ -253,42 +253,66 @@ namespace Haley.Services {
             await AckAsync(consumerId, ackGuid, outcome, message, retryAt, ct);
         }
 
-
-
         private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
+            var load = new DbExecutionLoad(ct);
             var nowUtc = DateTime.UtcNow;
-            var nextDueUtc = ackStatus == (int)AckStatus.Pending
-                ? nowUtc.Add(_opt.AckPendingResendAfter)
-                : nowUtc.Add(_opt.AckDeliveredResendAfter);
+            var nextDueUtc = ackStatus == (int)AckStatus.Pending ? nowUtc.Add(_opt.AckPendingResendAfter) : nowUtc.Add(_opt.AckDeliveredResendAfter);
+            var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30; // add this option; fallback keeps it safe
 
             // Lifecycle
-            var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
+            var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
             for (var i = 0; i < lc.Count; i++) {
                 ct.ThrowIfCancellationRequested();
                 var item = lc[i];
 
-                // IMPORTANT: update trigger_count/last_trigger and schedule next_due (or NULL for terminal statuses)
-                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, new DbExecutionLoad(ct));
+                if (item.TriggerCount >= _opt.MaxRetryCount) {
+                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
 
+                    var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
+                    if (instanceId > 0) {
+                        var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
+                        await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
+                        FireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
+                    } else {
+                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=lifecycle ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                    }
+
+                    continue;
+                }
+
+                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, load);
                 FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
                 FireEvent(item.Event);
             }
 
             // Hook
-            var hk = await AckManager.ListDueHookDispatchAsync(consumerId, ackStatus, 0, _opt.MonitorPageSize, new DbExecutionLoad(ct));
+            var hk = await AckManager.ListDueHookDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
             for (var i = 0; i < hk.Count; i++) {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
-                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, new DbExecutionLoad(ct));
+                if (item.TriggerCount >= _opt.MaxRetryCount) {
+                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
 
+                    var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
+                    if (instanceId > 0) {
+                        var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
+                        await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
+                        FireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
+                    } else {
+                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                    }
+
+                    continue;
+                }
+
+                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, load);
                 FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
                 FireEvent(item.Event);
             }
         }
-
 
         private async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
             for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); FireEvent(events[i]); }
