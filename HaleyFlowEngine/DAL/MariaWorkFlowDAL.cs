@@ -20,7 +20,7 @@ namespace Haley.Utils {
         public IActivityStatusDAL ActivityStatus { get; }
         public IRuntimeDAL Runtime { get; }
         public IRuntimeDataDAL RuntimeData { get; }
-
+        public IConsumerDAL Consumer { get; }
         public MariaWorkFlowDAL(IAdapterGateway agw, string key) : base(agw, key) {
             Blueprint = new MariaBlueprintReadDAL(this);
             BlueprintWrite = new MariaBlueprintWriteDAL(this);
@@ -39,7 +39,8 @@ namespace Haley.Utils {
             ActivityStatus = new MariaActivityStatusDAL(this);
 
             Runtime = new MariaRuntimeDAL(this);
-            RuntimeData = new MariaRuntimeDataDAL(this);
+            RuntimeData = new MariaRuntimeDataDAL(this); 
+            Consumer = new MariaConsumerDAL(this);
         }
     }
 }

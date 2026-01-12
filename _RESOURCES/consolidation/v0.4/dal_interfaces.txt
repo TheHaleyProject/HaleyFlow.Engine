@@ -71,18 +71,27 @@
      Task<int> AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(int envCode, string defName, long policyId, DbExecutionLoad load = default);
  }
 
-   public interface IInstanceDAL {
-      Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default);
-      Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default);
+      public interface IInstanceDAL {
+        Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default);
+        Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default);
 
-      Task<long?> GetIdByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default);
-      Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default);
-      Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default);
+        Task<long?> GetIdByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default);
+        Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default);
+        Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default);
 
-      Task<int> SetPolicyAsync(long instanceId, long policyId, DbExecutionLoad load = default);
-      Task<int> AddFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
-      Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
-  }
+        Task<int> SetPolicyAsync(long instanceId, long policyId, DbExecutionLoad load = default);
+        Task<int> AddFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
+        Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
+
+        Task<int> SetMessageAsync(long instanceId, string? message, DbExecutionLoad load = default);
+        Task<int> ClearMessageAsync(long instanceId, DbExecutionLoad load = default);
+
+        Task<int> SuspendWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default);
+        Task<int> FailWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default);
+        Task<int> CompleteWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default);
+        Task<int> ArchiveWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default);
+        Task<int> UnsetFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default); // (flags & ~FLAGS) query
+}
 
   public interface IHookDAL {
       Task<DbRow?> GetByIdAsync(long hookId, DbExecutionLoad load = default);
@@ -146,13 +155,27 @@
      Task<long> InsertAsync(string displayName, DbExecutionLoad load = default);
  }
 
-  public interface IWorkFlowDAL : IWorkFlowDALUtil {
+ public interface IConsumerDAL {
+    Task<int?> GetIdByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);
+    Task<int?> GetIdAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default);
+    Task<int> UpsertBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);
+    Task<int> UpdateBeatByIdAsync(int consumerId, DbExecutionLoad load = default);
+
+    Task<IReadOnlyList<int>> ListAliveIdsByEnvIdAsync(int envId, int ttlSeconds, DbExecutionLoad load = default);
+    Task<int> IsAliveByIdAsync(int consumerId, int ttlSeconds, DbExecutionLoad load = default);
+    Task<int> IsAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default);
+
+    Task<DateTime?> GetLastBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);
+}
+
+   public interface IWorkFlowDAL : IWorkFlowDALUtil {
      IBlueprintReadDAL Blueprint { get; }
      IBlueprintWriteDAL BlueprintWrite { get; }
      IInstanceDAL Instance { get; }
      ILifeCycleDAL LifeCycle { get; }
      ILifeCycleDataDAL LifeCycleData { get; }
      IHookDAL Hook { get; }
+     IConsumerDAL Consumer { get; }
      IAckDAL Ack { get; }
      IAckConsumerDAL AckConsumer { get; }
      ILcAckDAL LcAck { get; }

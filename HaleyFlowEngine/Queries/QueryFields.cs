@@ -49,12 +49,16 @@ namespace Haley.Internal {
 
         public const string ACK_ID = "@ACK_ID";
         public const string LC_ID = "@LC_ID";
+        public const string ENV_ID = "@ENV_ID";
         public const string HOOK_ID = "@HOOK_ID";
+        public const string TTL_SECONDS = "@TTL_SECONDS";
         public const string CONSUMER_ID = "@CONSUMER_ID";
+        public const string CONSUMER_GUID = "@CONSUMER_GUID";
         public const string SOURCE_ID = "@SOURCE_ID";
         public const string ACK_STATUS = "@ACK_STATUS";
         public const string OLDER_THAN = "@OLDER_THAN";
         public const string NEXT_DUE = "@NEXT_DUE";
+        public const string MESSAGE = "@MESSAGE";
 
         public const string ACTIVITY_ID = "@ACTIVITY_ID";
         public const string STATUS_ID = "@STATUS_ID";

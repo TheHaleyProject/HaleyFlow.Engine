@@ -32,5 +32,26 @@ namespace Haley.Internal {
 
         public Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.REMOVE_FLAGS, load, (ID, instanceId), (FLAGS, flags));
+
+        public Task<int> SetMessageAsync(long instanceId, string? message, DbExecutionLoad load = default)
+       => Db.ExecAsync(QRY_INSTANCE.SET_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (MESSAGE, message));
+
+        public Task<int> ClearMessageAsync(long instanceId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.CLEAR_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId));
+
+        public Task<int> SuspendWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.SUSPEND_WITH_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags), (MESSAGE, message));
+
+        public Task<int> FailWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.FAIL_WITH_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags), (MESSAGE, message));
+
+        public Task<int> CompleteWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.COMPLETE_WITH_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags), (MESSAGE, message));
+
+        public Task<int> ArchiveWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.ARCHIVE_WITH_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags), (MESSAGE, message));
+
+        public Task<int> UnsetFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.UNSUSPEND_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags));
     }
 }
