@@ -360,6 +360,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="instance" prior="insta" >
+			<comment><![CDATA[remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance]]></comment>
 			<column name="current_state" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>

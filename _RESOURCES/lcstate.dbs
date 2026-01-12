@@ -360,6 +360,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="instance" prior="insta" >
+			<comment><![CDATA[remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance]]></comment>
 			<column name="current_state" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
@@ -671,7 +672,6 @@ is_error = 8]]></comment>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="transition" color="1A4D4D" x="893" y="95" />
 		<entity schema="lcstate" name="def_policies" color="0000FF" x="665" y="855" />
 		<entity schema="lcstate" name="policy" color="0000FF" x="665" y="988" />
 		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="380" />
@@ -694,6 +694,7 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />
 		<entity schema="lcstate" name="def_version" color="0000FF" x="665" y="627" />
 		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="475" />
+		<entity schema="lcstate" name="transition" color="1A4D4D" x="874" y="95" />
 		<group name="Blueprint - Definition" color="0000FF" >
 			<entity schema="lcstate" name="def_policies" />
 			<entity schema="lcstate" name="policy" />
@@ -722,10 +723,10 @@ is_error = 8]]></comment>
 			<entity schema="lcstate" name="ack_consumer" />
 		</group>
 		<group name="Blueprint-State" color="1A4D4D" >
-			<entity schema="lcstate" name="transition" />
 			<entity schema="lcstate" name="category" />
 			<entity schema="lcstate" name="events" />
 			<entity schema="lcstate" name="state" />
+			<entity schema="lcstate" name="transition" />
 		</group>
 	</layout>
 </project>
