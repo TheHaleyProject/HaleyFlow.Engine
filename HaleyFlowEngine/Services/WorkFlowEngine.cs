@@ -32,10 +32,7 @@ namespace Haley.Services {
             _opt = options ?? new WorkFlowEngineOptions();
 
             BlueprintManager = _opt.BlueprintManager ?? new BlueprintManager(_dal);
-
-            // If you don't want engine to auto-create importer, pass it via options.
             BlueprintImporter = _opt.BlueprintImporter ?? new BlueprintImporter(_dal);
-
             StateMachine = _opt.StateMachine ?? new StateMachine(_dal, BlueprintManager);
             PolicyEnforcer = _opt.PolicyEnforcer ?? new PolicyEnforcer(_dal);
 
@@ -118,8 +115,7 @@ namespace Haley.Services {
 
                 // Transition consumers
                 var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, instanceId, ct);
-                var envDefaultConsumerId = await BlueprintManager.EnsureDefaultConsumerIdAsync(req.EnvCode, ct);
-                var normTransitionConsumers = NormalizeConsumers(transitionConsumers, envDefaultConsumerId);
+                var normTransitionConsumers = NormalizeConsumers(transitionConsumers);
 
                 // Create lifecycle ACK (one ack guid, multiple consumers) if required
                 var lcAckGuid = string.Empty;
@@ -161,7 +157,7 @@ namespace Haley.Services {
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                     var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, instanceId, he.HookCode, ct);
-                    var normHookConsumers = NormalizeConsumers(hookConsumers, envDefaultConsumerId);
+                    var normHookConsumers = NormalizeConsumers(hookConsumers);
 
                     var hookAckGuid = string.Empty;
                     if (req.AckRequired) {
@@ -260,6 +256,10 @@ namespace Haley.Services {
             var nowUtc = DateTime.UtcNow;
             var nextDueUtc = ackStatus == (int)AckStatus.Pending ? nowUtc.Add(_opt.AckPendingResendAfter) : nowUtc.Add(_opt.AckDeliveredResendAfter);
             var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30; // add this option; fallback keeps it safe
+            var recheckSeconds = _opt.ConsumerDownRecheckSeconds; // add option, e.g. 30 or 60
+
+            await _dal.AckConsumer.PushNextDueForDownAsync(consumerId, ackStatus, ttlSeconds, recheckSeconds, load);
+
 
             // Lifecycle
             var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
@@ -343,11 +343,11 @@ namespace Haley.Services {
                 } catch { }
             }
         }
-        private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers, long defaultConsumerId) {
-            if (consumers == null || consumers.Count == 0) return new long[] { defaultConsumerId };
+        private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers) {
+            if (consumers == null || consumers.Count == 0) return new long[] {};
             var list = new List<long>(consumers.Count);
             for (var i = 0; i < consumers.Count; i++) { var c = consumers[i]; if (c > 0 && !list.Contains(c)) list.Add(c); }
-            return list.Count == 0 ? new long[] { defaultConsumerId } : list;
+            return list;
         }
     }
 }

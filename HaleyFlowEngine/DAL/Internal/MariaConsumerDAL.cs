@@ -46,5 +46,9 @@ namespace Haley.Internal {
             if (!id.HasValue || id.Value <= 0) throw new InvalidOperationException($"consumer ensure failed. env={envId}, guid={consumerGuid}");
             return id.Value;
         }
+        public Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default)
+    => Db.ExecAsync(QRY_ACK_CONSUMER.PUSH_NEXT_DUE_FOR_DOWN_BY_CONSUMER_AND_STATUS, load, (CONSUMER_ID, consumerId), (ACK_STATUS, ackStatus), (TTL_SECONDS, ttlSeconds), (RECHECK_SECONDS, recheckSeconds));
+
+
     }
 }

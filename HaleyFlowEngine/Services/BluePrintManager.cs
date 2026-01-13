@@ -15,7 +15,6 @@ namespace Haley.Services {
         private readonly ConcurrentDictionary<string, Lazy<Task<DbRow>>> _latestDefVersion = new();
         private readonly ConcurrentDictionary<long, Lazy<Task<LifeCycleBlueprint>>> _blueprintsByVer = new();
         private readonly ConcurrentDictionary<string, Lazy<Task<long>>> _consumerIdByEnvGuid = new();
-        private readonly ConcurrentDictionary<int, Lazy<Task<long>>> _defaultConsumerByEnv = new();
 
         private static string NormalizeGuid(string guid) => (guid ?? string.Empty).Trim().ToLowerInvariant();
         private static string DefaultConsumerGuid(int envCode) {
@@ -127,14 +126,7 @@ namespace Haley.Services {
 
         public Task<long> ResolveConsumerIdAsync(int envCode, string? consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(consumerGuid)) return EnsureDefaultConsumerIdAsync(envCode, ct);
             return EnsureConsumerIdAsync(envCode, consumerGuid!, ct);
-        }
-
-        public Task<long> EnsureDefaultConsumerIdAsync(int envCode, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            var lazy = _defaultConsumerByEnv.GetOrAdd(envCode, _ => new Lazy<Task<long>>(() => EnsureConsumerIdAsync(envCode, DefaultConsumerGuid(envCode), ct)));
-            return AwaitCachedAsync(_defaultConsumerByEnv, envCode, lazy.Value, ct);
         }
 
         public Task<long> EnsureConsumerIdAsync(int envCode, string consumerGuid, CancellationToken ct = default) {

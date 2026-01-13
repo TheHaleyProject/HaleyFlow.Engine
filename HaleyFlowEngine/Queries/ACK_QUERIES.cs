@@ -44,6 +44,7 @@ namespace Haley.Internal {
 
         public const string LIST_BY_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.modified DESC, ac.id DESC LIMIT {TAKE} OFFSET {SKIP};";
         public const string LIST_BY_CONSUMER_AND_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.consumer = {CONSUMER_ID} AND ac.status = {ACK_STATUS} ORDER BY ac.modified DESC, ac.id DESC LIMIT {TAKE} OFFSET {SKIP};";
+        public const string PUSH_NEXT_DUE_FOR_DOWN_BY_CONSUMER_AND_STATUS = @$"UPDATE ack_consumer ac JOIN consumer c ON c.id=ac.consumer SET ac.next_due=DATE_ADD(UTC_TIMESTAMP(), INTERVAL {RECHECK_SECONDS} SECOND) WHERE ac.consumer={CONSUMER_ID} AND ac.status={ACK_STATUS} AND ac.next_due IS NOT NULL AND ac.next_due <= UTC_TIMESTAMP() AND TIMESTAMPDIFF(SECOND, c.last_beat, UTC_TIMESTAMP()) > {TTL_SECONDS};";
 
 
 

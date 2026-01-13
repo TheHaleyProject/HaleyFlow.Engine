@@ -33,6 +33,7 @@ namespace Haley.Internal {
         public const string POLICY_ID = "@POLICY_ID";
         public const string CONSUMER = "@CONSUMER";
         public const string MAX_RETRY = "@MAX_RETRY";
+        public const string RECHECK_SECONDS = "@RECHECK_SECONDS";
 
         public const string STATE_ID = "@STATE_ID";
         public const string FROM_ID = "@FROM_ID";

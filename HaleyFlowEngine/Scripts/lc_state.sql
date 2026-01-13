@@ -1,8 +1,8 @@
 -- --------------------------------------------------------
 -- Host:                         127.0.0.1
--- Server version:               11.8.2-MariaDB - mariadb.org binary distribution
+-- Server version:               11.7.2-MariaDB - mariadb.org binary distribution
 -- Server OS:                    Win64
--- HeidiSQL Version:             12.10.0.7000
+-- HeidiSQL Version:             12.7.0.6850
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -28,12 +28,12 @@ CREATE TABLE IF NOT EXISTS `ack` (
   UNIQUE KEY `unq_ack` (`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.ack: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.ack_consumer
 CREATE TABLE IF NOT EXISTS `ack_consumer` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `consumer` bigint(20) NOT NULL DEFAULT 0,
+  `consumer` int(11) NOT NULL DEFAULT 0,
   `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n    Pending =1,\n    Delivered=2,\n    Processed=3,\n    Failed=4',
   `ack_id` bigint(20) NOT NULL,
   `last_trigger` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'when was the last time, this trigger was initiated.. Whenever we send the ack to consumer, we mark it.',
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS `ack_consumer` (
   CONSTRAINT `fk_ack_consumer_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.ack_consumer: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.activity
 CREATE TABLE IF NOT EXISTS `activity` (
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS `activity` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are minor applicatoin managed activies which the statemachine doens''t have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.activity: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.activity_status
 CREATE TABLE IF NOT EXISTS `activity_status` (
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS `activity_status` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are all execution or activity status, which WorkFlow engine has no visibility about.  Like, ''Pending''''Completed''"approved'',"Rejected''"Returned''.. Reason is, we dont know what kind of state each runtime activity might follow.. For instance, one of the runtime activity can have ''Approved'',''Rejected'' state.. another can only have ''Sent''"Pendin'' (like, email delivery)';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.activity_status: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.category
 CREATE TABLE IF NOT EXISTS `category` (
@@ -79,17 +79,30 @@ CREATE TABLE IF NOT EXISTS `category` (
   UNIQUE KEY `unq_category` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.category: ~0 rows (approximately)
+
+-- Dumping structure for table lcstate.consumer
+CREATE TABLE IF NOT EXISTS `consumer` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `env` int(11) NOT NULL,
+  `consumer_guid` varchar(38) NOT NULL COMMENT 'guid expected',
+  `last_beat` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'consumer is nothing but the application.. application should notify that it is still running.. by updating itself, here.. if this application has crashed down, we should identify, when it was last working..\n\nlets say every 10 seconds, we expect the beat..',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unq_consumer_beat` (`env`,`consumer_guid`),
+  CONSTRAINT `fk_consumer_beat_environment` FOREIGN KEY (`env`) REFERENCES `environment` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Dumping data for table lcstate.consumer: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.definition
 CREATE TABLE IF NOT EXISTS `definition` (
-  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'it should be a code provided by the user.',
+  `env` int(11) NOT NULL DEFAULT 0,
   `guid` char(36) NOT NULL DEFAULT uuid(),
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'it should be a code provided by the user.',
   `display_name` varchar(200) NOT NULL,
   `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
   `description` text DEFAULT NULL,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `env` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_definition_0` (`guid`),
   UNIQUE KEY `unq_definition` (`env`,`name`),
@@ -97,7 +110,7 @@ CREATE TABLE IF NOT EXISTS `definition` (
   CONSTRAINT `fk_definition_environment` FOREIGN KEY (`env`) REFERENCES `environment` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.definition: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.def_policies
 CREATE TABLE IF NOT EXISTS `def_policies` (
@@ -110,12 +123,12 @@ CREATE TABLE IF NOT EXISTS `def_policies` (
   CONSTRAINT `fk_def_policies_policy` FOREIGN KEY (`policy`) REFERENCES `policy` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.def_policies: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.def_version
 CREATE TABLE IF NOT EXISTS `def_version` (
-  `guid` char(36) NOT NULL DEFAULT uuid(),
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `guid` char(36) NOT NULL DEFAULT uuid(),
   `version` int(11) NOT NULL DEFAULT 1,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
@@ -132,7 +145,7 @@ CREATE TABLE IF NOT EXISTS `def_version` (
   CONSTRAINT `cns_def_version_0` CHECK (json_valid(`data`))
 ) ENGINE=InnoDB AUTO_INCREMENT=1990 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.def_version: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.environment
 CREATE TABLE IF NOT EXISTS `environment` (
@@ -147,7 +160,7 @@ CREATE TABLE IF NOT EXISTS `environment` (
   UNIQUE KEY `unq_environment_0` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='environment code\n//Doesnt'' need to be like dev/prod/test.. It can be an work-group environmetn as well..\n\n//like preq-app (is one environment), so all preq-app (wherever it runs, local, production etc) will be able to read definitions.\n\n//we can even extend it as , preq-app-dev, preq-app-prod etc.';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.environment: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.events
 CREATE TABLE IF NOT EXISTS `events` (
@@ -162,7 +175,7 @@ CREATE TABLE IF NOT EXISTS `events` (
   CONSTRAINT `fk_events_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.events: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.hook
 CREATE TABLE IF NOT EXISTS `hook` (
@@ -178,7 +191,7 @@ CREATE TABLE IF NOT EXISTS `hook` (
   CONSTRAINT `fk_hooks_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='hooks are raised based on policy.. we just check the policy and then raise these hooks';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.hook: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.hook_ack
 CREATE TABLE IF NOT EXISTS `hook_ack` (
@@ -190,7 +203,7 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
   CONSTRAINT `fk_hook_ack_hook` FOREIGN KEY (`hook_id`) REFERENCES `hook` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.hook_ack: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.instance
 CREATE TABLE IF NOT EXISTS `instance` (
@@ -204,6 +217,7 @@ CREATE TABLE IF NOT EXISTS `instance` (
   `def_version` int(11) NOT NULL,
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `message` text DEFAULT NULL COMMENT 'any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_instance` (`guid`),
   UNIQUE KEY `unq_instance_0` (`def_version`,`external_ref`),
@@ -212,9 +226,9 @@ CREATE TABLE IF NOT EXISTS `instance` (
   KEY `fk_instance_def_version` (`def_version`),
   KEY `idx_instance` (`external_ref`),
   CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.instance: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.lc_ack
 CREATE TABLE IF NOT EXISTS `lc_ack` (
@@ -226,7 +240,7 @@ CREATE TABLE IF NOT EXISTS `lc_ack` (
   CONSTRAINT `fk_lc_ack_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.lc_ack: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.lc_data
 CREATE TABLE IF NOT EXISTS `lc_data` (
@@ -237,7 +251,7 @@ CREATE TABLE IF NOT EXISTS `lc_data` (
   CONSTRAINT `fk_transition_data_transition_log` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.lc_data: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.lc_timeout
 CREATE TABLE IF NOT EXISTS `lc_timeout` (
@@ -247,7 +261,7 @@ CREATE TABLE IF NOT EXISTS `lc_timeout` (
   CONSTRAINT `fk_timeout_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.lc_timeout: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.lifecycle
 CREATE TABLE IF NOT EXISTS `lifecycle` (
@@ -262,7 +276,7 @@ CREATE TABLE IF NOT EXISTS `lifecycle` (
   CONSTRAINT `fk_transition_log_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Contains the major states which are controlled by the statemachine';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.lifecycle: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.policy
 CREATE TABLE IF NOT EXISTS `policy` (
@@ -274,7 +288,7 @@ CREATE TABLE IF NOT EXISTS `policy` (
   UNIQUE KEY `unq_policy` (`hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.policy: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.runtime
 CREATE TABLE IF NOT EXISTS `runtime` (
@@ -297,7 +311,7 @@ CREATE TABLE IF NOT EXISTS `runtime` (
   CONSTRAINT `fk_runtime_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Remember, runtime state (or activity track) doesn''t need an acknowledgement, because, this infomration itself is managed in application side and we are only receiving it directly from the app itself.. But, there might be some events that we need to raise for each state based on the policy.. those has to be properly acknowledge.d';
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.runtime: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.runtime_data
 CREATE TABLE IF NOT EXISTS `runtime_data` (
@@ -308,7 +322,7 @@ CREATE TABLE IF NOT EXISTS `runtime_data` (
   CONSTRAINT `fk_runtime_data_runtime` FOREIGN KEY (`runtime`) REFERENCES `runtime` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.runtime_data: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.state
 CREATE TABLE IF NOT EXISTS `state` (
@@ -330,7 +344,7 @@ CREATE TABLE IF NOT EXISTS `state` (
   CONSTRAINT `fk_state_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=2014 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.state: ~0 rows (approximately)
 
 -- Dumping structure for table lcstate.transition
 CREATE TABLE IF NOT EXISTS `transition` (
@@ -351,7 +365,7 @@ CREATE TABLE IF NOT EXISTS `transition` (
   CONSTRAINT `fk_transition_state_0` FOREIGN KEY (`to_state`) REFERENCES `state` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Data exporting was unselected.
+-- Dumping data for table lcstate.transition: ~0 rows (approximately)
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
