@@ -14,7 +14,6 @@ namespace Haley.Services {
     public sealed class WorkFlowEngine : IWorkFlowEngine {
         private readonly IWorkFlowDAL _dal;
         private readonly WorkFlowEngineOptions _opt;
-        private readonly IReadOnlyList<long> _monitorConsumers;
         public IStateMachine StateMachine { get; }
         public IBlueprintManager BlueprintManager { get; }
         public IBlueprintImporter BlueprintImporter { get; }
@@ -35,19 +34,15 @@ namespace Haley.Services {
             BlueprintImporter = _opt.BlueprintImporter ?? new BlueprintImporter(_dal);
             StateMachine = _opt.StateMachine ?? new StateMachine(_dal, BlueprintManager);
             PolicyEnforcer = _opt.PolicyEnforcer ?? new PolicyEnforcer(_dal);
+            var resolveConsumers = _opt.ResolveConsumers?? ((LifeCycleConsumerType ty, long? id /* DefVersionId */, CancellationToken ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
-            var tc = _opt.ResolveTransitionConsumers;
-            var hc = _opt.ResolveHookConsumers;
-            Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> transitionConsumers = (dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(tc?.Invoke(dv, iid) ?? Array.Empty<long>());
-            Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> hookConsumers = (dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(hc?.Invoke(dv, iid, code) ?? Array.Empty<long>());
+            var resolveMonitors = (LifeCycleConsumerType ty,CancellationToken ct)=> resolveConsumers.Invoke(ty,null,ct);
 
-
-            AckManager = _opt.AckManager ?? new AckManager(_dal, transitionConsumers, hookConsumers,_opt.AckPendingResendAfter,_opt.AckDeliveredResendAfter);
+            AckManager = _opt.AckManager ?? new AckManager(_dal, resolveConsumers,_opt.AckPendingResendAfter,_opt.AckDeliveredResendAfter);
 
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
-            _monitorConsumers = _opt.MonitorConsumers;
-            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceAsync(ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
+            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceInternalAsync(resolveMonitors,ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
         }
 
         public Task StartMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
@@ -82,6 +77,7 @@ namespace Haley.Services {
             try {
                 //Before generating the instance, check if policy is needed to be attached. This can be found out from definition version and it's latest policy.. (we always focus on the latest policy for the definition)
                 //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
+
                 var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); 
                 instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
                 transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
@@ -114,7 +110,7 @@ namespace Haley.Services {
                 if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
 
                 // Transition consumers
-                var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, instanceId, ct);
+                var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
                 var normTransitionConsumers = NormalizeConsumers(transitionConsumers);
 
                 // Create lifecycle ACK (one ack guid, multiple consumers) if required
@@ -156,7 +152,7 @@ namespace Haley.Services {
                 var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load); //CHECK ONCE MORE
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
-                    var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, instanceId, he.HookCode, ct);
+                    var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId,ct);
                     var normHookConsumers = NormalizeConsumers(hookConsumers);
 
                     var hookAckGuid = string.Empty;
@@ -219,15 +215,22 @@ namespace Haley.Services {
 
         public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(defVersionId); return Task.CompletedTask; }
 
-        public async Task RunMonitorOnceAsync(CancellationToken ct = default) {
+        public async Task RunMonitorOnceAsync(long consumerId, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            for (var i = 0; i < _monitorConsumers.Count; i++) {
-                ct.ThrowIfCancellationRequested();
-                var consumerId = _monitorConsumers[i];
-                await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
-                await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
+            await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
+            await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
+        }
+
+
+        internal async Task RunMonitorOnceInternalAsync(Func<LifeCycleConsumerType, CancellationToken, Task<IReadOnlyList<long>>> consumersProvider, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            var consumerList = await consumersProvider(LifeCycleConsumerType.Monitor,ct);
+            for (var i = 0; i < consumerList.Count; i++) {
+                var consumerId = consumerList[i];
+                await RunMonitorOnceAsync(consumerId, ct);
             }
         }
+
 
         public Task<long> RegisterConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();

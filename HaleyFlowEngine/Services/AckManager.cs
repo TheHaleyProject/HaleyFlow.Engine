@@ -16,8 +16,7 @@ namespace Haley.Services {
     internal sealed class AckManager : IAckManager {
         private readonly IWorkFlowDAL _dal;
 
-        private readonly Func<long, long, CancellationToken, Task<IReadOnlyList<long>>> _transitionConsumers;
-        private readonly Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>> _hookConsumers;
+        private readonly Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> _consumers;
 
         // scheduling policy
         private readonly TimeSpan _pendingNextDue;    // T + 40s
@@ -25,21 +24,19 @@ namespace Haley.Services {
 
         public AckManager(
             IWorkFlowDAL dal,
-            Func<long, long, CancellationToken, Task<IReadOnlyList<long>>>? transitionConsumers = null,
-            Func<long, long, string, CancellationToken, Task<IReadOnlyList<long>>>? hookConsumers = null,
+            Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null,
             TimeSpan? pendingNextDue = null,
             TimeSpan? deliveredNextDue = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
-            _transitionConsumers = transitionConsumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
-            _hookConsumers = hookConsumers ?? ((dv, iid, code, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+            _consumers = consumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
             _pendingNextDue = pendingNextDue ?? TimeSpan.FromSeconds(40);
             _deliveredNextDue = deliveredNextDue ?? TimeSpan.FromMinutes(4);
         }
 
-        public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, long instanceId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _transitionConsumers(defVersionId, instanceId, ct); }
+        public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Transition, defVersionId, ct); }
 
-        public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, long instanceId, string hookCode, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _hookConsumers(defVersionId, instanceId, hookCode, ct); }
+        public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Hook, defVersionId, ct); }
 
         public async Task<ILifeCycleAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
