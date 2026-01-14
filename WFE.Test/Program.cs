@@ -57,9 +57,6 @@ var opt = new WorkFlowEngineOptions {
     MonitorPageSize = 200,
     AckDeliveredResendAfter = TimeSpan.FromSeconds(30),
     AckPendingResendAfter  = TimeSpan.FromSeconds(20),
-
-    // IMPORTANT: WorkFlowEngine constructor throws if BlueprintImporter is null
-    MonitorConsumers = new long[] { ConsumerId }
 };
 
 await using var engine = new WorkFlowEngine(dal, opt);

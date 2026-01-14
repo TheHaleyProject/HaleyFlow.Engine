@@ -35,6 +35,9 @@ namespace Haley.Internal {
 
         public Task<DbRows> ListByConsumerAndStatusPagedAsync(long consumer, int status, int skip, int take, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_ACK_CONSUMER.LIST_BY_CONSUMER_AND_STATUS_PAGED, load, (CONSUMER_ID, consumer), (ACK_STATUS, status), (SKIP, skip), (TAKE, take));
-    }
 
+        public Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default) {
+            throw new NotImplementedException();
+        }
+    }
 }

@@ -61,6 +61,10 @@ namespace Haley.Services {
             // Blueprint read can be outside txn (pure read + cached).
             var bp = await BlueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct);
 
+            // Transition consumers are needed definetly when a transition happens. Hook consumers are optional.
+            var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
+            if (transitionConsumers.Count < 1) throw new ArgumentException("No transition consumers found for this definition version. At least one transition consumer is required to proceed.", nameof(req));
+
             var transaction = _dal.CreateNewTransaction();
             using var tx = transaction.Begin(false);
             var load = new DbExecutionLoad(ct, transaction);
@@ -102,6 +106,10 @@ namespace Haley.Services {
                     return result;
                 }
 
+                var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, ct);
+                var normTransitionConsumers = NormalizeConsumers(transitionConsumers);
+                var normHookConsumers = NormalizeConsumers(hookConsumers);
+
                 var instanceId = result.InstanceId;
                 // See.. We have the instance created or ensured above. Now, we need to make sure that the policy is also resolved and sent back to the caller. Because, caller might need to know which policy is attached to this instance.
                 // We should never take the latest policy here.. Because the instance might have been created several days back and at that time, the latest policy was something else. So, we need to get the policy that is attached to this instance.
@@ -109,10 +117,7 @@ namespace Haley.Services {
                 var pid = instance.GetLong("policy_id");
                 if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
 
-                // Transition consumers
-                var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
-                var normTransitionConsumers = NormalizeConsumers(transitionConsumers);
-
+               
                 // Create lifecycle ACK (one ack guid, multiple consumers) if required
                 var lcAckGuid = string.Empty;
                 if (req.AckRequired) {
@@ -152,8 +157,7 @@ namespace Haley.Services {
                 var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load); //CHECK ONCE MORE
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
-                    var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId,ct);
-                    var normHookConsumers = NormalizeConsumers(hookConsumers);
+                   if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
 
                     var hookAckGuid = string.Empty;
                     if (req.AckRequired) {
@@ -163,6 +167,7 @@ namespace Haley.Services {
                     }
 
                     for (var i = 0; i < normHookConsumers.Count; i++) {
+
                         var consumerId = normHookConsumers[i];
                         var hookEvent = new LifeCycleHookEvent(lcEvent) {
                             ConsumerId = consumerId,
