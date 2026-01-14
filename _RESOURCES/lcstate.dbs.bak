@@ -17,7 +17,9 @@
 			<index name="unq_ack" unique="UNIQUE_KEY" >
 				<column name="guid" />
 			</index>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 2000  
+]]></options>
 		</table>
 		<table name="ack_consumer" prior="ack" >
 			<column name="id" type="BIGINT" mandatory="y" >
@@ -70,7 +72,9 @@
 			<fk name="fk_ack_consumer_ack" to_schema="lcstate" to_table="ack" >
 				<fk_column name="ack_id" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 2000  
+]]></options>
 		</table>
 		<table name="activity" prior="activ" >
 			<comment><![CDATA[These are minor applicatoin managed activies which the statemachine doens't have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..]]></comment>
@@ -84,7 +88,9 @@
 			<index name="pk_runtime_activity" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1998  
+]]></options>
 		</table>
 		<table name="activity_status" prior="runtime_state" >
 			<comment><![CDATA[These are all execution or activity status, which WorkFlow engine has no visibility about.  Like, 'Pending''Completed'"approved',"Rejected'"Returned'.. Reason is, we dont know what kind of state each runtime activity might follow.. For instance, one of the runtime activity can have 'Approved','Rejected' state.. another can only have 'Sent'"Pendin' (like, email delivery)]]></comment>
@@ -98,7 +104,9 @@
 			<index name="pk_ext_state" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1998  
+]]></options>
 		</table>
 		<table name="category" prior="tbl" >
 			<column name="id" type="INT" mandatory="y" >
@@ -114,7 +122,9 @@
 			<index name="unq_category" unique="UNIQUE_KEY" >
 				<column name="name" />
 			</index>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1999  
+]]></options>
 		</table>
 		<table name="consumer" prior="consumer_beat" >
 			<column name="id" type="INT" mandatory="y" >
@@ -140,7 +150,9 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<fk name="fk_consumer_beat_environment" to_schema="lcstate" to_table="environment" >
 				<fk_column name="env" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1995  
+]]></options>
 		</table>
 		<table name="def_policies" prior="definition_policies" >
 			<column name="definition" type="INT" mandatory="y" />
@@ -207,7 +219,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<fk_column name="parent" pk="id" />
 			</fk>
 			<options><![CDATA[
- AUTO_INCREMENT 1990  
+ AUTO_INCREMENT 1988  
 ]]></options>
 		</table>
 		<table name="definition" prior="definit" >
@@ -278,7 +290,9 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<index name="unq_environment_1" unique="UNIQUE_KEY" >
 				<column name="guid" />
 			</index>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1998  
+]]></options>
 		</table>
 		<table name="events" prior="e" >
 			<column name="id" type="INT" mandatory="y" >
@@ -305,7 +319,9 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<fk name="fk_events_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1989  
+]]></options>
 		</table>
 		<table name="hook" prior="hooks" >
 			<comment><![CDATA[hooks are raised based on policy.. we just check the policy and then raise these hooks]]></comment>
@@ -340,7 +356,9 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<fk name="fk_hooks_instance" to_schema="lcstate" to_table="instance" >
 				<fk_column name="instance_id" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 2000  
+]]></options>
 		</table>
 		<table name="hook_ack" prior="hook_ck" >
 			<column name="ack_id" type="BIGINT" mandatory="y" />
@@ -421,7 +439,9 @@ archive = 16]]></comment>
 			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1857  
+]]></options>
 		</table>
 		<table name="lc_ack" prior="lc_a" >
 			<column name="ack_id" type="BIGINT" mandatory="y" />
@@ -488,7 +508,9 @@ archive = 16]]></comment>
 			<fk name="fk_transition_log_instance" to_schema="lcstate" to_table="instance" >
 				<fk_column name="instance_id" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 2000  
+]]></options>
 		</table>
 		<table name="policy" prior="polic" >
 			<column name="id" type="INT" mandatory="y" >
@@ -509,7 +531,9 @@ archive = 16]]></comment>
 			<index name="unq_policy" unique="UNIQUE_KEY" >
 				<column name="hash" />
 			</index>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1988  
+]]></options>
 		</table>
 		<table name="runtime" prior="execution" >
 			<comment><![CDATA[Remember, runtime state (or activity track) doesn't need an acknowledgement, because, this infomration itself is managed in application side and we are only receiving it directly from the app itself.. But, there might be some events that we need to raise for each state based on the policy.. those has to be properly acknowledge.d]]></comment>
@@ -554,7 +578,9 @@ archive = 16]]></comment>
 			<fk name="fk_runtime_activity" to_schema="lcstate" to_table="activity" >
 				<fk_column name="activity" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 2000  
+]]></options>
 		</table>
 		<table name="runtime_data" prior="runtime_" >
 			<column name="data" type="LONGTEXT" >
@@ -668,64 +694,66 @@ is_error = 8]]></comment>
 			<fk name="fk_transition_events" to_schema="lcstate" to_table="events" >
 				<fk_column name="event" pk="id" />
 			</fk>
-			<options><![CDATA[engine=InnoDB]]></options>
+			<options><![CDATA[engine=InnoDB
+ AUTO_INCREMENT 1988  
+]]></options>
 		</table>
 	</schema>
 	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 		<entity schema="lcstate" name="def_policies" color="0000FF" x="665" y="855" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="665" y="988" />
-		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="380" />
-		<entity schema="lcstate" name="events" color="1A4D4D" x="893" y="342" />
-		<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="570" />
-		<entity schema="lcstate" name="activity" color="00FF00" x="57" y="874" />
-		<entity schema="lcstate" name="runtime_data" color="00FF00" x="76" y="1007" />
-		<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="950" />
-		<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="874" />
-		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="285" y="247" />
 		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
-		<entity schema="lcstate" name="ack" color="FF00FF" x="171" y="114" />
 		<entity schema="lcstate" name="lc_data" color="FFFF00" x="76" y="437" />
-		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="589" />
 		<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="475" />
 		<entity schema="lcstate" name="state" color="1A4D4D" x="665" y="114" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="874" y="760" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="893" y="969" />
-		<entity schema="lcstate" name="consumer" color="0000FF" x="874" y="608" />
+		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="285" y="247" />
+		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="589" />
+		<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="570" />
 		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />
-		<entity schema="lcstate" name="transition" color="1A4D4D" x="874" y="95" />
+		<entity schema="lcstate" name="ack" color="FF00FF" x="171" y="114" />
+		<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="874" />
+		<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="950" />
+		<entity schema="lcstate" name="activity" color="00FF00" x="57" y="874" />
+		<entity schema="lcstate" name="runtime_data" color="00FF00" x="76" y="1007" />
 		<entity schema="lcstate" name="def_version" color="0000FF" x="665" y="608" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="665" y="988" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="893" y="969" />
+		<entity schema="lcstate" name="definition" color="0000FF" x="874" y="760" />
+		<entity schema="lcstate" name="consumer" color="0000FF" x="874" y="608" />
+		<entity schema="lcstate" name="events" color="1A4D4D" x="893" y="342" />
+		<entity schema="lcstate" name="category" color="1A4D4D" x="684" y="380" />
+		<entity schema="lcstate" name="transition" color="1A4D4D" x="874" y="95" />
 		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="475" />
 		<group name="Blueprint - Definition" color="0000FF" >
 			<entity schema="lcstate" name="def_policies" />
-			<entity schema="lcstate" name="policy" />
-			<entity schema="lcstate" name="definition" />
-			<entity schema="lcstate" name="environment" />
-			<entity schema="lcstate" name="consumer" />
 			<entity schema="lcstate" name="def_version" />
+			<entity schema="lcstate" name="policy" />
+			<entity schema="lcstate" name="environment" />
+			<entity schema="lcstate" name="definition" />
+			<entity schema="lcstate" name="consumer" />
 		</group>
 		<group name="Instance Core" color="FFFF00" >
-			<entity schema="lcstate" name="hook" />
 			<entity schema="lcstate" name="lc_data" />
-			<entity schema="lcstate" name="lifecycle" />
 			<entity schema="lcstate" name="lc_timeout" />
+			<entity schema="lcstate" name="lifecycle" />
+			<entity schema="lcstate" name="hook" />
 			<entity schema="lcstate" name="instance" />
 		</group>
 		<group name="Runtime Activities" color="00FF00" >
+			<entity schema="lcstate" name="runtime" />
+			<entity schema="lcstate" name="activity_status" />
 			<entity schema="lcstate" name="activity" />
 			<entity schema="lcstate" name="runtime_data" />
-			<entity schema="lcstate" name="activity_status" />
-			<entity schema="lcstate" name="runtime" />
 		</group>
 		<group name="Acknowledgement" color="FF00FF" >
-			<entity schema="lcstate" name="lc_ack" />
 			<entity schema="lcstate" name="hook_ack" />
-			<entity schema="lcstate" name="ack" />
+			<entity schema="lcstate" name="lc_ack" />
 			<entity schema="lcstate" name="ack_consumer" />
+			<entity schema="lcstate" name="ack" />
 		</group>
 		<group name="Blueprint-State" color="1A4D4D" >
-			<entity schema="lcstate" name="category" />
-			<entity schema="lcstate" name="events" />
 			<entity schema="lcstate" name="state" />
+			<entity schema="lcstate" name="events" />
+			<entity schema="lcstate" name="category" />
 			<entity schema="lcstate" name="transition" />
 		</group>
 	</layout>
