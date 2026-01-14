@@ -1,26 +1,4 @@
-  internal sealed class MariaAckDAL : MariaDALBase, IAckDAL {
-      public MariaAckDAL(IWorkFlowDALUtil db) : base(db) { }
-
-      public Task<DbRow?> GetByIdAsync(long ackId, DbExecutionLoad load = default)
-          => Db.RowAsync(QRY_ACK.GET_BY_ID, load, (ID, ackId));
-
-      public Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default)
-          => Db.RowAsync(QRY_ACK.GET_BY_GUID, load, (GUID, guid));
-
-      public Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default)
-          => Db.ScalarAsync<long?>(QRY_ACK.GET_ID_BY_GUID, load, (GUID, guid));
-
-      public Task<DbRow?> InsertReturnRowAsync(DbExecutionLoad load = default)
-          => Db.RowAsync(QRY_ACK.INSERT, load);
-
-      public Task<DbRow?> InsertWithGuidReturnRowAsync(string guid, DbExecutionLoad load = default)
-          => Db.RowAsync(QRY_ACK.INSERT_WITH_GUID, load, (GUID, guid));
-
-      public Task<int> DeleteAsync(long ackId, DbExecutionLoad load = default)
-          => Db.ExecAsync(QRY_ACK.DELETE, load, (ID, ackId));
-  }
-
-    internal sealed class MariaAckConsumerDAL : MariaDALBase, IAckConsumerDAL {
+  internal sealed class MariaAckConsumerDAL : MariaDALBase, IAckConsumerDAL {
       public MariaAckConsumerDAL(IWorkFlowDALUtil db) : base(db) { }
       public Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default)
           => Db.RowAsync(QRY_ACK_CONSUMER.GET_BY_KEY, load, (ACK_ID, ackId), (CONSUMER_ID, consumer)); // FIXED
@@ -52,40 +30,60 @@
 
       public Task<DbRows> ListByConsumerAndStatusPagedAsync(long consumer, int status, int skip, int take, DbExecutionLoad load = default)
           => Db.RowsAsync(QRY_ACK_CONSUMER.LIST_BY_CONSUMER_AND_STATUS_PAGED, load, (CONSUMER_ID, consumer), (ACK_STATUS, status), (SKIP, skip), (TAKE, take));
-  }
-
- internal sealed class MariaInstanceDAL : MariaDALBase, IInstanceDAL {
-     public MariaInstanceDAL(IWorkFlowDALUtil db) : base(db) { }
-
-     public Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default)
-         => Db.RowAsync(QRY_INSTANCE.GET_BY_GUID, load, (GUID, guid));
-
-     public Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default)
-         => Db.ScalarAsync<long?>(QRY_INSTANCE.GET_ID_BY_GUID, load, (GUID, guid));
-
-     public Task<long?> GetIdByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default)
-         => Db.ScalarAsync<long?>(QRY_INSTANCE.GET_ID_BY_PARENT_AND_EXTERNAL_REF, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef));
-
-     public async Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default) {
-         var exists = await Db.ScalarAsync<string?>(QRY_INSTANCE.GET_GUID_BY_PARENT_AND_EXTERNAL_REF, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef));
-         if (!string.IsNullOrWhiteSpace(exists)) return exists;
-         return await Db.ScalarAsync<string?>(QRY_INSTANCE.INSERT, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef), (STATE_ID, currentStateId), (EVENT_ID, lastEventId), (POLICY_ID, policyId), (FLAGS, flags));
-     }
-     
-     public Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default)
-         => Db.ExecAsync(QRY_INSTANCE.UPDATE_CURRENT_STATE_CAS, load, (ID, instanceId), (FROM_ID, expectedFromStateId), (TO_ID, newToStateId), (EVENT_ID, lastEventId));
-
-     public Task<int> SetPolicyAsync(long instanceId, long policyId, DbExecutionLoad load = default)
-         => Db.ExecAsync(QRY_INSTANCE.SET_POLICY, load, (ID, instanceId), (POLICY_ID, policyId));
-
-     public Task<int> AddFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
-         => Db.ExecAsync(QRY_INSTANCE.ADD_FLAGS, load, (ID, instanceId), (FLAGS, flags));
-
-     public Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
-         => Db.ExecAsync(QRY_INSTANCE.REMOVE_FLAGS, load, (ID, instanceId), (FLAGS, flags));
+ 
+        public Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default) => Db.ExecAsync(QRY_ACK_CONSUMER.PUSH_NEXT_DUE_FOR_DOWN_BY_CONSUMER_AND_STATUS, load, (CONSUMER_ID, consumerId), (ACK_STATUS, ackStatus), (TTL_SECONDS, ttlSeconds), (RECHECK_SECONDS, recheckSeconds));
  }
 
- public class MariaWorkFlowDALUtil : IWorkFlowDALUtil {
+   internal sealed class MariaConsumerDAL : MariaDALBase, IConsumerDAL {
+     public MariaConsumerDAL(IWorkFlowDALUtil db) : base(db) { }
+
+     public Task<int?> GetIdByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default)
+         => Db.ScalarAsync<int?>(QRY_CONSUMER.GET_ID_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));
+
+     public Task<int?> GetIdAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default)
+         => Db.ScalarAsync<int?>(QRY_CONSUMER.GET_ID_ALIVE_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid), (TTL_SECONDS, ttlSeconds));
+
+     public Task<int> UpsertBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default)
+         => Db.ExecAsync(QRY_CONSUMER.UPSERT_BEAT_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));
+
+     public Task<int> UpdateBeatByIdAsync(int consumerId, DbExecutionLoad load = default)
+         => Db.ExecAsync(QRY_CONSUMER.UPDATE_BEAT_BY_ID, load, (CONSUMER_ID, consumerId));
+
+     public async Task<IReadOnlyList<int>> ListAliveIdsByEnvIdAsync(int envId, int ttlSeconds, DbExecutionLoad load = default) {
+         var rows = await Db.RowsAsync(QRY_CONSUMER.LIST_ALIVE_IDS_BY_ENV_ID, load, (ENV_ID, envId), (TTL_SECONDS, ttlSeconds));
+         return rows.Select(r => (int)r["id"]).ToArray();
+     }
+
+     public Task<int> IsAliveByIdAsync(int consumerId, int ttlSeconds, DbExecutionLoad load = default)
+         => Db.ScalarAsync<int>(QRY_CONSUMER.IS_ALIVE_BY_ID, load, (CONSUMER_ID, consumerId), (TTL_SECONDS, ttlSeconds));
+
+     public Task<int> IsAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default)
+         => Db.ScalarAsync<int>(QRY_CONSUMER.IS_ALIVE_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid), (TTL_SECONDS, ttlSeconds));
+
+     public Task<DateTime?> GetLastBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default)
+         => Db.ScalarAsync<DateTime?>(QRY_CONSUMER.GET_LAST_BEAT_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));
+     public async Task<int> EnsureByEnvIdAndGuidReturnIdAsync(int envId, string consumerGuid, DbExecutionLoad load = default) {
+         var id = await GetIdByEnvIdAndGuidAsync(envId, consumerGuid, load);
+         if (id.HasValue && id.Value > 0) return id.Value;
+
+         // Insert OR upsert; choose what you have
+         if (!string.IsNullOrWhiteSpace(QRY_CONSUMER.UPSERT_BEAT_BY_ENV_ID_AND_GUID)) {
+             await UpsertBeatByEnvIdAndGuidAsync(envId, consumerGuid, load);
+         } else {
+             await Db.ExecAsync(QRY_CONSUMER.INSERT, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));
+         }
+
+         id = await GetIdByEnvIdAndGuidAsync(envId, consumerGuid, load);
+         if (!id.HasValue || id.Value <= 0) throw new InvalidOperationException($"consumer ensure failed. env={envId}, guid={consumerGuid}");
+         return id.Value;
+     }
+     public Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default)
+ => Db.ExecAsync(QRY_ACK_CONSUMER.PUSH_NEXT_DUE_FOR_DOWN_BY_CONSUMER_AND_STATUS, load, (CONSUMER_ID, consumerId), (ACK_STATUS, ackStatus), (TTL_SECONDS, ttlSeconds), (RECHECK_SECONDS, recheckSeconds));
+
+
+ }
+
+   public class MariaWorkFlowDALUtil : IWorkFlowDALUtil {
      private readonly IAdapterGateway _agw;
      protected readonly string _key;
 
@@ -137,42 +135,42 @@
      }
  }
 
+  public class MariaWorkFlowDAL : MariaWorkFlowDALUtil, IWorkFlowDAL {
+     public IBlueprintReadDAL Blueprint { get; }
+     public IBlueprintWriteDAL BlueprintWrite { get; }
+     public IInstanceDAL Instance { get; }
+     public ILifeCycleDAL LifeCycle { get; }
+     public ILifeCycleDataDAL LifeCycleData { get; }
+     public IHookDAL Hook { get; }
+     public IAckDAL Ack { get; }
+     public IAckConsumerDAL AckConsumer { get; }
+     public ILcAckDAL LcAck { get; }
+     public IHookAckDAL HookAck { get; }
+     public IAckDispatchDAL AckDispatch { get; }
+     public IActivityDAL Activity { get; }
+     public IActivityStatusDAL ActivityStatus { get; }
+     public IRuntimeDAL Runtime { get; }
+     public IRuntimeDataDAL RuntimeData { get; }
+     public IConsumerDAL Consumer { get; }
+     public MariaWorkFlowDAL(IAdapterGateway agw, string key) : base(agw, key) {
+         Blueprint = new MariaBlueprintReadDAL(this);
+         BlueprintWrite = new MariaBlueprintWriteDAL(this);
+         Instance = new MariaInstanceDAL(this);
+         LifeCycle = new MariaLifeCycleDAL(this);
+         LifeCycleData = new MariaLifeCycleDataDAL(this);
+         Hook = new MariaHookDAL(this);
 
-   public class MariaWorkFlowDAL : MariaWorkFlowDALUtil, IWorkFlowDAL {
-      public IBlueprintReadDAL Blueprint { get; }
-      public IBlueprintWriteDAL BlueprintWrite { get; }
-      public IInstanceDAL Instance { get; }
-      public ILifeCycleDAL LifeCycle { get; }
-      public ILifeCycleDataDAL LifeCycleData { get; }
-      public IHookDAL Hook { get; }
-      public IAckDAL Ack { get; }
-      public IAckConsumerDAL AckConsumer { get; }
-      public ILcAckDAL LcAck { get; }
-      public IHookAckDAL HookAck { get; }
-      public IAckDispatchDAL AckDispatch { get; }
-      public IActivityDAL Activity { get; }
-      public IActivityStatusDAL ActivityStatus { get; }
-      public IRuntimeDAL Runtime { get; }
-      public IRuntimeDataDAL RuntimeData { get; }
+         Ack = new MariaAckDAL(this);
+         AckConsumer = new MariaAckConsumerDAL(this);
+         LcAck = new MariaLcAckDAL(this);
+         HookAck = new MariaHookAckDAL(this);
+         AckDispatch = new MariaAckDispatchDAL(this);
 
-      public MariaWorkFlowDAL(IAdapterGateway agw, string key) : base(agw, key) {
-          Blueprint = new MariaBlueprintReadDAL(this);
-          BlueprintWrite = new MariaBlueprintWriteDAL(this);
-          Instance = new MariaInstanceDAL(this);
-          LifeCycle = new MariaLifeCycleDAL(this);
-          LifeCycleData = new MariaLifeCycleDataDAL(this);
-          Hook = new MariaHookDAL(this);
+         Activity = new MariaActivityDAL(this);
+         ActivityStatus = new MariaActivityStatusDAL(this);
 
-          Ack = new MariaAckDAL(this);
-          AckConsumer = new MariaAckConsumerDAL(this);
-          LcAck = new MariaLcAckDAL(this);
-          HookAck = new MariaHookAckDAL(this);
-          AckDispatch = new MariaAckDispatchDAL(this);
-
-          Activity = new MariaActivityDAL(this);
-          ActivityStatus = new MariaActivityStatusDAL(this);
-
-          Runtime = new MariaRuntimeDAL(this);
-          RuntimeData = new MariaRuntimeDataDAL(this);
-      }
-  }
+         Runtime = new MariaRuntimeDAL(this);
+         RuntimeData = new MariaRuntimeDataDAL(this); 
+         Consumer = new MariaConsumerDAL(this);
+     }
+ }

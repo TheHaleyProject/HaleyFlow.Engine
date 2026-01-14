@@ -54,12 +54,12 @@ public interface ILifeCycleDispatchItem {
      string? PolicyJson { get; }
  }
 
-   public interface ILifeCycleAckRef {
-      long AckId { get; }
-      string AckGuid { get; }
-  }
+public interface IWorkflowAckRef {
+    long AckId { get; }
+    string AckGuid { get; }
+}
 
-public sealed class LifeCycleAckRef : ILifeCycleAckRef {
+public sealed class WorkflowAckRef : IWorkflowAckRef {
     public long AckId { get; set; }
     public string AckGuid { get; set; }
 }
@@ -222,17 +222,19 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
      public ApplyTransitionResult() { }
  }
 
-   public sealed class LifeCycleTriggerRequest {
-     public int EnvCode { get; set; }
-     public string DefName { get; set; }
-     public string ExternalRef { get; set; }
-     public string Event { get; set; }
-     public string Actor { get; set; }
-     public string RequestId { get; set; }
-     public bool AckRequired { get; set; } = true;
-     public IReadOnlyDictionary<string, object> Payload { get; set; }
-     public LifeCycleTriggerRequest() { }
- }
+public sealed class LifeCycleTriggerRequest {
+    public int EnvCode { get; set; }
+    public string DefName { get; set; }
+    public string ExternalRef { get; set; }
+    public string Event { get; set; }
+    public string Actor { get; set; }
+    public string RequestId { get; set; }
+    public long? PolicyId { get; set; } //Optional.. User may decide to 
+    public bool AckRequired { get; set; } = true;
+    public LifeCycleInstanceFlag? Flag { get; set; } = null; //Consumer can set the flag to make the instance failed or suspended.
+    public IReadOnlyDictionary<string, object> Payload { get; set; }
+    public LifeCycleTriggerRequest() { }
+}
 
   public sealed class LifeCycleTriggerResult {
      public bool Applied { get; set; }
@@ -267,26 +269,26 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
      public PolicyResolution() { }
  }
 
-     public sealed class WorkFlowEngineOptions {
-        public TimeSpan MonitorInterval { get; set; } = TimeSpan.FromMinutes(2);
-        public int MonitorPageSize { get; set; } = 200;
-        public TimeSpan AckPendingResendAfter { get; set; }= TimeSpan.FromSeconds(50);
-        public TimeSpan AckDeliveredResendAfter { get; set; } = TimeSpan.FromMinutes(6);
+ public sealed class WorkFlowEngineOptions {
+    public TimeSpan MonitorInterval { get; set; } = TimeSpan.FromMinutes(2);
+    public int MonitorPageSize { get; set; } = 200;
+    public TimeSpan AckPendingResendAfter { get; set; }= TimeSpan.FromSeconds(50);
+    public TimeSpan AckDeliveredResendAfter { get; set; } = TimeSpan.FromMinutes(6);
+    public int MaxRetryCount { get; set; } = 10; //Beyond which, the acknowledgement will be marked as failed and associated instance will be marked as suspended. //Here, application might be down (crashed) and the acknowledgement was not notified.. 
+    public int ConsumerTtlSeconds { get; set; } = 120; //Consume should send heartbeats within this time window to be considered alive.
+    public int ConsumerDownRecheckSeconds { get; set; } = 60;
 
-        // Ack consumer resolution (fallbacks)
-        public long DefaultConsumerId { get; set; } = 1857; //Year of sepoy mutiny
-        public Func<long, long, IReadOnlyList<long>>? ResolveTransitionConsumers { get; set; } // (defVersionId, instanceId) => consumers
-        public Func<long, long, string, IReadOnlyList<long>>? ResolveHookConsumers { get; set; } // (defVersionId, instanceId, hookCode) => consumers
-        public IReadOnlyList<long>? MonitorConsumers { get; set; }
+    // Ack consumer resolution (fallbacks)
+    public Func<LifeCycleConsumerType /* Consumer Type */, long? /*Definition Id*/, CancellationToken, Task<IReadOnlyList<long>>>? ResolveConsumers { get; set; } 
 
-        // Optional overrides (if you want to inject your own concrete implementations)
-        public IBlueprintManager? BlueprintManager { get; set; }
-        public IBlueprintImporter? BlueprintImporter { get; set; }
-        public IStateMachine? StateMachine { get; set; }
-        public IPolicyEnforcer? PolicyEnforcer { get; set; }
-        public IAckManager? AckManager { get; set; }
-        public IRuntimeEngine? RuntimeEngine { get; set; }
-    }
+    // Optional overrides (if you want to inject your own concrete implementations)
+    public IBlueprintManager? BlueprintManager { get; set; }
+    public IBlueprintImporter? BlueprintImporter { get; set; }
+    public IStateMachine? StateMachine { get; set; }
+    public IPolicyEnforcer? PolicyEnforcer { get; set; }
+    public IAckManager? AckManager { get; set; }
+    public IRuntimeEngine? RuntimeEngine { get; set; }
+}
 
  public readonly struct DbExecutionLoad {
     public ITransactionHandler? Handler { get; }

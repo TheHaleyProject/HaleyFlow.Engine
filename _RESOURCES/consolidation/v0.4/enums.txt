@@ -13,6 +13,14 @@
     Processed=3,
     Failed=4
 }
+
+public enum LifeCycleConsumerType {
+    None = 0, //Common, no differentiation. 
+    Transition =1,
+    Hook = 2,
+    Monitor = 3
+}
+
   public enum LifeCycleEventKind {
      //lifecycle events are macro items, hook are for micro orchestration. 
      //lifecycle events are generic for a given state change.. we dont exactly know what steps should be followed.. so we just raise one event.. application should listen to this and then decide what to do. Here, the decision inside application is hard-coded.

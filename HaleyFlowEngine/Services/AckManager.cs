@@ -38,7 +38,7 @@ namespace Haley.Services {
 
         public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Hook, defVersionId, ct); }
 
-        public async Task<ILifeCycleAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        public async Task<IWorkFlowAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (lifecycleId <= 0) throw new ArgumentOutOfRangeException(nameof(lifecycleId));
 
@@ -59,10 +59,10 @@ namespace Haley.Services {
             await _dal.LcAck.AttachAsync(ackId, lifecycleId, load);
             await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
 
-            return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid! };
+            return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
 
-        public async Task<ILifeCycleAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        public async Task<IWorkFlowAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (hookId <= 0) throw new ArgumentOutOfRangeException(nameof(hookId));
 
@@ -83,7 +83,7 @@ namespace Haley.Services {
             await _dal.HookAck.AttachAsync(ackId, hookId, load);
             await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
 
-            return new LifeCycleAckRef { AckId = ackId, AckGuid = ackGuid! };
+            return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
 
         // ACK FROM CONSUMER
@@ -256,7 +256,7 @@ namespace Haley.Services {
             return null; // Processed/Failed etc.
         }
 
-        private async Task<ILifeCycleAckRef> GetAckRefByIdAsync(long ackId, DbExecutionLoad load) {
+        private async Task<IWorkFlowAckRef> GetAckRefByIdAsync(long ackId, DbExecutionLoad load) {
             load.Ct.ThrowIfCancellationRequested();
             var row = await _dal.Ack.GetByIdAsync(ackId, load);
             if (row == null) throw new InvalidOperationException($"Ack not found. id={ackId}");
@@ -264,7 +264,7 @@ namespace Haley.Services {
             var guid = row.GetString("guid");
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException($"Ack guid missing. id={ackId}");
 
-            return new LifeCycleAckRef { AckId = ackId, AckGuid = guid! };
+            return new WorkFlowAckRef { AckId = ackId, AckGuid = guid! };
         }
 
         private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long> consumerIds) {
