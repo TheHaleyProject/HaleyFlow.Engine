@@ -12,7 +12,7 @@ var settings = new VendorRegistrationConsoleAppSettings {
     EnvDisplayName = "dev",
     DefName = "VendorRegistration",
     ConsumerGuid = "9d9dda78-3639-4a10-861e-1301472d59df",
-    ConnectionString = "server=127.0.0.1;port=3306;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;GuidFormat=None",
+    ConnectionString = "server=127.0.0.1;port=4307;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;GuidFormat=None",
     DefinitionFileName = "vendor_registration.json",
     PolicyFileName = "vendor_registration_policies.json",
     AckRequired = true
