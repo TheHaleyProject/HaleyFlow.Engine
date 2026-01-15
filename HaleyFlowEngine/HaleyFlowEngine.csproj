@@ -2,14 +2,10 @@
   <Import Project="..\..\HaleyProject\HaleyVersion.Props" />
   <PropertyGroup>
     <TargetFrameworks>net8.0</TargetFrameworks>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Library</OutputType>
     <RootNamespace>Haley</RootNamespace>
     <AssemblyName>Haley.Flow.Engine</AssemblyName>
-    <Authors>TheHaleyProject</Authors>
-    <Company>TheHaleyProject</Company>
-    <Copyright>Haley 2025</Copyright>
     <SignAssembly>True</SignAssembly>
     <IsPackable>true</IsPackable>
     <AssemblyOriginatorKeyFile>..\..\HaleyProject\HaleyProject.snk</AssemblyOriginatorKeyFile>
@@ -20,11 +16,10 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageReleaseNotes>Pilot release</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/TheHaleyProject/HaleyLifeCycle</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/TheHaleyProject/HaleyLifeCycle</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/TheHaleyProject/HaleyFlow.Engine</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/TheHaleyProject/HaleyFlow.Engine</RepositoryUrl>
     <OpenApiGenerateDocuments>false</OpenApiGenerateDocuments>
     <Description>WorkFlow Engine from Haley Libraries</Description>
-    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Scripts\lc_state.sql" />
