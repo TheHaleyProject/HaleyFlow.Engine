@@ -2,7 +2,7 @@
   "definition": { "name": "VendorOnboarding", "version": 1, "description": "After vendor registration: send password creation link; repeat reminder every 2 days with fresh link until password is created." },
   "states": [
     { "name": "OnboardingCreated", "is_initial": true, "category": "Onboarding" },
-    { "name": "AwaitPasswordCreation", "category": "PasswordSetup", "timeout": "P2D", "timeout_event": 1002, "timeout_mode": "repeat" },
+    { "name": "AwaitPasswordCreation", "category": "PasswordSetup"},
     { "name": "PasswordCreated", "is_final": true, "category": "Outcome" },
     { "name": "Stopped", "is_final": true, "category": "Outcome" }
   ],

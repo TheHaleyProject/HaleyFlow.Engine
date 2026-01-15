@@ -39,5 +39,11 @@
     { "state": "TierValidation", "policy": "POL.PREQ.TIER.VALIDATE", "emit": [ { "event": "APP.PREQ.TIER.VALIDATION.REQUIRED", "complete": { "success": 1018, "failure": 1019 } } ] },
 
     { "state": "CompanyTierChanged", "policy": "POL.PREQ.TIER.CHANGE.ACK", "emit": [ { "event": "APP.PREQ.TIER.CHANGED.ACK.REQUIRED" } ] }
+  ],
+  "timeouts":[
+     { "state": "UnderEvaluation",  "timeout": "P7D", "timeout_event": 1006 },
+    { "state": "Overdue", "timeout": "P1D", "timeout_event": 1007, "timeout_mode": "repeat" },
+    { "state": "PendingClarification", "timeout": "P2D", "timeout_event": 1010 },
+    { "state": "TierValidation", "timeout": "P2D" }
   ]
 }
