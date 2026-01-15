@@ -725,22 +725,22 @@ is_error = 8]]></comment>
 		<entity schema="lcstate" name="transition" color="1A4D4D" x="684" y="95" />
 		<entity schema="lcstate" name="category" color="1A4D4D" x="912" y="323" />
 		<entity schema="lcstate" name="events" color="1A4D4D" x="684" y="285" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="551" />
-		<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="779" />
 		<entity schema="lcstate" name="definition" color="0000FF" x="912" y="532" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="912" y="741" />
-		<entity schema="lcstate" name="consumer" color="0000FF" x="893" y="893" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="874" y="1045" />
-		<entity schema="lcstate" name="timeouts" color="0000FF" x="684" y="912" />
 		<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="494" />
+		<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="532" />
+		<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="760" />
+		<entity schema="lcstate" name="timeouts" color="0000FF" x="684" y="893" />
+		<entity schema="lcstate" name="policy" color="0000FF" x="817" y="1045" />
+		<entity schema="lcstate" name="consumer" color="0000FF" x="893" y="912" />
+		<entity schema="lcstate" name="environment" color="0000FF" x="912" y="741" />
 		<group name="Blueprint - Definition" color="0000FF" >
+			<entity schema="lcstate" name="definition" />
 			<entity schema="lcstate" name="def_version" />
 			<entity schema="lcstate" name="def_policies" />
-			<entity schema="lcstate" name="definition" />
-			<entity schema="lcstate" name="environment" />
-			<entity schema="lcstate" name="consumer" />
-			<entity schema="lcstate" name="policy" />
 			<entity schema="lcstate" name="timeouts" />
+			<entity schema="lcstate" name="policy" />
+			<entity schema="lcstate" name="consumer" />
+			<entity schema="lcstate" name="environment" />
 		</group>
 		<group name="Instance Core" color="FFFF00" >
 			<entity schema="lcstate" name="lc_data" />
