@@ -249,17 +249,30 @@ public sealed class LifeCycleTriggerRequest {
      public LifeCycleTriggerResult() { }
  }
 
- public sealed class RuntimeUpsertRequest {
-    public string InstanceGuid { get; set; }
-    public long ActivityId { get; set; }
+ public sealed class RuntimeLogByIdRequest {
+     public string InstanceGuid { get; set; }
+     public long ActivityId { get; set; }
+     public long StateId { get; set; }
+     public string ActorId { get; set; }
+     public long StatusId { get; set; }
+     public long LcId { get; set; }
+     public bool Frozen { get; set; }
+     public object Data { get; set; }
+     public object Payload { get; set; }
+     public RuntimeLogByIdRequest() { }
+ }
+
+public sealed class RuntimeLogByNameRequest {
+    public string InstanceGuid { get; set; } = "";
     public long StateId { get; set; }
-    public string ActorId { get; set; }
-    public long StatusId { get; set; }
-    public long LcId { get; set; }
-    public bool Frozen { get; set; }
-    public object Data { get; set; }
-    public object Payload { get; set; }
-    public RuntimeUpsertRequest() { }
+    public string Activity { get; set; } = "";     
+    public string Status { get; set; } = "";      
+    public string ActorId { get; set; } = "";      // consumer provides (varchar)
+    public long LcId { get; set; }               
+    public bool Frozen { get; set; }              
+    public object? Data { get; set; }
+    public object? Payload { get; set; }
+    public RuntimeLogByNameRequest() { }
 }
 
  public sealed class PolicyResolution {

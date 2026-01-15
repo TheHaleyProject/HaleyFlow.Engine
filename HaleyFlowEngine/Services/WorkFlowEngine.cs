@@ -257,6 +257,15 @@ namespace Haley.Services {
             await AckAsync(consumerId, ackGuid, outcome, message, retryAt, ct);
         }
 
+        public Task<long> UpsertRuntimeAsync(RuntimeLogByNameRequest req, CancellationToken ct = default) => Runtime.UpsertAsync(req, ct);
+
+        public Task<int> SetRuntimeStatusAsync(long runtimeId, string status, CancellationToken ct = default) => Runtime.SetStatusAsync(runtimeId, status, ct);
+
+        public Task<int> FreezeRuntimeAsync(long runtimeId, CancellationToken ct = default) => Runtime.SetFrozenAsync(runtimeId, true, ct);
+
+        public Task<int> UnfreezeRuntimeAsync(long runtimeId, CancellationToken ct = default) => Runtime.SetFrozenAsync(runtimeId, false, ct);
+
+
         private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
