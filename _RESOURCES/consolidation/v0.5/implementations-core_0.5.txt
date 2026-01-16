@@ -1,28 +1,59 @@
-internal static class InternalUtils {
-    public static string BuildDefinitionHashMaterial(this JsonElement root) {
-        // keep ONLY states/events/transitions
-        var obj = new JsonObject {
-            ["states"] = root.TryGetProperty("states", out var s) ? JsonNode.Parse(s.GetRawText()) : new JsonArray(),
-            ["events"] = root.TryGetProperty("events", out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
-            ["transitions"] = root.TryGetProperty("transitions", out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
-        };
+   internal static class InternalUtils {
+       public static string BuildDefinitionHashMaterial(this JsonElement root) {
+           // keep ONLY states/events/transitions
+           var obj = new JsonObject {
+               ["states"] = BuildSanitizedStatesForHash(root),
+               ["events"] = root.TryGetProperty("events", out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
+               ["transitions"] = root.TryGetProperty("transitions", out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
+           };
 
-        var canon = obj.Canonicalize(); //ignore case..
-        return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
-    }
+           var canon = obj.Canonicalize(); //ignore case..
+           return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+       }
 
-    public static string BuildPolicyHashMaterial(this JsonElement root) {
-        // keep ONLY policy_name/policies/routes (ignore "for")
-        var obj = new JsonObject {
-            ["policy_name"] = root.TryGetProperty("policy_name", out var pn) ? pn.GetString() : (string?)null,
-            ["policies"] = root.TryGetProperty("policies", out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
-            ["routes"] = root.TryGetProperty("routes", out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
-        };
+       public static string BuildPolicyHashMaterial(this JsonElement root) {
+           // keep ONLY policy_name/policies/routes (ignore "for")
+           var obj = new JsonObject {
+               ["policy_name"] = root.TryGetProperty("policy_name", out var pn) ? pn.GetString() : (string?)null,
+               ["policies"] = root.TryGetProperty("policies", out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
+               ["routes"] = root.TryGetProperty("routes", out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
+               ["timeouts"] = root.TryGetProperty("timeouts", out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
+           };
 
-        var canon = obj.Canonicalize();
-        return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
-    }
-}
+           var canon = obj.Canonicalize();
+           return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+       }
+       static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
+           if (!root.TryGetProperty("states", out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
+               return new JsonArray();
+
+           var arr = new JsonArray();
+
+           foreach (var s in statesEl.EnumerateArray()) {
+               if (s.ValueKind != JsonValueKind.Object) continue;
+
+               // Copy state object, excluding timeout-ish keys
+               var o = new JsonObject();
+               foreach (var p in s.EnumerateObject()) {
+                   var k = p.Name;
+
+                   if (k.Equals("timeout", StringComparison.OrdinalIgnoreCase) ||
+                       k.Equals("timeout_minutes", StringComparison.OrdinalIgnoreCase) ||
+                       k.Equals("timeout_mode", StringComparison.OrdinalIgnoreCase) ||
+                       k.Equals("timeout_event", StringComparison.OrdinalIgnoreCase) ||
+                       k.Equals("timeoutEventCode", StringComparison.OrdinalIgnoreCase))
+                       continue;
+
+                   o[k] = JsonNode.Parse(p.Value.GetRawText());
+               }
+
+               arr.Add(o);
+           }
+
+           return arr;
+       }
+
+   }
 
  internal sealed class AckManager : IAckManager {
      private readonly IWorkFlowDAL _dal;
@@ -290,214 +321,238 @@ internal static class InternalUtils {
  }
 
  internal sealed class BlueprintImporter : IBlueprintImporter {
-    private readonly IWorkFlowDAL _dal;
-    public BlueprintImporter(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
-    public async Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default) {
-        ct.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(definitionJson)) throw new ArgumentNullException(nameof(definitionJson));
+     private readonly IWorkFlowDAL _dal;
+     public BlueprintImporter(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+     public async Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default) {
+         ct.ThrowIfCancellationRequested();
+         if (string.IsNullOrWhiteSpace(definitionJson)) throw new ArgumentNullException(nameof(definitionJson));
 
-        using var doc = JsonDocument.Parse(definitionJson);
-        var root = doc.RootElement;
+         using var doc = JsonDocument.Parse(definitionJson);
+         var root = doc.RootElement;
 
-        var defNode = root.TryGetProperty("definition", out var d) ? d : root;
-        var defName = defNode.GetString("name") ?? defNode.GetString("displayName") ?? defNode.GetString("defName") ?? throw new InvalidOperationException("definition.name/displayName missing.");
-        var defDesc = defNode.GetString("description");
-        var requestedVer = defNode.GetInt("version") ?? 0;
+         var defNode = root.TryGetProperty("definition", out var d) ? d : root;
+         var defName = defNode.GetString("name") ?? defNode.GetString("displayName") ?? defNode.GetString("defName") ?? throw new InvalidOperationException("definition.name/displayName missing.");
+         var defDesc = defNode.GetString("description");
+         var requestedVer = defNode.GetInt("version") ?? 0;
 
 
 
-        var transaction = _dal.CreateNewTransaction();
-        using var tx = transaction.Begin(false);
-        var load = new DbExecutionLoad(ct, transaction);
-        var committed = false;
+         var transaction = _dal.CreateNewTransaction();
+         using var tx = transaction.Begin(false);
+         var load = new DbExecutionLoad(ct, transaction);
+         var committed = false;
 
-        try {
-            var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
-            var defId = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName, defDesc, load);
+         try {
+             var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
+             var defId = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName, defDesc, load);
 
-            //Check if the definition has the version json already with the hash.
-            var defhashMaterial = root.BuildDefinitionHashMaterial();
-            var defHash = defhashMaterial.CreateGUID(HashMethod.Sha256).ToString();
-            var existing = await _dal.Blueprint.GetDefVersionByParentAndHashAsync(defId, defHash, load);
-            if (existing != null) {
-                tx.Commit();
-                committed = true;
-                return existing.GetLong("id"); //Definition version already exists with the same hash. Return existing version id.
-            }
+             //Check if the definition has the version json already with the hash.
+             var defhashMaterial = root.BuildDefinitionHashMaterial();
+             var defHash = defhashMaterial.CreateGUID(HashMethod.Sha256).ToString();
+             var existing = await _dal.Blueprint.GetDefVersionByParentAndHashAsync(defId, defHash, load);
+             if (existing != null) {
+                 tx.Commit();
+                 committed = true;
+                 return existing.GetLong("id"); //Definition version already exists with the same hash. Return existing version id.
+             }
 
-            var nextVer = await _dal.Blueprint.GetNextDefVersionNumberByEnvCodeAndDefNameAsync(envCode, defName, load) ?? 1;
-            var verToUse = requestedVer > 0 ? requestedVer : nextVer; //If version is not specified in the json, then automatically, next available version is accepted.
-            if (requestedVer > 0 && requestedVer < nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected. Requested version should either be equal to or greater than the next available version. Leave version empty in the json to automatically assign the version.");
+             var nextVer = await _dal.Blueprint.GetNextDefVersionNumberByEnvCodeAndDefNameAsync(envCode, defName, load) ?? 1;
+             var verToUse = requestedVer > 0 ? requestedVer : nextVer; //If version is not specified in the json, then automatically, next available version is accepted.
+             if (requestedVer > 0 && requestedVer < nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected. Requested version should either be equal to or greater than the next available version. Leave version empty in the json to automatically assign the version.");
 
-            var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, defhashMaterial, defHash, load);
+             var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, defhashMaterial, defHash, load);
 
-            var categoryMap = await ImportCategoriesFromStatesAsync(root, load);
-            var eventsByCode = await ImportEventsAsync(defVersionId, root, load);
-            var statesByName = await ImportStatesAsync(defVersionId, root, categoryMap, eventsByCode, load);
-            await ImportTransitionsAsync(defVersionId, root, statesByName, eventsByCode, load);
+             var categoryMap = await ImportCategoriesFromStatesAsync(root, load);
+             var eventsByCode = await ImportEventsAsync(defVersionId, root, load);
+             var statesByName = await ImportStatesAsync(defVersionId, root, categoryMap, eventsByCode, load);
+             await ImportTransitionsAsync(defVersionId, root, statesByName, eventsByCode, load);
 
-            tx.Commit();
-            committed = true;
-            return defVersionId;
-        } catch {
-            if (!committed) tx.Rollback();
-            throw;
-        }
-    }
+             tx.Commit();
+             committed = true;
+             return defVersionId;
+         } catch {
+             if (!committed) tx.Rollback();
+             throw;
+         }
+     }
 
-    public async Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default) {
-        ct.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(policyJson)) throw new ArgumentNullException(nameof(policyJson));
+     async Task ImportPolicyTimeoutsAsync(long policyId, JsonElement root, DbExecutionLoad load) {
+         //// Always clear first to make policy re-import idempotent. Remember we are deleting by policy id, which means it wont affect the other policies even if they share same definition.
+         await _dal.BlueprintWrite.DeleteByPolicyIdAsync(policyId, load);
 
-        using var doc = JsonDocument.Parse(policyJson);
-        var root = doc.RootElement;
+         if (!root.TryGetProperty("timeouts", out var arr) || arr.ValueKind != JsonValueKind.Array) return;
 
-        var defName = root.GetString("defName") ?? root.GetString("definitionName") ?? root.GetString("name") ?? root.GetString("displayName");
-        if (string.IsNullOrWhiteSpace(defName)) throw new InvalidOperationException("Policy JSON missing defName/definitionName/name/displayName.");
+         foreach (var t in arr.EnumerateArray()) {
+             if (t.ValueKind != JsonValueKind.Object) continue;
 
-        var transaction = _dal.CreateNewTransaction();
-        using var tx = transaction.Begin(false);
-        var load = new DbExecutionLoad(ct, transaction);
-        var committed = false;
-        try {
-            var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
-            _ = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName!, description: null, load);
+             var stateRaw = t.TryGetProperty("state", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+             if (string.IsNullOrWhiteSpace(stateRaw)) continue;
 
-            var policyHashmaterial = root.BuildPolicyHashMaterial(); //take only relevant blocks.
-            var hash = policyHashmaterial.CreateGUID(HashMethod.Sha256).ToString();
-            var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
+             var stateName = stateRaw.Normalize(true);             
+             var durationMinutes = ParseTimeoutMinutes(t) ?? 0; // "P2D" -> 2880
+             var mode = ParseTimeoutMode(t);                         // 0 once, 1 repeat
+             var eventCode = ParseTimeoutEventCode(t);               // nullable
 
-            //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
+             // You can choose to skip invalid durations, or throw. I prefer throw during import.
+             if (durationMinutes <= 0) throw new ArgumentException($"Invalid timeout duration for state '{stateRaw}'.");
 
-            await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);
+             await _dal.BlueprintWrite.InsertAsync(policyId, stateName, durationMinutes, mode, eventCode, load);
+         }
+     }
 
-            tx.Commit();
-            committed = true;
-            return policyId;
-        } catch {
-            if (!committed) tx.Rollback();
-            throw;
-        }
-    }
+     public async Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default) {
+         ct.ThrowIfCancellationRequested();
+         if (string.IsNullOrWhiteSpace(policyJson)) throw new ArgumentNullException(nameof(policyJson));
 
-    private async Task<Dictionary<string, int>> ImportCategoriesFromStatesAsync(JsonElement root, DbExecutionLoad load) {
-        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
+         using var doc = JsonDocument.Parse(policyJson);
+         var root = doc.RootElement;
 
-        foreach (var s in states.EnumerateArray()) {
-            var cat = s.GetString("category");
-            if (string.IsNullOrWhiteSpace(cat)) continue;
+         var defName = root.GetString("defName") ?? root.GetString("definitionName") ?? root.GetString("name") ?? root.GetString("displayName");
+         if (string.IsNullOrWhiteSpace(defName)) throw new InvalidOperationException("Policy JSON missing defName/definitionName/name/displayName.");
 
-            var key = cat.N();
-            if (map.ContainsKey(key)) continue;
+         var transaction = _dal.CreateNewTransaction();
+         using var tx = transaction.Begin(false);
+         var load = new DbExecutionLoad(ct, transaction);
+         var committed = false;
+         try {
+             var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
+             _ = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName!, description: null, load);
 
-            var id = await _dal.BlueprintWrite.EnsureCategoryByNameAsync(cat!, load);
-            map[key] = id;
-        }
+             var policyHashmaterial = root.BuildPolicyHashMaterial(); //take only relevant blocks.
+             var hash = policyHashmaterial.CreateGUID(HashMethod.Sha256).ToString();
+             var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
 
-        return map;
-    }
+             await ImportPolicyTimeoutsAsync(policyId, root, load);
+             //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
 
-    private async Task<Dictionary<int, EventDef>> ImportEventsAsync(long defVersionId, JsonElement root, DbExecutionLoad load) {
-        var byCode = new Dictionary<int, EventDef>();
-        if (!root.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array) return byCode;
+             await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);
 
-        foreach (var e in events.EnumerateArray()) {
-            var code = e.GetInt("code") ?? 0;
-            var name = e.GetString("name") ?? e.GetString("displayName");
-            if (code <= 0 || string.IsNullOrWhiteSpace(name)) continue;
-            if (byCode.ContainsKey(code)) throw new InvalidOperationException($"Duplicate event code in JSON: {code}");
+             tx.Commit();
+             committed = true;
+             return policyId;
+         } catch {
+             if (!committed) tx.Rollback();
+             throw;
+         }
+     }
 
-            var id = await _dal.BlueprintWrite.InsertEventAsync(defVersionId, name!, code, load);
-            byCode[code] = new EventDef { Id = id, Code = code, Name = name!.N(), DisplayName = name! };
-        }
+     private async Task<Dictionary<string, int>> ImportCategoriesFromStatesAsync(JsonElement root, DbExecutionLoad load) {
+         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+         if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
 
-        return byCode;
-    }
+         foreach (var s in states.EnumerateArray()) {
+             var cat = s.GetString("category");
+             if (string.IsNullOrWhiteSpace(cat)) continue;
 
-    private async Task<Dictionary<string, StateDef>> ImportStatesAsync(long defVersionId, JsonElement root, Dictionary<string, int> categoryMap, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
-        var map = new Dictionary<string, StateDef>(StringComparer.OrdinalIgnoreCase);
-        if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
+             var key = cat.N();
+             if (map.ContainsKey(key)) continue;
 
-        foreach (var s in states.EnumerateArray()) {
-            var name = s.GetString("name") ?? s.GetString("displayName");
-            if (string.IsNullOrWhiteSpace(name)) continue;
+             var id = await _dal.BlueprintWrite.EnsureCategoryByNameAsync(cat!, load);
+             map[key] = id;
+         }
 
-            var key = name!.N();
-            if (map.ContainsKey(key)) throw new InvalidOperationException($"Duplicate state name in JSON: {name}");
+         return map;
+     }
 
-            var flags = (uint)(s.GetInt("flags") ?? 0);
-            if (s.GetBool("is_initial") == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
-            if (s.GetBool("is_final") == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
+     private async Task<Dictionary<int, EventDef>> ImportEventsAsync(long defVersionId, JsonElement root, DbExecutionLoad load) {
+         var byCode = new Dictionary<int, EventDef>();
+         if (!root.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array) return byCode;
 
-            var timeoutMinutes = ParseTimeoutMinutes(s);
-            var timeoutMode = ParseTimeoutMode(s);
+         foreach (var e in events.EnumerateArray()) {
+             var code = e.GetInt("code") ?? 0;
+             var name = e.GetString("name") ?? e.GetString("displayName");
+             if (code <= 0 || string.IsNullOrWhiteSpace(name)) continue;
+             if (byCode.ContainsKey(code)) throw new InvalidOperationException($"Duplicate event code in JSON: {code}");
 
-            long timeoutEventId = 0;
-            var timeoutEventCode = s.GetInt("timeout_event") ?? s.GetInt("timeoutEventCode");
-            if (timeoutEventCode.HasValue && eventsByCode.TryGetValue(timeoutEventCode.Value, out var tev)) timeoutEventId = tev.Id;
+             var id = await _dal.BlueprintWrite.InsertEventAsync(defVersionId, name!, code, load);
+             byCode[code] = new EventDef { Id = id, Code = code, Name = name!.N(), DisplayName = name! };
+         }
 
-            var catName = s.GetString("category");
-            var catId = (!string.IsNullOrWhiteSpace(catName) && categoryMap.TryGetValue(catName!.N(), out var cid)) ? cid : 0;
+         return byCode;
+     }
 
-            var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, timeoutMinutes, (uint)timeoutMode, timeoutEventId, load);
+     private async Task<Dictionary<string, StateDef>> ImportStatesAsync(long defVersionId, JsonElement root, Dictionary<string, int> categoryMap, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
+         var map = new Dictionary<string, StateDef>(StringComparer.OrdinalIgnoreCase);
+         if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
 
-            map[key] = new StateDef {
-                Id = id,
-                Name = key,
-                DisplayName = name!,
-                Flags = flags,
-                TimeoutMinutes = timeoutMinutes,
-                TimeoutEventId = timeoutEventId,
-                IsInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0
-            };
-        }
+         foreach (var s in states.EnumerateArray()) {
+             var name = s.GetString("name") ?? s.GetString("displayName");
+             if (string.IsNullOrWhiteSpace(name)) continue;
 
-        return map;
-    }
+             var key = name!.N();
+             if (map.ContainsKey(key)) throw new InvalidOperationException($"Duplicate state name in JSON: {name}");
 
-    private async Task ImportTransitionsAsync(long defVersionId, JsonElement root, Dictionary<string, StateDef> statesByName, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
-        if (!root.TryGetProperty("transitions", out var trans) || trans.ValueKind != JsonValueKind.Array) return;
+             var flags = (uint)(s.GetInt("flags") ?? 0);
+             if (s.GetBool("is_initial") == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
+             if (s.GetBool("is_final") == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
 
-        foreach (var t in trans.EnumerateArray()) {
-            var fromName = t.GetString("from") ?? t.GetString("fromState");
-            var toName = t.GetString("to") ?? t.GetString("toState");
-            var evCode = t.GetInt("event") ?? t.GetInt("eventCode");
-            if (string.IsNullOrWhiteSpace(fromName) || string.IsNullOrWhiteSpace(toName) || !evCode.HasValue) continue;
 
-            if (!statesByName.TryGetValue(fromName!.N(), out var from)) throw new InvalidOperationException($"Transition from-state not found: {fromName}");
-            if (!statesByName.TryGetValue(toName!.N(), out var to)) throw new InvalidOperationException($"Transition to-state not found: {toName}");
-            if (!eventsByCode.TryGetValue(evCode.Value, out var ev)) throw new InvalidOperationException($"Transition event code not found: {evCode}");
+             var catName = s.GetString("category");
+             var catId = (!string.IsNullOrWhiteSpace(catName) && categoryMap.TryGetValue(catName!.N(), out var cid)) ? cid : 0;
 
-            var flags = (uint)(t.GetInt("flags") ?? 0);
-            await _dal.BlueprintWrite.InsertTransitionAsync(defVersionId, from.Id, to.Id, ev.Id, load);
-        }
-    }
+             var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, load);
 
-    private static int? ParseTimeoutMinutes(JsonElement stateNode) {
-        var tm = stateNode.GetInt("timeout_minutes") ?? stateNode.GetInt("timeoutMinutes");
-        if (tm.HasValue) return tm;
+             map[key] = new StateDef {
+                 Id = id,
+                 Name = key,
+                 DisplayName = name!,
+                 Flags = flags,
+                 IsInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0
+             };
+         }
 
-        var dur = stateNode.GetString("timeout");
-        if (string.IsNullOrWhiteSpace(dur)) return null;
+         return map;
+     }
 
-        //We can use XMLConvert, but it cannot handle all cases like months and years properly.
-        //var ts = XmlConvert.ToTimeSpan(dur!);
-        //var mins = (int)Math.Ceiling(ts.TotalMinutes);
-        if (!ISODurationUtils.TryToMinutes(dur!, out var mins) || mins <=0) return null;
-        return mins;
-    }
+     private async Task ImportTransitionsAsync(long defVersionId, JsonElement root, Dictionary<string, StateDef> statesByName, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
+         if (!root.TryGetProperty("transitions", out var trans) || trans.ValueKind != JsonValueKind.Array) return;
 
-    private static int ParseTimeoutMode(JsonElement stateNode) {
-        var n = stateNode.GetInt("timeout_mode") ?? stateNode.GetInt("timeoutMode");
-        if (n.HasValue) return n.Value;
+         foreach (var t in trans.EnumerateArray()) {
+             var fromName = t.GetString("from") ?? t.GetString("fromState");
+             var toName = t.GetString("to") ?? t.GetString("toState");
+             var evCode = t.GetInt("event") ?? t.GetInt("eventCode");
+             if (string.IsNullOrWhiteSpace(fromName) || string.IsNullOrWhiteSpace(toName) || !evCode.HasValue) continue;
 
-        var s = stateNode.GetString("timeout_mode") ?? stateNode.GetString("timeoutMode");
-        if (string.IsNullOrWhiteSpace(s)) return 0;
-        return string.Equals(s.Trim(), "repeat", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-    }
-       
-}
+             if (!statesByName.TryGetValue(fromName!.N(), out var from)) throw new InvalidOperationException($"Transition from-state not found: {fromName}");
+             if (!statesByName.TryGetValue(toName!.N(), out var to)) throw new InvalidOperationException($"Transition to-state not found: {toName}");
+             if (!eventsByCode.TryGetValue(evCode.Value, out var ev)) throw new InvalidOperationException($"Transition event code not found: {evCode}");
+
+             var flags = (uint)(t.GetInt("flags") ?? 0);
+             await _dal.BlueprintWrite.InsertTransitionAsync(defVersionId, from.Id, to.Id, ev.Id, load);
+         }
+     }
+
+     static int? ParseTimeoutMinutes(JsonElement stateNode) {
+         var tm = stateNode.GetInt("timeout_minutes") ?? stateNode.GetInt("timeoutMinutes");
+         if (tm.HasValue) return tm;
+
+         var dur = stateNode.GetString("timeout");
+         if (string.IsNullOrWhiteSpace(dur)) return null;
+
+         //We can use XMLConvert, but it cannot handle all cases like months and years properly.
+         //var ts = XmlConvert.ToTimeSpan(dur!);
+         //var mins = (int)Math.Ceiling(ts.TotalMinutes);
+         if (!ISODurationUtils.TryToMinutes(dur!, out var mins) || mins <=0) return null;
+         return mins;
+     }
+
+     static int ParseTimeoutMode(JsonElement stateNode) {
+         var n = stateNode.GetInt("timeout_mode") ?? stateNode.GetInt("timeoutMode");
+         if (n.HasValue) return n.Value;
+
+         var s = stateNode.GetString("timeout_mode") ?? stateNode.GetString("timeoutMode");
+         if (string.IsNullOrWhiteSpace(s)) return 0;
+         return string.Equals(s.Trim(), "repeat", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+     }
+
+     static int? ParseTimeoutEventCode(JsonElement t) {
+         if (!t.TryGetProperty("timeout_event", out var e)) return null;
+         if (e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var c)) return c;
+         if (e.ValueKind == JsonValueKind.String && int.TryParse(e.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cs)) return cs;
+         return null;
+     }
+
+ }
 
 internal sealed class BlueprintManager : IBlueprintManager {
     private readonly IWorkFlowDAL _dal;
@@ -572,7 +627,7 @@ internal sealed class BlueprintManager : IBlueprintManager {
         foreach (var r in stateRows) {
             var flags = r.Get<uint>("flags");
             var isInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0;
-            var st = new StateDef { Id = r.GetInt("id"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "", Flags = flags, TimeoutMinutes = r.GetNullableInt("timeout_minutes"), TimeoutEventId = r.GetNullableLong("timeout_event"), IsInitial = isInitial };
+            var st = new StateDef { Id = r.GetInt("id"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "", Flags = flags, IsInitial = isInitial };
             if (statesById.ContainsKey(st.Id)) throw new InvalidOperationException($"Duplicate state id in DB rows. id={st.Id}");
             statesById[st.Id] = st;
             if (isInitial) { if (initialStateId != 0) throw new InvalidOperationException($"Multiple initial states detected. defVersionId={defVersionId}"); initialStateId = st.Id; }
@@ -673,8 +728,6 @@ internal sealed class BlueprintManager : IBlueprintManager {
         try { return await task.WaitAsync(ct); } catch { dict.TryRemove(key, out _); throw; }
     }
 }
-
-
 
 internal sealed class LifeCycleMonitor : ILifeCycleMonitor {
     private readonly TimeSpan _interval;

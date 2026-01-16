@@ -136,16 +136,14 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
      public static LifeCycleNotice Info(string noticeType, string code, string message, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Info, noticeType, code, message, null, data);
  }
 
- public sealed class StateDef {
-     public long Id { get; set; }
-     public string Name { get; set; }
-     public string DisplayName { get; set; }
-     public uint Flags { get; set; }
-     public int? TimeoutMinutes { get; set; }
-     public long? TimeoutEventId { get; set; }
-     public bool IsInitial { get; set; }
-     public StateDef() { }
- }
+   public sealed class StateDef {
+      public int Id { get; set; }
+      public string Name { get; set; }
+      public string DisplayName { get; set; }
+      public uint Flags { get; set; }
+      public bool IsInitial { get; set; }
+      public StateDef() { }
+  }
 
   public sealed class TransitionDef {
      public long FromStateId { get; set; }

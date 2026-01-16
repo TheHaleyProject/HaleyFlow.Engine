@@ -83,7 +83,7 @@ namespace Haley.Services {
             foreach (var r in stateRows) {
                 var flags = r.Get<uint>("flags");
                 var isInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0;
-                var st = new StateDef { Id = r.GetInt("id"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "", Flags = flags, TimeoutMinutes = r.GetNullableInt("timeout_minutes"), TimeoutEventId = r.GetNullableLong("timeout_event"), IsInitial = isInitial };
+                var st = new StateDef { Id = r.GetInt("id"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "", Flags = flags, IsInitial = isInitial };
                 if (statesById.ContainsKey(st.Id)) throw new InvalidOperationException($"Duplicate state id in DB rows. id={st.Id}");
                 statesById[st.Id] = st;
                 if (isInitial) { if (initialStateId != 0) throw new InvalidOperationException($"Multiple initial states detected. defVersionId={defVersionId}"); initialStateId = st.Id; }

@@ -1,4 +1,5 @@
-﻿using static Haley.Internal.QueryFields;
+﻿using System.Diagnostics.Tracing;
+using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal class QRY_DEFVERSION {
@@ -136,5 +137,13 @@ JOIN policy p ON p.id = dp.policy JOIN def_version dv ON dv.parent = dp.definiti
         public const string UPSERT_BEAT_BY_ENV_ID_AND_GUID = @$"INSERT INTO consumer(env, consumer_guid, last_beat) VALUES({ENV_ID}, lower(trim({CONSUMER_GUID})), CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE last_beat=CURRENT_TIMESTAMP;";
         public const string UPDATE_BEAT_BY_ENV_ID_AND_GUID = @$"UPDATE consumer SET last_beat=CURRENT_TIMESTAMP WHERE env={ENV_ID} AND consumer_guid=lower(trim({CONSUMER_GUID}));";
 
+    }
+    internal static class QRY_TIMEOUTS {
+
+        public const string DELETE_BY_POLICY_ID = $@"DELETE FROM timeouts WHERE policy_id = {POLICY_ID};";
+
+        public const string INSERT = $@"INSERT INTO timeouts (policy_id, state_name, duration, mode, event_code) VALUES ({POLICY_ID}, {STATE_NAME}, {DURATION}, {MODE}, {EVENT_CODE});";
+
+        public const string LIST_BY_POLICY_ID = $@"SELECT policy_id, state_name, duration, mode, event_code FROM timeouts WHERE policy_id = {POLICY_ID} ORDER BY state_name ASC;";
     }
 }

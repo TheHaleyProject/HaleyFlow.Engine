@@ -93,18 +93,16 @@ namespace Haley.Internal {
             }
         }
 
-        public async Task<int> InsertStateAsync(long defVersionId, int categoryId, string displayName, uint flags, int? timeoutMinutes, uint timeoutMode, long? timeoutEventId, DbExecutionLoad load = default) {
+        public async Task<int> InsertStateAsync(long defVersionId, int categoryId, string displayName, uint flags, DbExecutionLoad load = default) {
             var exists = await Db.ScalarAsync<int?>(QRY_STATE.EXISTS_BY_PARENT_AND_NAME, load, (PARENT_ID, defVersionId), (NAME, displayName));
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_STATE.GET_BY_PARENT_AND_NAME, load, (PARENT_ID, defVersionId), (NAME, displayName));
-                if (row == null) throw new InvalidOperationException($"state not found after EXISTS. dv={defVersionId}, name={displayName}");
+                if (row == null) throw new InvalidOperationException($"State not found after EXISTS. dv={defVersionId}, name={displayName}");
                 return row.GetInt("id");
             }
 
             try {
-                return await Db.ScalarAsync<int>(QRY_STATE.INSERT, load,
-                    (PARENT_ID, defVersionId), (DISPLAY_NAME, displayName), (CATEGORY_ID, categoryId),
-                    (FLAGS, flags), (TIMEOUT_MINUTES, timeoutMinutes), (TIMEOUT_MODE, timeoutMode), (TIMEOUT_EVENT, timeoutEventId));
+                return await Db.ScalarAsync<int>(QRY_STATE.INSERT, load,(PARENT_ID, defVersionId), (DISPLAY_NAME, displayName), (CATEGORY_ID, categoryId),(FLAGS, flags));
             } catch {
                 var row = await Db.RowAsync(QRY_STATE.GET_BY_PARENT_AND_NAME, load, (PARENT_ID, defVersionId), (NAME, displayName));
                 if (row == null) throw;
@@ -150,8 +148,14 @@ namespace Haley.Internal {
             }
         }
 
-        public Task<int> AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(int envCode, string defName, long policyId, DbExecutionLoad load = default)
-            => Db.ExecAsync(QRY_POLICY.ATTACH_TO_DEFINITION_BY_ENV_CODE_AND_DEF_NAME, load, (CODE, envCode), (DEF_NAME, defName), (ID, policyId));
+        public Task<int> AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(int envCode, string defName, long policyId, DbExecutionLoad load = default) => Db.ExecAsync(QRY_POLICY.ATTACH_TO_DEFINITION_BY_ENV_CODE_AND_DEF_NAME, load, (CODE, envCode), (DEF_NAME, defName), (ID, policyId));
+
+        public Task<int> DeleteByPolicyIdAsync(long policyId, DbExecutionLoad load = default) => Db.ExecAsync(QRY_TIMEOUTS.DELETE_BY_POLICY_ID, load, (POLICY_ID, policyId));
+
+        public Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, DbExecutionLoad load = default) => Db.ExecAsync(QRY_TIMEOUTS.INSERT, load, (POLICY_ID, policyId), (STATE_NAME, stateName), (DURATION, duration), (MODE, mode), (EVENT_CODE, eventCode));
+
+        public Task<DbRows> ListByPolicyIdAsync(long policyId, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_TIMEOUTS.LIST_BY_POLICY_ID, load, (POLICY_ID, policyId));
     }
 
 }

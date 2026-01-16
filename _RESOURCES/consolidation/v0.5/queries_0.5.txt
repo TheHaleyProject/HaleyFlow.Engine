@@ -333,16 +333,28 @@ internal class QRY_LIFECYCLE {
     public const string DELETE = $@"DELETE FROM lifecycle WHERE id = {ID};";
     public const string DELETE_BY_INSTANCE = $@"DELETE FROM lifecycle WHERE instance_id = {INSTANCE_ID};";
 }
-internal class QRY_LC_TIMEOUT {
 
-    public const string EXISTS_BY_LC_ID = $@"SELECT 1 FROM lc_timeout WHERE lc_id = {LC_ID} LIMIT 1;";
-    public const string INSERT_IGNORE = $@"INSERT IGNORE INTO lc_timeout (lc_id) VALUES ({LC_ID});";
-    public const string DELETE_BY_LC_ID = $@"DELETE FROM lc_timeout WHERE lc_id = {LC_ID};";
+    internal class QRY_LC_TIMEOUT {
 
-    // Due timeouts (no record yet) based on latest lifecycle entry == current state
-    // NOTE: requires each instance to have at least one lifecycle row for current_state (recommended: insert creation lifecycle row).
-    public const string LIST_DUE_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.external_ref AS external_ref, i.def_version AS def_version_id, i.current_state AS state_id, l.id AS entry_lc_id, l.created AS entered_at, s.timeout_minutes AS timeout_minutes, s.timeout_mode AS timeout_mode, s.timeout_event AS timeout_event_id, DATE_ADD(l.created, INTERVAL s.timeout_minutes MINUTE) AS due_at FROM instance i JOIN lifecycle l ON l.id = (SELECT MAX(l2.id) FROM lifecycle l2 WHERE l2.instance_id = i.id) JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version LEFT JOIN lc_timeout t ON t.lc_id = l.id WHERE (i.flags & {FLAGS}) = 0 AND l.to_state = i.current_state AND s.timeout_minutes IS NOT NULL AND s.timeout_minutes > 0 AND s.timeout_event IS NOT NULL AND t.lc_id IS NULL AND DATE_ADD(l.created, INTERVAL s.timeout_minutes MINUTE) <= UTC_TIMESTAMP() ORDER BY due_at ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
+        public const string EXISTS_BY_LC_ID = $@"SELECT 1 FROM lc_timeout WHERE lc_id = {LC_ID} LIMIT 1;";
+        public const string INSERT_IGNORE = $@"INSERT IGNORE INTO lc_timeout (lc_id) VALUES ({LC_ID});";
+        public const string DELETE_BY_LC_ID = $@"DELETE FROM lc_timeout WHERE lc_id = {LC_ID};";
+
+        // Due timeouts (no record yet) based on latest lifecycle entry == current state
+        // NOTE: requires each instance to have at least one lifecycle row for current_state 
+        public const string LIST_DUE_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.external_ref AS external_ref, i.def_version AS def_version_id, i.current_state AS state_id, l.id AS entry_lc_id, l.created AS entered_at, tm.duration AS timeout_duration, tm.mode AS timeout_mode, tm.event_code AS timeout_event_code, DATE_ADD(l.created, INTERVAL tm.duration MINUTE) AS due_at FROM instance i JOIN lifecycle l ON l.id = (SELECT MAX(l2.id) FROM lifecycle l2 WHERE l2.instance_id = i.id) JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version JOIN timeouts tm ON tm.policy_id = i.policy_id AND tm.state_name = s.name LEFT JOIN lc_timeout lt ON lt.lc_id = l.id WHERE (i.flags & {FLAGS}) = 0 AND l.to_state = i.current_state AND tm.duration > 0 AND tm.event_code IS NOT NULL AND lt.lc_id IS NULL AND DATE_ADD(l.created, INTERVAL tm.duration MINUTE) <= UTC_TIMESTAMP() ORDER BY due_at ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
+
+    }
+
+internal static class QRY_TIMEOUTS {
+
+    public const string DELETE_BY_POLICY_ID = $@"DELETE FROM timeouts WHERE policy_id = {POLICY_ID};";
+
+    public const string INSERT = $@"INSERT INTO timeouts (policy_id, state_name, duration, mode, event_code) VALUES ({POLICY_ID}, {STATE_NAME}, {DURATION}, {MODE}, {EVENT_CODE});";
+
+    public const string LIST_BY_POLICY_ID = $@"SELECT policy_id, state_name, duration, mode, event_code FROM timeouts WHERE policy_id = {POLICY_ID} ORDER BY state_name ASC;";
 }
+
 
  internal class QRY_RUNTIME {
      public const string EXISTS_BY_ID = $@"SELECT 1 FROM runtime WHERE id = {ID} LIMIT 1;";
@@ -414,24 +426,27 @@ internal class QRY_LC_TIMEOUT {
      public const string DELETE = $@"DELETE FROM activity_status WHERE id = {ID};";
  }
 
-  internal class QRY_STATE {
-     public const string EXISTS_BY_ID = $@"SELECT 1 FROM state WHERE id = {ID} LIMIT 1;";
-     public const string EXISTS_BY_PARENT_AND_NAME = $@"SELECT 1 FROM state WHERE def_version = {PARENT_ID} AND name = lower(trim({NAME})) LIMIT 1;";
+    internal class QRY_STATE {
+        public const string EXISTS_BY_ID = $@"SELECT 1 FROM state WHERE id = {ID} LIMIT 1;";
+        public const string EXISTS_BY_PARENT_AND_NAME = $@"SELECT 1 FROM state WHERE def_version = {PARENT_ID} AND name = lower(trim({NAME})) LIMIT 1;";
 
-     public const string GET_BY_ID = $@"SELECT * FROM state WHERE id = {ID} LIMIT 1;";
-     public const string GET_BY_PARENT_AND_NAME = $@"SELECT * FROM state WHERE def_version = {PARENT_ID} AND name = lower(trim({NAME})) LIMIT 1;";
+        public const string GET_BY_ID = $@"SELECT * FROM state WHERE id = {ID} LIMIT 1;";
+        public const string GET_BY_PARENT_AND_NAME = $@"SELECT * FROM state WHERE def_version = {PARENT_ID} AND name = lower(trim({NAME})) LIMIT 1;";
 
-     public const string LIST_BY_PARENT = $@"SELECT * FROM state WHERE def_version = {PARENT_ID} ORDER BY id;";
+        public const string LIST_BY_PARENT = $@"SELECT * FROM state WHERE def_version = {PARENT_ID} ORDER BY id;";
 
-     // keep join safe: s.* plus unique category aliases (avoid duplicate column keys)
-     public const string LIST_BY_PARENT_WITH_CATEGORY = $@"SELECT s.*, c.display_name AS category_display_name, c.name AS category_name FROM state s LEFT JOIN category c ON c.id = s.category WHERE s.def_version = {PARENT_ID} ORDER BY s.id;";
+        // keep join safe: s.* plus unique category aliases (avoid duplicate column keys)
+        public const string LIST_BY_PARENT_WITH_CATEGORY = $@"SELECT s.*, c.display_name AS category_display_name, c.name AS category_name FROM state s LEFT JOIN category c ON c.id = s.category WHERE s.def_version = {PARENT_ID} ORDER BY s.id;";
 
-     // NOTE: state.name is GENERATED from display_name (do not set name)
-     public const string INSERT = $@"INSERT INTO state (def_version, display_name, category, flags, timeout_minutes, timeout_mode, timeout_event) VALUES ({PARENT_ID}, {DISPLAY_NAME}, {CATEGORY_ID}, {FLAGS}, {TIMEOUT_MINUTES}, {TIMEOUT_MODE}, {TIMEOUT_EVENT}); SELECT LAST_INSERT_ID() AS id;";
-     public const string UPDATE = $@"UPDATE state SET display_name = {DISPLAY_NAME}, category = {CATEGORY_ID}, flags = {FLAGS}, timeout_minutes = {TIMEOUT_MINUTES}, timeout_mode = {TIMEOUT_MODE}, timeout_event = {TIMEOUT_EVENT} WHERE id = {ID};";
-     public const string DELETE = $@"DELETE FROM state WHERE id = {ID};";
-     public const string DELETE_BY_PARENT = $@"DELETE FROM state WHERE def_version = {PARENT_ID};";
- }
+        // NOTE: state.name is GENERATED from display_name (do not set name)
+        public const string INSERT = $@"INSERT INTO state (def_version, display_name, category, flags) VALUES ({PARENT_ID}, {DISPLAY_NAME}, {CATEGORY_ID}, {FLAGS}); SELECT LAST_INSERT_ID() AS id;";
+
+        public const string UPDATE = $@"UPDATE state SET display_name = {DISPLAY_NAME}, category = {CATEGORY_ID}, flags = {FLAGS} WHERE id = {ID};";
+
+        public const string DELETE = $@"DELETE FROM state WHERE id = {ID};";
+        public const string DELETE_BY_PARENT = $@"DELETE FROM state WHERE def_version = {PARENT_ID};";
+    }
+
 
  internal class QRY_TRANSITION {
      public const string EXISTS_BY_ID = $@"SELECT 1 FROM transition WHERE id = {ID} LIMIT 1;";
@@ -482,67 +497,69 @@ internal class QRY_LC_TIMEOUT {
      public const string DELETE = $@"DELETE FROM category WHERE id = {ID};";
  }
 
-   internal class QueryFields {
-      public const string ID = "@ID";
-      public const string PARENT_ID = "@PARENT_ID";
 
-      public const string NAME = "@NAME";
-      public const string CODE = "@CODE";
-      public const string GUID = "@GUID";
-      public const string HASH = "@HASH";
-      public const string CATEGORY_ID = "@CATEGORY_ID";
-      public const string TIMEOUT_MODE = "@TIMEOUT_MODE";
-      public const string TIMEOUT_MINUTES = "@TIMEOUT_MINUTES";
-      public const string TIMEOUT_EVENT = "@TIMEOUT_EVENT";
+  internal class QueryFields {
+     public const string ID = "@ID";
+     public const string PARENT_ID = "@PARENT_ID";
 
-      public const string DISPLAY_NAME = "@DISPLAY_NAME";
-      public const string DESCRIPTION = "@DESCRIPTION";
-      public const string CONTENT = "@CONTENT";
-      public const string DATA = "@DATA";
-      public const string PAYLOAD = "@PAYLOAD";
-      public const string VERSION = "@VERSION";
-      public const string DEF_NAME = "@DEF_NAME";
-      public const string ENV_NAME = "@ENV_NAME";
-      public const string FROZEN = "@FROZEN";
+     public const string NAME = "@NAME";
+     public const string CODE = "@CODE";
+     public const string GUID = "@GUID";
+     public const string HASH = "@HASH";
+     public const string CATEGORY_ID = "@CATEGORY_ID";
+     public const string POLICY_ID = "@POLICY_ID";
+     public const string STATE_NAME = "@STATE_NAME";
 
-      public const string INSTANCE_ID = "@INSTANCE_ID";
-      public const string EXTERNAL_REF = "@EXTERNAL_REF";
-      public const string POLICY_ID = "@POLICY_ID";
-      public const string CONSUMER = "@CONSUMER";
-      public const string MAX_RETRY = "@MAX_RETRY";
-      public const string RECHECK_SECONDS = "@RECHECK_SECONDS";
+     public const string DURATION = "@DURATION";
+     public const string MODE = "@MODE";
+     public const string EVENT_CODE = "@EVENT_CODE";
 
-      public const string STATE_ID = "@STATE_ID";
-      public const string FROM_ID = "@FROM_ID";
-      public const string TO_ID = "@TO_ID";
-      public const string EVENT_ID = "@EVENT_ID";
+     public const string DISPLAY_NAME = "@DISPLAY_NAME";
+     public const string DESCRIPTION = "@DESCRIPTION";
+     public const string CONTENT = "@CONTENT";
+     public const string DATA = "@DATA";
+     public const string PAYLOAD = "@PAYLOAD";
+     public const string VERSION = "@VERSION";
+     public const string DEF_NAME = "@DEF_NAME";
+     public const string ENV_NAME = "@ENV_NAME";
+     public const string FROZEN = "@FROZEN";
 
-      public const string FLAGS = "@FLAGS";
+     public const string INSTANCE_ID = "@INSTANCE_ID";
+     public const string EXTERNAL_REF = "@EXTERNAL_REF";
+     public const string CONSUMER = "@CONSUMER";
+     public const string MAX_RETRY = "@MAX_RETRY";
+     public const string RECHECK_SECONDS = "@RECHECK_SECONDS";
 
-      public const string ACTOR = "@ACTOR";
-      public const string ACTOR_ID = "@ACTOR_ID";
+     public const string STATE_ID = "@STATE_ID";
+     public const string FROM_ID = "@FROM_ID";
+     public const string TO_ID = "@TO_ID";
+     public const string EVENT_ID = "@EVENT_ID";
 
-      public const string ON_ENTRY = "@ON_ENTRY";
-      public const string ROUTE = "@ROUTE";
+     public const string FLAGS = "@FLAGS";
 
-      public const string ACK_ID = "@ACK_ID";
-      public const string LC_ID = "@LC_ID";
-      public const string ENV_ID = "@ENV_ID";
-      public const string HOOK_ID = "@HOOK_ID";
-      public const string TTL_SECONDS = "@TTL_SECONDS";
-      public const string CONSUMER_ID = "@CONSUMER_ID";
-      public const string CONSUMER_GUID = "@CONSUMER_GUID";
-      public const string SOURCE_ID = "@SOURCE_ID";
-      public const string ACK_STATUS = "@ACK_STATUS";
-      public const string OLDER_THAN = "@OLDER_THAN";
-      public const string NEXT_DUE = "@NEXT_DUE";
-      public const string MESSAGE = "@MESSAGE";
+     public const string ACTOR = "@ACTOR";
+     public const string ACTOR_ID = "@ACTOR_ID";
 
-      public const string ACTIVITY_ID = "@ACTIVITY_ID";
-      public const string STATUS_ID = "@STATUS_ID";
+     public const string ON_ENTRY = "@ON_ENTRY";
+     public const string ROUTE = "@ROUTE";
 
-      public const string TAKE = "@TAKE";
-      public const string SKIP = "@SKIP";
-  }
+     public const string ACK_ID = "@ACK_ID";
+     public const string LC_ID = "@LC_ID";
+     public const string ENV_ID = "@ENV_ID";
+     public const string HOOK_ID = "@HOOK_ID";
+     public const string TTL_SECONDS = "@TTL_SECONDS";
+     public const string CONSUMER_ID = "@CONSUMER_ID";
+     public const string CONSUMER_GUID = "@CONSUMER_GUID";
+     public const string SOURCE_ID = "@SOURCE_ID";
+     public const string ACK_STATUS = "@ACK_STATUS";
+     public const string OLDER_THAN = "@OLDER_THAN";
+     public const string NEXT_DUE = "@NEXT_DUE";
+     public const string MESSAGE = "@MESSAGE";
 
+     public const string ACTIVITY_ID = "@ACTIVITY_ID";
+     public const string STATUS_ID = "@STATUS_ID";
+
+     public const string TAKE = "@TAKE";
+     public const string SKIP = "@SKIP";
+ }
   

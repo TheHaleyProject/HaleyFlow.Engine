@@ -1,23 +1,24 @@
 ﻿using Haley.Abstractions;
+using Haley.Enums;
 using Haley.Internal;
 using Haley.Models;
+using Haley.Utils;
 using System;
 using System;
-using Haley.Enums;
+using System;
 using System.Collections.Generic;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Tasks;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Threading.Tasks;
 using System.Xml;
-using Haley.Utils;
-using System.Threading;
 
 namespace Haley.Services {
     internal sealed class BlueprintImporter : IBlueprintImporter {
@@ -76,6 +77,30 @@ namespace Haley.Services {
             }
         }
 
+        async Task ImportPolicyTimeoutsAsync(long policyId, JsonElement root, DbExecutionLoad load) {
+            //// Always clear first to make policy re-import idempotent. Remember we are deleting by policy id, which means it wont affect the other policies even if they share same definition.
+            await _dal.BlueprintWrite.DeleteByPolicyIdAsync(policyId, load);
+
+            if (!root.TryGetProperty("timeouts", out var arr) || arr.ValueKind != JsonValueKind.Array) return;
+
+            foreach (var t in arr.EnumerateArray()) {
+                if (t.ValueKind != JsonValueKind.Object) continue;
+
+                var stateRaw = t.TryGetProperty("state", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+                if (string.IsNullOrWhiteSpace(stateRaw)) continue;
+
+                var stateName = stateRaw.Normalize(true);             
+                var durationMinutes = ParseTimeoutMinutes(t) ?? 0; // "P2D" -> 2880
+                var mode = ParseTimeoutMode(t);                         // 0 once, 1 repeat
+                var eventCode = ParseTimeoutEventCode(t);               // nullable
+
+                // You can choose to skip invalid durations, or throw. I prefer throw during import.
+                if (durationMinutes <= 0) throw new ArgumentException($"Invalid timeout duration for state '{stateRaw}'.");
+
+                await _dal.BlueprintWrite.InsertAsync(policyId, stateName, durationMinutes, mode, eventCode, load);
+            }
+        }
+
         public async Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(policyJson)) throw new ArgumentNullException(nameof(policyJson));
@@ -98,6 +123,7 @@ namespace Haley.Services {
                 var hash = policyHashmaterial.CreateGUID(HashMethod.Sha256).ToString();
                 var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
 
+                await ImportPolicyTimeoutsAsync(policyId, root, load);
                 //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
 
                 await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);
@@ -161,25 +187,17 @@ namespace Haley.Services {
                 if (s.GetBool("is_initial") == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
                 if (s.GetBool("is_final") == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
 
-                var timeoutMinutes = ParseTimeoutMinutes(s);
-                var timeoutMode = ParseTimeoutMode(s);
-
-                long timeoutEventId = 0;
-                var timeoutEventCode = s.GetInt("timeout_event") ?? s.GetInt("timeoutEventCode");
-                if (timeoutEventCode.HasValue && eventsByCode.TryGetValue(timeoutEventCode.Value, out var tev)) timeoutEventId = tev.Id;
 
                 var catName = s.GetString("category");
                 var catId = (!string.IsNullOrWhiteSpace(catName) && categoryMap.TryGetValue(catName!.N(), out var cid)) ? cid : 0;
 
-                var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, timeoutMinutes, (uint)timeoutMode, timeoutEventId, load);
+                var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, load);
 
                 map[key] = new StateDef {
                     Id = id,
                     Name = key,
                     DisplayName = name!,
                     Flags = flags,
-                    TimeoutMinutes = timeoutMinutes,
-                    TimeoutEventId = timeoutEventId,
                     IsInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0
                 };
             }
@@ -205,7 +223,7 @@ namespace Haley.Services {
             }
         }
 
-        private static int? ParseTimeoutMinutes(JsonElement stateNode) {
+        static int? ParseTimeoutMinutes(JsonElement stateNode) {
             var tm = stateNode.GetInt("timeout_minutes") ?? stateNode.GetInt("timeoutMinutes");
             if (tm.HasValue) return tm;
 
@@ -219,7 +237,7 @@ namespace Haley.Services {
             return mins;
         }
 
-        private static int ParseTimeoutMode(JsonElement stateNode) {
+        static int ParseTimeoutMode(JsonElement stateNode) {
             var n = stateNode.GetInt("timeout_mode") ?? stateNode.GetInt("timeoutMode");
             if (n.HasValue) return n.Value;
 
@@ -227,6 +245,13 @@ namespace Haley.Services {
             if (string.IsNullOrWhiteSpace(s)) return 0;
             return string.Equals(s.Trim(), "repeat", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         }
-           
+
+        static int? ParseTimeoutEventCode(JsonElement t) {
+            if (!t.TryGetProperty("timeout_event", out var e)) return null;
+            if (e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var c)) return c;
+            if (e.ValueKind == JsonValueKind.String && int.TryParse(e.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cs)) return cs;
+            return null;
+        }
+
     }
 }

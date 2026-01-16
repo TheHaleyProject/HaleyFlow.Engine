@@ -14,9 +14,12 @@ namespace Haley.Internal {
         public const string GUID = "@GUID";
         public const string HASH = "@HASH";
         public const string CATEGORY_ID = "@CATEGORY_ID";
-        public const string TIMEOUT_MODE = "@TIMEOUT_MODE";
-        public const string TIMEOUT_MINUTES = "@TIMEOUT_MINUTES";
-        public const string TIMEOUT_EVENT = "@TIMEOUT_EVENT";
+        public const string POLICY_ID = "@POLICY_ID";
+        public const string STATE_NAME = "@STATE_NAME";
+
+        public const string DURATION = "@DURATION";
+        public const string MODE = "@MODE";
+        public const string EVENT_CODE = "@EVENT_CODE";
 
         public const string DISPLAY_NAME = "@DISPLAY_NAME";
         public const string DESCRIPTION = "@DESCRIPTION";
@@ -30,7 +33,6 @@ namespace Haley.Internal {
 
         public const string INSTANCE_ID = "@INSTANCE_ID";
         public const string EXTERNAL_REF = "@EXTERNAL_REF";
-        public const string POLICY_ID = "@POLICY_ID";
         public const string CONSUMER = "@CONSUMER";
         public const string MAX_RETRY = "@MAX_RETRY";
         public const string RECHECK_SECONDS = "@RECHECK_SECONDS";

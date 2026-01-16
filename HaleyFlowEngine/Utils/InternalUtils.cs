@@ -15,7 +15,7 @@ namespace Haley.Utils {
         public static string BuildDefinitionHashMaterial(this JsonElement root) {
             // keep ONLY states/events/transitions
             var obj = new JsonObject {
-                ["states"] = root.TryGetProperty("states", out var s) ? JsonNode.Parse(s.GetRawText()) : new JsonArray(),
+                ["states"] = BuildSanitizedStatesForHash(root),
                 ["events"] = root.TryGetProperty("events", out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
                 ["transitions"] = root.TryGetProperty("transitions", out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
             };
@@ -30,10 +30,41 @@ namespace Haley.Utils {
                 ["policy_name"] = root.TryGetProperty("policy_name", out var pn) ? pn.GetString() : (string?)null,
                 ["policies"] = root.TryGetProperty("policies", out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
                 ["routes"] = root.TryGetProperty("routes", out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
+                ["timeouts"] = root.TryGetProperty("timeouts", out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
             };
 
             var canon = obj.Canonicalize();
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
+        static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
+            if (!root.TryGetProperty("states", out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
+                return new JsonArray();
+
+            var arr = new JsonArray();
+
+            foreach (var s in statesEl.EnumerateArray()) {
+                if (s.ValueKind != JsonValueKind.Object) continue;
+
+                // Copy state object, excluding timeout-ish keys
+                var o = new JsonObject();
+                foreach (var p in s.EnumerateObject()) {
+                    var k = p.Name;
+
+                    if (k.Equals("timeout", StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals("timeout_minutes", StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals("timeout_mode", StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals("timeout_event", StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals("timeoutEventCode", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    o[k] = JsonNode.Parse(p.Value.GetRawText());
+                }
+
+                arr.Add(o);
+            }
+
+            return arr;
+        }
+
     }
 }
