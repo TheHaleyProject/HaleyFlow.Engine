@@ -3,6 +3,7 @@ using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.Tracing;
 using System.Linq;
@@ -25,6 +26,7 @@ namespace Haley.Services {
 
         public event Func<ILifeCycleEvent, Task>? EventRaised;
         public event Func<LifeCycleNotice, Task>? NoticeRaised;
+        readonly ConcurrentDictionary<string, DateTimeOffset> _overDueLastAt = new(StringComparer.Ordinal);
 
         public WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
@@ -221,6 +223,7 @@ namespace Haley.Services {
         public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(defVersionId); return Task.CompletedTask; }
 
         public async Task RunMonitorOnceAsync(long consumerId, CancellationToken ct = default) {
+            //This can only check the acknowledgement tables and then send for specific consumers.. It will ignore the consumers which are down at the moment. 
             ct.ThrowIfCancellationRequested();
             await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
             await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
@@ -229,6 +232,9 @@ namespace Haley.Services {
 
         internal async Task RunMonitorOnceInternalAsync(Func<LifeCycleConsumerType, CancellationToken, Task<IReadOnlyList<long>>> consumersProvider, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
+
+            await RaiseOverDueDefaultStateStaleNoticesAsync(ct);  // stale notice scan (no ACK, no DB writes)
+
             var consumerList = await consumersProvider(LifeCycleConsumerType.Monitor,ct);
             for (var i = 0; i < consumerList.Count; i++) {
                 var consumerId = consumerList[i];
@@ -266,7 +272,7 @@ namespace Haley.Services {
         public Task<int> UnfreezeRuntimeAsync(long runtimeId, CancellationToken ct = default) => Runtime.SetFrozenAsync(runtimeId, false, ct);
 
 
-        private async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
+        async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
             var load = new DbExecutionLoad(ct);
@@ -331,10 +337,10 @@ namespace Haley.Services {
             }
         }
 
-        private async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
+        async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
             for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); FireEvent(events[i]); }
         }
-        private void FireEvent(ILifeCycleEvent e) {
+        void FireEvent(ILifeCycleEvent e) {
             var h = EventRaised;
             if (h == null) return;
 
@@ -342,7 +348,7 @@ namespace Haley.Services {
                 _ = RunHandlerSafeAsync(() => sub(e)); //Dont await.. we are deliberately running this task in synchornous mode , so that it runs in background.
             }
         }
-        private void FireNotice(LifeCycleNotice n) {
+        void FireNotice(LifeCycleNotice n) {
             var h = NoticeRaised;
             if (h == null) return;
 
@@ -350,7 +356,7 @@ namespace Haley.Services {
                 _ = RunHandlerSafeAsync(() => sub(n), swallow: true); //Error should not be propagated , else it will end up in infinite loop.
             }
         }
-        private async Task RunHandlerSafeAsync(Func<Task> work, bool swallow = false) {
+        async Task RunHandlerSafeAsync(Func<Task> work, bool swallow = false) {
             try {
                 await work().ConfigureAwait(false);
             } catch (Exception ex) {
@@ -360,11 +366,100 @@ namespace Haley.Services {
                 } catch { }
             }
         }
-        private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers) {
+        static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers) {
             if (consumers == null || consumers.Count == 0) return new long[] {};
             var list = new List<long>(consumers.Count);
             for (var i = 0; i < consumers.Count; i++) { var c = consumers[i]; if (c > 0 && !list.Contains(c)) list.Add(c); }
             return list;
+        }
+
+        async Task RaiseOverDueDefaultStateStaleNoticesAsync(CancellationToken ct) {
+            ct.ThrowIfCancellationRequested();
+
+            var dur = _opt.DefaultStateStaleDuration;
+            if (dur <= TimeSpan.Zero) return;
+
+            var staleSeconds = (int)Math.Max(1, dur.TotalSeconds);
+            var processed = (int)AckStatus.Processed;
+            var excluded = (uint)(LifeCycleInstanceFlag.Suspended | LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived);
+
+            var take = _opt.MonitorPageSize > 0 ? _opt.MonitorPageSize : 200;
+            var skip = 0;
+            var now = DateTimeOffset.UtcNow;
+
+            var resolver = _opt.ResolveConsumers;
+            var consumerCache = new Dictionary<long, IReadOnlyList<long>>();
+
+            // crude safety cap (since throttle is in-memory)
+            if (_overDueLastAt.Count > 200_000) _overDueLastAt.Clear();
+
+            while (!ct.IsCancellationRequested) {
+                var rows = await _dal.Instance.ListStaleByDefaultStateDurationPagedAsync(staleSeconds, processed, excluded, skip, take, new DbExecutionLoad(ct));
+                if (rows.Count == 0) break;
+
+                for (var i = 0; i < rows.Count; i++) {
+                    ct.ThrowIfCancellationRequested();
+
+                    var r = rows[i];
+                    var instanceId = Convert.ToInt64(r["instance_id"]);
+                    var instanceGuid = (string)r["instance_guid"];
+                    var externalRef = r["external_ref"] as string ?? string.Empty;
+                    var defVersionId = Convert.ToInt64(r["def_version_id"]);
+                    var stateId = Convert.ToInt64(r["current_state_id"]);
+                    var stateName = r["state_name"] as string ?? string.Empty;
+                    var lcId = Convert.ToInt64(r["lc_id"]);
+                    var staleSec = Convert.ToInt64(r["stale_seconds"]);
+
+                    IReadOnlyList<long> consumers;
+                    if (resolver == null) {
+                        consumers = Array.Empty<long>();
+                    } else if (!consumerCache.TryGetValue(defVersionId, out consumers!)) {
+                        consumers = NormalizeConsumers(await resolver(LifeCycleConsumerType.Transition, defVersionId, ct));
+                        consumerCache[defVersionId] = consumers;
+                    }
+
+                    if (consumers.Count == 0) {
+                        var k0 = $"0:{instanceId}:{stateId}";
+                        if (_overDueLastAt.TryGetValue(k0, out var last0) && (now - last0) < dur) continue;
+                        _overDueLastAt[k0] = now;
+
+                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale (no consumers resolved). instance={instanceGuid} ext={externalRef} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
+                            ["consumerId"] = 0L,
+                            ["instanceId"] = instanceId,
+                            ["instanceGuid"] = instanceGuid,
+                            ["externalRef"] = externalRef,
+                            ["defVersionId"] = defVersionId,
+                            ["currentStateId"] = stateId,
+                            ["stateName"] = stateName,
+                            ["lcId"] = lcId,
+                            ["staleSeconds"] = staleSec
+                        }));
+                        continue;
+                    }
+
+                    for (var c = 0; c < consumers.Count; c++) {
+                        var consumerId = consumers[c];
+                        var key = $"{consumerId}:{instanceId}:{stateId}";
+                        if (_overDueLastAt.TryGetValue(key, out var last) && (now - last) < dur) continue;
+                        _overDueLastAt[key] = now;
+
+                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale. consumer={consumerId} instance={instanceGuid} ext={externalRef} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
+                            ["consumerId"] = consumerId,
+                            ["instanceId"] = instanceId,
+                            ["instanceGuid"] = instanceGuid,
+                            ["externalRef"] = externalRef,
+                            ["defVersionId"] = defVersionId,
+                            ["currentStateId"] = stateId,
+                            ["stateName"] = stateName,
+                            ["lcId"] = lcId,
+                            ["staleSeconds"] = staleSec
+                        }));
+                    }
+                }
+
+                if (rows.Count < take) break;
+                skip += take;
+            }
         }
     }
 }

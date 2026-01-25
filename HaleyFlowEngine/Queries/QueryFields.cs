@@ -62,6 +62,7 @@ namespace Haley.Internal {
         public const string OLDER_THAN = "@OLDER_THAN";
         public const string NEXT_DUE = "@NEXT_DUE";
         public const string MESSAGE = "@MESSAGE";
+        public const string STALE_SECONDS = "@STALE_SECONDS";
 
         public const string ACTIVITY_ID = "@ACTIVITY_ID";
         public const string STATUS_ID = "@STATUS_ID";

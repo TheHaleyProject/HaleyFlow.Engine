@@ -53,5 +53,7 @@ namespace Haley.Internal {
 
         public Task<int> UnsetFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.UNSUSPEND_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags));
+
+        public Task<DbRows> ListStaleByDefaultStateDurationPagedAsync(int staleSeconds, int processedAckStatus, uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default) => Db.RowsAsync(QRY_INSTANCE.LIST_STALE_BY_DEFAULT_STATE_DURATION_PAGED, load, (STALE_SECONDS, staleSeconds), (ACK_STATUS, processedAckStatus), (FLAGS, excludedInstanceFlagsMask), (SKIP, skip), (TAKE, take));
     }
 }
