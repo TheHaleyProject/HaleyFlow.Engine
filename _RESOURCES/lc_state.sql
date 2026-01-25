@@ -34,8 +34,8 @@ CREATE TABLE IF NOT EXISTS `ack` (
 CREATE TABLE IF NOT EXISTS `ack_consumer` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `consumer` int(11) NOT NULL DEFAULT 0,
-  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n    Pending =1,\n    Delivered=2,\n    Processed=3,\n    Failed=4',
   `ack_id` bigint(20) NOT NULL,
+  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n    Pending =1,\n    Delivered=2,\n    Processed=3,\n    Failed=4',
   `last_trigger` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'when was the last time, this trigger was initiated.. Whenever we send the ack to consumer, we mark it.',
   `trigger_count` int(11) NOT NULL DEFAULT 0 COMMENT 'how many times did we try to send this acknowledgement to the consumer',
   `next_due` datetime DEFAULT NULL,
@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS `ack_consumer` (
 
 -- Dumping structure for table lcstate.activity
 CREATE TABLE IF NOT EXISTS `activity` (
-  `display_name` varchar(140) NOT NULL,
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `display_name` varchar(140) NOT NULL,
   `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are minor applicatoin managed activies which the statemachine doens''t have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..';
@@ -98,10 +98,10 @@ CREATE TABLE IF NOT EXISTS `consumer` (
 CREATE TABLE IF NOT EXISTS `definition` (
   `env` int(11) NOT NULL DEFAULT 0,
   `guid` char(36) NOT NULL DEFAULT uuid(),
-  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'it should be a code provided by the user.',
   `display_name` varchar(200) NOT NULL,
   `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
   `description` text DEFAULT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'it should be a code provided by the user.',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_definition_0` (`guid`),
@@ -315,9 +315,9 @@ CREATE TABLE IF NOT EXISTS `runtime` (
 
 -- Dumping structure for table lcstate.runtime_data
 CREATE TABLE IF NOT EXISTS `runtime_data` (
+  `runtime` bigint(20) NOT NULL,
   `data` longtext DEFAULT NULL COMMENT 'data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..',
   `payload` longtext DEFAULT NULL COMMENT 'Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.',
-  `runtime` bigint(20) NOT NULL,
   PRIMARY KEY (`runtime`),
   CONSTRAINT `fk_runtime_data_runtime` FOREIGN KEY (`runtime`) REFERENCES `runtime` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -329,20 +329,29 @@ CREATE TABLE IF NOT EXISTS `state` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(200) NOT NULL,
   `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `category` int(11) NOT NULL DEFAULT 0,
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'none = 0\nis_initial = 1\nis_final = 2\nis_system = 4\nis_error = 8',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `timeout_minutes` int(11) DEFAULT NULL COMMENT 'in minutes',
-  `timeout_mode` int(11) NOT NULL DEFAULT 0 COMMENT '0 = Once\n1 = Repeat',
-  `timeout_event` int(11) DEFAULT NULL,
   `def_version` int(11) NOT NULL,
-  `category` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_state` (`def_version`,`name`),
   KEY `fk_state_category` (`category`),
-  KEY `fk_state_events` (`timeout_event`),
   CONSTRAINT `fk_state_category` FOREIGN KEY (`category`) REFERENCES `category` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_state_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=2014 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.timeouts
+CREATE TABLE IF NOT EXISTS `timeouts` (
+  `policy_id` int(11) NOT NULL,
+  `state_name` varchar(200) NOT NULL,
+  `duration` int(11) NOT NULL,
+  `mode` int(11) NOT NULL DEFAULT 0 COMMENT '0-Once\n1-Repeat',
+  `event_code` int(11) DEFAULT NULL COMMENT 'CODE',
+  PRIMARY KEY (`policy_id`,`state_name`),
+  CONSTRAINT `fk_timeouts_policy` FOREIGN KEY (`policy_id`) REFERENCES `policy` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 

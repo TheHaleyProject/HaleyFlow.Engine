@@ -99,49 +99,49 @@ namespace WFE.Test {
            // Heartbeat loop
              var hb = RunHeartbeatAsync(engine, ct);
 
-            //// Import definition + policy
-            //var defJson = await File.ReadAllTextAsync(defPath, ct);
-            //var polJson = await File.ReadAllTextAsync(polPath, ct);
-            //polJson = EnsurePolicyHasDefName(polJson, _s.DefName);
+            // Import definition + policy
+            var defJson = await File.ReadAllTextAsync(defPath, ct);
+            var polJson = await File.ReadAllTextAsync(polPath, ct);
+            polJson = EnsurePolicyHasDefName(polJson, _s.DefName);
 
-            //var defVersionId = await engine.BlueprintImporter.ImportDefinitionJsonAsync(_s.EnvCode, _s.EnvDisplayName, defJson, ct);
-            //Console.WriteLine($"Imported definition: defVersionId={defVersionId}");
+            var defVersionId = await engine.BlueprintImporter.ImportDefinitionJsonAsync(_s.EnvCode, _s.EnvDisplayName, defJson, ct);
+            Console.WriteLine($"Imported definition: defVersionId={defVersionId}");
 
-            //var policyId = await engine.BlueprintImporter.ImportPolicyJsonAsync(_s.EnvCode, _s.EnvDisplayName, polJson, ct);
-            //Console.WriteLine($"Imported/attached policy: policyId={policyId}");
+            var policyId = await engine.BlueprintImporter.ImportPolicyJsonAsync(_s.EnvCode, _s.EnvDisplayName, polJson, ct);
+            Console.WriteLine($"Imported/attached policy: policyId={policyId}");
 
-            //await engine.InvalidateAsync(_s.EnvCode, _s.DefName, ct);
+            await engine.InvalidateAsync(_s.EnvCode, _s.DefName, ct);
 
-            //// Quick verification
-            //var states = await dal.Blueprint.ListStatesAsync(defVersionId, new DbExecutionLoad(ct));
-            //var events = await dal.Blueprint.ListEventsAsync(defVersionId, new DbExecutionLoad(ct));
-            //var trans = await dal.Blueprint.ListTransitionsAsync(defVersionId, new DbExecutionLoad(ct));
-            //Console.WriteLine($"DB check: states={states.Count} events={events.Count} transitions={trans.Count}");
+            // Quick verification
+            var states = await dal.Blueprint.ListStatesAsync(defVersionId, new DbExecutionLoad(ct));
+            var events = await dal.Blueprint.ListEventsAsync(defVersionId, new DbExecutionLoad(ct));
+            var trans = await dal.Blueprint.ListTransitionsAsync(defVersionId, new DbExecutionLoad(ct));
+            Console.WriteLine($"DB check: states={states.Count} events={events.Count} transitions={trans.Count}");
 
             // Start monitor (dispatch resend / retries)
             await engine.StartMonitorAsync(ct);
 
-            //// Trigger first event
-            //_lastExternalRef = Guid.NewGuid().ToString("N");
-            //var first = new LifeCycleTriggerRequest {
-            //    EnvCode = _s.EnvCode,
-            //    DefName = _s.DefName,
-            //    ExternalRef = _lastExternalRef,
-            //    Event = "1000",
-            //    Actor = "console",
-            //    RequestId = Guid.NewGuid().ToString("N"),
-            //    AckRequired = _s.AckRequired,
-            //    Payload = new Dictionary<string, object> {
-            //        ["demo"] = true,
-            //        ["startedAtUtc"] = DateTime.UtcNow.ToString("O")
-            //    }
-            //};
+            // Trigger first event
+            _lastExternalRef = Guid.NewGuid().ToString("N");
+            var first = new LifeCycleTriggerRequest {
+                EnvCode = _s.EnvCode,
+                DefName = _s.DefName,
+                ExternalRef = _lastExternalRef,
+                Event = "1000",
+                Actor = "console",
+                RequestId = Guid.NewGuid().ToString("N"),
+                AckRequired = _s.AckRequired,
+                Payload = new Dictionary<string, object> {
+                    ["demo"] = true,
+                    ["startedAtUtc"] = DateTime.UtcNow.ToString("O")
+                }
+            };
 
-            //var firstRes = await engine.TriggerAsync(first, ct);
-            //_lastInstanceId = firstRes.InstanceId;
-            //Console.WriteLine($"Trigger(1000) applied={firstRes.Applied} instanceId={firstRes.InstanceId} lcId={firstRes.LifeCycleId} {firstRes.FromState}->{firstRes.ToState}");
+            var firstRes = await engine.TriggerAsync(first, ct);
+            _lastInstanceId = firstRes.InstanceId;
+            Console.WriteLine($"Trigger(1000) applied={firstRes.Applied} instanceId={firstRes.InstanceId} lcId={firstRes.LifeCycleId} {firstRes.FromState}->{firstRes.ToState}");
 
-            //Console.WriteLine("Running. Press Ctrl+C to stop.");
+            Console.WriteLine("Running. Press Ctrl+C to stop.");
 
             try {
                 while (!ct.IsCancellationRequested) await Task.Delay(250, ct);

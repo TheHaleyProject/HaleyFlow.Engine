@@ -82,7 +82,7 @@ namespace Haley.Services {
                 //Before generating the instance, check if policy is needed to be attached. This can be found out from definition version and it's latest policy.. (we always focus on the latest policy for the definition)
                 //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
 
-                var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); 
+                var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); //latest policy
                 instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
                 transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
 
