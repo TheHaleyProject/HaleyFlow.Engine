@@ -58,12 +58,14 @@ public interface IAckManager {
       Task RunOnceAsync(CancellationToken ct = default);
   }
 
-   public interface IPolicyEnforcer {
-     Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
-     Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
-     Task<PolicyResolution> ResolvePolicyAsync(long definitionId, DbExecutionLoad load = default);
-     Task<PolicyResolution> ResolvePolicyByIdAsync(long policyId, DbExecutionLoad load = default);
- }
+    public interface IPolicyEnforcer {
+        Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
+        Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default);
+        Task<PolicyResolution> ResolvePolicyAsync(long definitionId, DbExecutionLoad load = default);
+        Task<PolicyResolution> ResolvePolicyByIdAsync(long policyId, DbExecutionLoad load = default);
+        RuleContext ResolveRuleContextFromJson(string policyJson, StateDef toState, EventDef? viaEvent, CancellationToken ct = default);
+        HookContext ResolveHookContextFromJson(string policyJson, StateDef toState, EventDef? viaEvent, string hookCode, CancellationToken ct = default);
+    }
 
  public interface IRuntimeEngine {
      Task<long> UpsertAsync(RuntimeLogByIdRequest req, CancellationToken ct = default);
