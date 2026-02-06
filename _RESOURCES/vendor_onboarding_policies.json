@@ -1,11 +1,11 @@
 {
   "policy_name": "vendoronboarding.policy",
   "for": { "definition": "vendoronboarding", "version": 1 },
-  "policies": [
-    { "code": "POL.ONBOARD.PWD.LINK", "params": { "link": { "fresh": true, "ttl": "P2D" } } }
+  "params": [
+    { "code": "PARAMS.ONBOARD.PWD.LINK", "data": { "link": { "fresh": true, "ttl": "P2D" } } }
   ],
-  "routes": [
-    { "state": "AwaitPasswordCreation", "via": 1000, "policy": "POL.ONBOARD.PWD.LINK", "emit": [ { "event": "APP.ONBOARD.PASSWORD.LINK.SEND" } ] },
-    { "state": "AwaitPasswordCreation", "via": 1002, "policy": "POL.ONBOARD.PWD.LINK", "emit": [ { "event": "APP.ONBOARD.PASSWORD.LINK.REMIND" } ] }
+  "rules": [
+    { "state": "AwaitPasswordCreation", "via": 1000, "params": ["PARAMS.ONBOARD.PWD.LINK"], "emit": [ { "event": "APP.ONBOARD.PASSWORD.LINK.SEND" } ] },
+    { "state": "AwaitPasswordCreation", "via": 1002, "params": ["PARAMS.ONBOARD.PWD.LINK"], "emit": [ { "event": "APP.ONBOARD.PASSWORD.LINK.REMIND" } ] }
   ]
 }
