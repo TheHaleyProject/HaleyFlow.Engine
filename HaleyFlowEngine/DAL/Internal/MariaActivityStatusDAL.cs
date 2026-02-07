@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaActivityStatusDAL : MariaDALBase, IActivityStatusDAL {
-        public MariaActivityStatusDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaActivityStatusDAL(IDALUtilBase db) : base(db) { }
 
         public Task<DbRows> ListAllAsync(DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_ACTIVITY_STATUS.LIST_ALL, load);

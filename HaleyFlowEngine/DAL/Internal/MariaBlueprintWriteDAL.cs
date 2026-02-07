@@ -6,7 +6,7 @@ using static Haley.Internal.QueryFields;
 namespace Haley.Internal {
     // MariaBlueprintWriteDAL.cs
     internal sealed class MariaBlueprintWriteDAL : MariaDALBase, IBlueprintWriteDAL {
-        public MariaBlueprintWriteDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaBlueprintWriteDAL(IDALUtilBase db) : base(db) { }
 
         public async Task<int> EnsureEnvironmentByCodeAsync(int envCode, string envDisplayName, DbExecutionLoad load = default) {
             var exists = await Db.ScalarAsync<int?>(QRY_ENVIRONMENT.EXISTS_BY_CODE, load, (CODE, envCode));

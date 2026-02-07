@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaAckConsumerDAL : MariaDALBase, IAckConsumerDAL {
-        public MariaAckConsumerDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaAckConsumerDAL(IDALUtilBase db) : base(db) { }
         public Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_ACK_CONSUMER.GET_BY_KEY, load, (ACK_ID, ackId), (CONSUMER_ID, consumer)); // FIXED
 

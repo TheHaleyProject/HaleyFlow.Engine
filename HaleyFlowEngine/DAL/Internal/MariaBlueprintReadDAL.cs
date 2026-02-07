@@ -5,7 +5,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaBlueprintReadDAL : MariaDALBase, IBlueprintReadDAL {
-        public MariaBlueprintReadDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaBlueprintReadDAL(IDALUtilBase db) : base(db) { }
 
         public Task<DbRow?> GetLatestDefVersionByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_DEFVERSION.GET_LATEST_BY_ENV_CODE_AND_DEF_NAME, load, (CODE, envCode), (NAME, defName));

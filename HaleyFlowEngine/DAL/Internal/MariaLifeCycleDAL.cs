@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaLifeCycleDAL : MariaDALBase, ILifeCycleDAL {
-        public MariaLifeCycleDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaLifeCycleDAL(IDALUtilBase db) : base(db) { }
 
         public Task<long> InsertAsync(long instanceId, long fromStateId, long toStateId, long eventId, DbExecutionLoad load = default)
             => Db.ScalarAsync<long>(QRY_LIFECYCLE.INSERT, load, (INSTANCE_ID, instanceId), (FROM_ID, fromStateId), (TO_ID, toStateId), (EVENT_ID, eventId));

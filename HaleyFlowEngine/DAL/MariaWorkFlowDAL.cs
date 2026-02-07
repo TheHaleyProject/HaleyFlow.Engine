@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 using Haley.Internal;
 
 namespace Haley.Utils {
-    public class MariaWorkFlowDAL : MariaWorkFlowDALUtil, IWorkFlowDAL {
+    public class MariaWorkFlowDAL : DALUtilBase, IWorkFlowDAL {
         public IBlueprintReadDAL Blueprint { get; }
         public IBlueprintWriteDAL BlueprintWrite { get; }
         public IInstanceDAL Instance { get; }

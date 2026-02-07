@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaConsumerDAL : MariaDALBase, IConsumerDAL {
-        public MariaConsumerDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaConsumerDAL(IDALUtilBase db) : base(db) { }
 
         public Task<int?> GetIdByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default)
             => Db.ScalarAsync<int?>(QRY_CONSUMER.GET_ID_BY_ENV_ID_AND_GUID, load, (ENV_ID, envId), (CONSUMER_GUID, consumerGuid));

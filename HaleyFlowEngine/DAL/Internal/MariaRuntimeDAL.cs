@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaRuntimeDAL : MariaDALBase, IRuntimeDAL {
-        public MariaRuntimeDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaRuntimeDAL(IDALUtilBase db) : base(db) { }
 
         public Task<DbRow?> GetByIdAsync(long runtimeId, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_RUNTIME.GET_BY_ID, load, (ID, runtimeId));

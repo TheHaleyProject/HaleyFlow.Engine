@@ -4,7 +4,7 @@ using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal sealed class MariaLifeCycleTimeoutDAL : MariaDALBase, ILifeCycleTimeoutDAL {
-        public MariaLifeCycleTimeoutDAL(IWorkFlowDALUtil db) : base(db) { }
+        public MariaLifeCycleTimeoutDAL(IDALUtilBase db) : base(db) { }
 
         public Task<DbRows> ListDuePagedAsync(uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_LC_TIMEOUT.LIST_DUE_PAGED, load, (FLAGS, excludedInstanceFlagsMask),(SKIP, skip),(TAKE, take));
