@@ -11,38 +11,40 @@ public interface ILifeCycleDispatchItem {
 }
 
  public interface ILifeCycleEvent {
-    LifeCycleEventKind Kind { get; }
-    long ConsumerId { get; }
-    string InstanceGuid { get; }
-    string ExternalRef { get; }
-    string? RequestId { get; }
-    string AckGuid { get; }
-    DateTimeOffset OccurredAt { get; }
-    bool AckRequired { get; }
-    IReadOnlyDictionary<string, object?>? Payload { get; }
+     LifeCycleEventKind Kind { get; }
+     long ConsumerId { get; }
+     string InstanceGuid { get; }
+     string ExternalRef { get; }
+     string? RequestId { get; }
+     string AckGuid { get; }
+     DateTimeOffset OccurredAt { get; }
+     bool AckRequired { get; }
+     string? OnSuccessEvent { get; } //For both transition and hook events.
+     string? OnFailureEvent { get; }
+     IReadOnlyDictionary<string, object?>? Payload { get; }
+     IReadOnlyList<LifeCycleParamItem>? Params { get; } 
+ }
+
+public interface ILifeCycleHookEmission {
+    long HookId { get; }
+    long StateId { get; }
+    bool OnEntry { get; }
+    string HookCode { get; }
+    string? OnSuccessEvent { get; }
+    string? OnFailureEvent { get; }
+    DateTimeOffset? NotBefore { get; }
+    DateTimeOffset? Deadline { get; }
+    IReadOnlyDictionary<string, object?>? Payload { get; } // ephemeral (NOT stored)
+    IReadOnlyList<LifeCycleParamItem>? Params { get; }
 }
 
-   public interface ILifeCycleHookEmission {
-     long HookId { get; }
-     long StateId { get; }
-     bool OnEntry { get; }
-     string HookCode { get; }
-     string? OnSuccessEvent { get; }
-     string? OnFailureEvent { get; }
-     DateTimeOffset? NotBefore { get; }
-     DateTimeOffset? Deadline { get; }
-     IReadOnlyDictionary<string, object?>? Payload { get; } // ephemeral (NOT stored)
- }
-
-   public interface ILifeCycleHookEvent : ILifeCycleEvent {
-     long HookId { get; }
-     bool OnEntry { get; }
-     string HookCode { get; }
-     string? OnSuccessEvent { get; }
-     string? OnFailureEvent { get; }
-     DateTimeOffset? NotBefore { get; }
-     DateTimeOffset? Deadline { get; }
- }
+    public interface ILifeCycleHookEvent : ILifeCycleEvent {
+        long HookId { get; }
+        bool OnEntry { get; }
+        string HookCode { get; }
+        DateTimeOffset? NotBefore { get; }
+        DateTimeOffset? Deadline { get; }
+    }
 
   public interface ILifeCycleTransitionEvent : ILifeCycleEvent {
      long LifeCycleId { get; }
@@ -86,9 +88,8 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
     public DateTimeOffset? NotBefore { get; set; }
     public DateTimeOffset? Deadline { get; set; }
     public IReadOnlyDictionary<string, object> Payload { get; set; }
+    public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
 }
-
-
 
  public sealed class EventDef {
     public long Id { get; set; }
@@ -97,6 +98,11 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
     public string DisplayName { get; set; }
     public EventDef() { }
 }
+
+    public sealed class HookContext : RuleContext {
+        public DateTimeOffset? NotBefore { get; set; }
+        public DateTimeOffset? Deadline { get; set; }
+    }
 
    public sealed class LifeCycleBlueprint {
      public long DefVersionId { get; set; }
@@ -136,6 +142,18 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
      public static LifeCycleNotice Info(string noticeType, string code, string message, IReadOnlyDictionary<string, object?>? data = null) => new LifeCycleNotice(LifeCycleNoticeKind.Info, noticeType, code, message, null, data);
  }
 
+   public sealed class LifeCycleParamItem {
+       public string Code { get; set; } = string.Empty;
+       public IReadOnlyDictionary<string, object?> Data { get; set; } = default!;
+       public LifeCycleParamItem() { }
+   }
+
+       public class RuleContext {
+        public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
+        public string? OnSuccessEvent { get; set; }
+        public string? OnFailureEvent { get; set; }
+    }
+
    public sealed class StateDef {
       public int Id { get; set; }
       public string Name { get; set; }
@@ -153,40 +171,44 @@ public sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
      public TransitionDef() { }
  }
 
-    public class LifeCycleEvent : ILifeCycleEvent {
-       public virtual LifeCycleEventKind Kind { get; }
-       public long ConsumerId { get; set; }
-       //public long InstanceId { get; set; } 
-       public string InstanceGuid { get; set; }
-       public long DefinitionVersionId { get; set; }
-       public string ExternalRef { get; set; }
-       public string AckGuid { get; set; }
-       public string? RequestId { get; set; }
-       public DateTimeOffset OccurredAt { get; set; }
-       public bool AckRequired { get; set; }
-       public IReadOnlyDictionary<string, object?>? Payload { get; set; }
-       public LifeCycleEvent() { }
-       public LifeCycleEvent(LifeCycleEvent source) {
-           Kind = source.Kind;
-           ConsumerId = source.ConsumerId;
-           InstanceGuid = source.InstanceGuid;
-           DefinitionVersionId = source.DefinitionVersionId;
-           ExternalRef = source.ExternalRef;
-           AckGuid = source.AckGuid;
-           RequestId = source.RequestId;
-           Payload = source.Payload;
-           OccurredAt = source.OccurredAt;
-           AckRequired = source.AckRequired;
-       }
-   }
+ public class LifeCycleEvent : ILifeCycleEvent {
+     public virtual LifeCycleEventKind Kind { get; }
+     public long ConsumerId { get; set; }
+     //public long InstanceId { get; set; } 
+     public string InstanceGuid { get; set; }
+     public long DefinitionVersionId { get; set; }
+     public string ExternalRef { get; set; }
+     public string AckGuid { get; set; }
+     public string? RequestId { get; set; }
+     public DateTimeOffset OccurredAt { get; set; }
+     public string? OnSuccessEvent { get; set; }
+     public string? OnFailureEvent { get; set; } 
+     public bool AckRequired { get; set; }
+     public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+     public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
+     public LifeCycleEvent() { }
+     public LifeCycleEvent(LifeCycleEvent source) {
+         Kind = source.Kind;
+         ConsumerId = source.ConsumerId;
+         InstanceGuid = source.InstanceGuid;
+         DefinitionVersionId = source.DefinitionVersionId;
+         ExternalRef = source.ExternalRef;
+         AckGuid = source.AckGuid;
+         RequestId = source.RequestId;
+         Payload = source.Payload;
+         Params = source.Params;
+         OnSuccessEvent = source.OnSuccessEvent; 
+         OnFailureEvent = source.OnFailureEvent;
+         OccurredAt = source.OccurredAt;
+         AckRequired = source.AckRequired;
+     }
+ }
 
-  public sealed class LifeCycleHookEvent : LifeCycleEvent, ILifeCycleHookEvent {
+ public sealed class LifeCycleHookEvent : LifeCycleEvent, ILifeCycleHookEvent {
      public LifeCycleEventKind Kind { get { return LifeCycleEventKind.Hook; } }
      public long HookId { get; set; }
      public bool OnEntry { get; set; }
      public string HookCode { get; set; } //Route or identifier for the hook
-     public string OnSuccessEvent { get; set; }
-     public string OnFailureEvent { get; set; }
      public DateTimeOffset? NotBefore { get; set; }
      public DateTimeOffset? Deadline { get; set; }
      public LifeCycleHookEvent() { }

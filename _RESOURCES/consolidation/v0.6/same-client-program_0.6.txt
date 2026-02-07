@@ -1,0 +1,229 @@
+using Haley;
+using Haley.Abstractions;
+using Haley.Enums;
+using Haley.Models;
+using Haley.Services;
+using Haley.Log;
+using Haley.Utils;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+
+Console.WriteLine("Workflow test app (v0.7) started.");
+
+// -------------------------
+// 0) Settings
+// -------------------------
+const int EnvCode = 1;
+const string EnvDisplayName = "dev";
+const long ConsumerId = 10;              // this console app acts as a consumer
+const bool AckRequired = true;
+
+// Auto-drive: for HOOK events, assume success and trigger OnSuccessEvent (from policy)
+const bool AutoDriveHookSuccess = true;
+
+// Files (keep these next to exe, or run from repo root)
+var defPath = FindFirstFile("vendor_registration.json");
+var polPath = FindFirstFile("vendor_registration_policies_v2.json", "vendor_registration_policies.json");
+
+// -------------------------
+// 1) Create DAL (YOU FILL THIS)
+// -------------------------
+IWorkFlowDAL dal = await CreateDalOrThrow();
+
+// -------------------------
+// 2) Build engine
+// -------------------------
+var opt = new WorkFlowEngineOptions {
+    DefaultConsumerId = ConsumerId,
+    MonitorInterval = TimeSpan.FromSeconds(10),
+    MonitorPageSize = 200,
+    AckDeliveredResendAfter = TimeSpan.FromSeconds(30),
+    AckPendingResendAfter  = TimeSpan.FromSeconds(20),
+    MonitorConsumers = new long[] { ConsumerId }
+};
+
+await using var engine = new WorkFlowEngine(dal, opt);
+
+// Ctrl+C support
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+
+// -------------------------
+// 3) Subscribe to engine notices/events
+// -------------------------
+engine.NoticeRaised += n => {
+    Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}");
+    if (n.Exception != null) Console.WriteLine(n.Exception);
+    return Task.CompletedTask;
+};
+
+engine.EventRaised += async evt => {
+    if (evt.Kind == LifeCycleEventKind.Transition) {
+        var t = (ILifeCycleTransitionEvent)evt;
+
+        Console.WriteLine($"[TRN] ext={t.ExternalRef} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
+        PrintEventRoutingAndParams(t);
+
+        if (t.AckRequired && !string.IsNullOrWhiteSpace(t.AckGuid)) {
+            await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Delivered, "transition-delivered", ct: CancellationToken.None);
+            await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Processed, "transition-processed", ct: CancellationToken.None);
+        }
+        return;
+    }
+
+    if (evt.Kind == LifeCycleEventKind.Hook) {
+        var h = (ILifeCycleHookEvent)evt;
+
+        Console.WriteLine($"[HOOK] ext={h.ExternalRef} code={h.HookCode} ack={h.AckGuid}");
+        Console.WriteLine($"       notBefore={h.NotBefore?.ToString("O") ?? "-"} deadline={h.Deadline?.ToString("O") ?? "-"}");
+        PrintEventRoutingAndParams(h);
+
+        if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
+            await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Delivered, "hook-delivered", ct: CancellationToken.None);
+
+        try {
+            // -------------------------
+            // Your app hook execution goes here.
+            // - Use h.Params to drive behavior (approval rules, routing, etc.)
+            // - Optionally read h.Payload if you pass app context through TriggerAsync
+            // -------------------------
+            await Task.Delay(50, cts.Token); // simulate work
+
+            if (AutoDriveHookSuccess && !string.IsNullOrWhiteSpace(h.OnSuccessEvent)) {
+                var followUp = new LifeCycleTriggerRequest {
+                    EnvCode = EnvCode,
+                    DefName = "VendorRegistration",
+                    ExternalRef = h.ExternalRef,
+                    Event = h.OnSuccessEvent!,                   // from policy (no hardcoding)
+                    Actor = "console-auto",
+                    RequestId = Guid.NewGuid().ToString(),
+                    AckRequired = AckRequired,
+                    Payload = new Dictionary<string, object> {
+                        ["fromHook"] = h.HookCode ?? string.Empty,
+                        ["result"] = "success",
+                        ["utc"] = DateTime.UtcNow.ToString("O")
+                    }
+                };
+
+                var r = await engine.TriggerAsync(followUp, CancellationToken.None);
+                Console.WriteLine($"       -> auto-triggered success={h.OnSuccessEvent} applied={r.Applied} lc={r.LifeCycleId} {r.FromState}->{r.ToState}");
+            }
+
+            if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
+                await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Processed, "hook-processed", ct: CancellationToken.None);
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"       !! hook execution failed: {ex.Message}");
+            if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
+                await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Failed, ex.Message, ct: CancellationToken.None);
+        }
+    }
+};
+
+// -------------------------
+// 4) Import definition + policy
+// -------------------------
+var defJson = await File.ReadAllTextAsync(defPath, cts.Token);
+var polJson = await File.ReadAllTextAsync(polPath, cts.Token);
+
+const string DefName = "VendorRegistration";
+
+// Keep compatibility: ImportPolicyJsonAsync may require a root defName.
+// Our policy format now uses: { policy_name, for, params, rules, timeouts }.
+// This helper injects defName only if absent.
+polJson = EnsurePolicyHasDefName(polJson, DefName);
+
+var defVersionId = await engine.BlueprintImporter.ImportDefinitionJsonAsync(EnvCode, EnvDisplayName, defJson, cts.Token);
+Console.WriteLine($"Imported definition: defVersionId={defVersionId}");
+
+var policyId = await engine.BlueprintImporter.ImportPolicyJsonAsync(EnvCode, EnvDisplayName, polJson, cts.Token);
+Console.WriteLine($"Imported/attached policy: policyId={policyId}");
+
+await engine.InvalidateAsync(EnvCode, DefName, cts.Token);
+
+// Optional DB verification via DAL reads
+var states = await dal.Blueprint.ListStatesAsync(defVersionId);
+var events = await dal.Blueprint.ListEventsAsync(defVersionId);
+var trans = await dal.Blueprint.ListTransitionsAsync(defVersionId);
+Console.WriteLine($"DB check: states={states.Count} events={events.Count} transitions={trans.Count}");
+
+// -------------------------
+// 5) Trigger: create instance + first event
+// -------------------------
+var externalRef = Guid.NewGuid().ToString();
+var first = new LifeCycleTriggerRequest {
+    EnvCode = EnvCode,
+    DefName = DefName,
+    ExternalRef = externalRef,
+    Event = "1000",                                 // AutoStart
+    Actor = "console",
+    RequestId = Guid.NewGuid().ToString(),
+    AckRequired = AckRequired,
+    Payload = new Dictionary<string, object> {
+        ["demo"] = true,
+        ["startedAtUtc"] = DateTime.UtcNow.ToString("O")
+    }
+};
+
+await engine.StartMonitorAsync();
+
+var firstRes = await engine.TriggerAsync(first, cts.Token);
+Console.WriteLine($"Trigger(1000) applied={firstRes.Applied} instanceId={firstRes.InstanceId} lcId={firstRes.LifeCycleId} {firstRes.FromState}->{firstRes.ToState}");
+
+Console.WriteLine("Done. Press any key.");
+Console.ReadKey();
+
+// -------------------------
+// Helpers
+// -------------------------
+static string FindFirstFile(params string[] names) {
+    foreach (var name in names) {
+        var p1 = Path.Combine(AppContext.BaseDirectory, name);
+        if (File.Exists(p1)) return p1;
+
+        var p2 = Path.Combine(Directory.GetCurrentDirectory(), name);
+        if (File.Exists(p2)) return p2;
+    }
+    throw new FileNotFoundException($"File not found: {string.Join(", ", names)}");
+}
+
+static void PrintEventRoutingAndParams(ILifeCycleEvent evt) {
+    Console.WriteLine($"       onSuccess={evt.OnSuccessEvent ?? "-"} onFailure={evt.OnFailureEvent ?? "-"}");
+    if (evt.Params == null || evt.Params.Count == 0) {
+        Console.WriteLine("       params=[]");
+        return;
+    }
+
+    Console.WriteLine("       params:");
+    foreach (var p in evt.Params) {
+        Console.WriteLine($"         - {p.Code}");
+        // Keep it short; print full data if needed
+        if (p.Data != null && p.Data.Count > 0) Console.WriteLine($"           keys=[{string.Join(", ", p.Data.Keys)}]");
+    }
+}
+
+// Importer compatibility helper
+static string EnsurePolicyHasDefName(string policyJson, string defName) {
+    var node = JsonNode.Parse(policyJson) as JsonObject;
+    if (node == null) return policyJson;
+
+    if (node.ContainsKey("defName") || node.ContainsKey("definitionName") || node.ContainsKey("name") || node.ContainsKey("displayName"))
+        return policyJson;
+
+    node["defName"] = defName;
+    return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+}
+
+// YOU implement this to return your concrete DAL.
+static async Task<IWorkFlowDAL> CreateDalOrThrow() {
+    var constring = $"server=127.0.0.1;port=3306;user=root;password=admin@456$;database=testlcs;Allow User Variables=true;";
+    var agw = new AdapterGateway() { LogQueryInConsole = false };
+    var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, constring);
+    if (!response.Status) throw new ArgumentException("Unable to initialize the database for the lifecycle state machine");
+    return new MariaWorkFlowDAL(agw, response.Result);
+}

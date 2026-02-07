@@ -22,16 +22,18 @@ namespace Haley.Services {
         private readonly TimeSpan _pendingNextDue;    // T + 40s
         private readonly TimeSpan _deliveredNextDue;  // T + 4m
 
-        public AckManager(
-            IWorkFlowDAL dal,
-            Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null,
-            TimeSpan? pendingNextDue = null,
-            TimeSpan? deliveredNextDue = null) {
+        //Purpose of the below fields is to resolve policies/hooks from json if needed.
+        private readonly IBlueprintManager _bp;
+        private readonly IPolicyEnforcer _policy; // concrete (so we can call Resolve*FromJson)
+
+        public AckManager(IWorkFlowDAL dal, IBlueprintManager bp, IPolicyEnforcer policy, Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null, TimeSpan? pendingNextDue = null, TimeSpan? deliveredNextDue = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _consumers = consumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
             _pendingNextDue = pendingNextDue ?? TimeSpan.FromSeconds(40);
             _deliveredNextDue = deliveredNextDue ?? TimeSpan.FromMinutes(4);
+            _bp = bp ?? throw new ArgumentNullException(nameof(bp));
+            _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         }
 
         public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Transition, defVersionId, ct); }
@@ -149,6 +151,23 @@ namespace Haley.Services {
                     PrevStateMeta = null,
                     PolicyJson = r.GetString("policy_json")
                 };
+
+                var policyJson = evt.PolicyJson;
+                if (!string.IsNullOrWhiteSpace(policyJson) && evt.DefinitionVersionId > 0) {
+                    var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
+
+                    // todo: best: use event_id (already in query) so no ambiguity
+                    var eventId = r.GetLong("event_id");
+                    bp.EventsById.TryGetValue(eventId, out var viaEvent);
+
+                    if (bp.StatesById.TryGetValue(evt.ToStateId, out var toState)) {
+                        var ctx = _policy.ResolveRuleContextFromJson(policyJson!, toState, viaEvent, load.Ct);
+                        evt.Params = ctx.Params;
+                        evt.OnSuccessEvent = ctx.OnSuccessEvent;
+                        evt.OnFailureEvent = ctx.OnFailureEvent;
+                    }
+                }
+
                 list.Add(new LifeCycleDispatchItem {
                     Kind = LifeCycleEventKind.Transition,
                     AckId = r.GetLong("ack_id"),
@@ -188,6 +207,25 @@ namespace Haley.Services {
                     NotBefore = null,
                     Deadline = null
                 };
+
+                var policyJson = r.GetString("policy_json");
+                if (!string.IsNullOrWhiteSpace(policyJson) && evt.DefinitionVersionId > 0) {
+                    var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
+                    var stateId = r.GetLong("state_id");
+                    var viaEventId = r.GetLong("via_event");
+                    var hookCode = evt.HookCode;
+
+                    if (bp.StatesById.TryGetValue(stateId, out var toState) && bp.EventsById.TryGetValue(viaEventId, out var viaEvent)) {
+                        var hctx = _policy.ResolveHookContextFromJson(policyJson!, toState, viaEvent, hookCode, load.Ct);
+
+                        evt.Params = hctx.Params;
+                        evt.OnSuccessEvent = hctx.OnSuccessEvent;
+                        evt.OnFailureEvent = hctx.OnFailureEvent;
+                        evt.NotBefore = hctx.NotBefore;
+                        evt.Deadline = hctx.Deadline;
+                    }
+                }
+
                 list.Add(new LifeCycleDispatchItem {
                     Kind = LifeCycleEventKind.Hook,
                     AckId = r.GetLong("ack_id"),

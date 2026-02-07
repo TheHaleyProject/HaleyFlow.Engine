@@ -40,7 +40,7 @@ namespace Haley.Services {
 
             var resolveMonitors = (LifeCycleConsumerType ty,CancellationToken ct)=> resolveConsumers.Invoke(ty,null,ct);
 
-            AckManager = _opt.AckManager ?? new AckManager(_dal, resolveConsumers,_opt.AckPendingResendAfter,_opt.AckDeliveredResendAfter);
+            AckManager = _opt.AckManager ?? new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter);
 
             Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
 
@@ -128,6 +128,13 @@ namespace Haley.Services {
                     lcAckGuids.Add(lcAckGuid);
                 }
 
+                RuleContext ctx = new RuleContext();
+                if (!string.IsNullOrWhiteSpace(pr.PolicyJson) && bp.StatesById.TryGetValue(transition.ToStateId, out var toState)) {
+                    bp.EventsById.TryGetValue(transition.EventId, out var viaEvent);
+                    ctx = PolicyEnforcer.ResolveRuleContextFromJson(pr.PolicyJson!, toState, viaEvent, ct);
+                }
+
+
                 var lcEvent = new LifeCycleEvent() {
                     InstanceGuid = result.InstanceGuid,
                     DefinitionVersionId = bp.DefVersionId,
@@ -137,6 +144,9 @@ namespace Haley.Services {
                     AckGuid = lcAckGuid,
                     AckRequired = req.AckRequired,
                     Payload = req.Payload,
+                    Params = ctx.Params,            
+                    OnSuccessEvent = ctx.OnSuccessEvent, 
+                    OnFailureEvent = ctx.OnFailureEvent 
                 };
 
                 // Build transition events (dispatch after commit)
@@ -173,11 +183,13 @@ namespace Haley.Services {
                         var consumerId = normHookConsumers[i];
                         var hookEvent = new LifeCycleHookEvent(lcEvent) {
                             ConsumerId = consumerId,
+                            AckGuid = hookAckGuid,
                             HookId = he.HookId,
                             OnEntry = he.OnEntry,
                             HookCode = he.HookCode ?? string.Empty,
                             OnSuccessEvent = he.OnSuccessEvent ?? string.Empty,
                             OnFailureEvent = he.OnFailureEvent ?? string.Empty,
+                            Params = he.Params,
                             NotBefore = he.NotBefore,
                             Deadline = he.Deadline
                         };
