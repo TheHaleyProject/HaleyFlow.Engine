@@ -114,7 +114,11 @@ namespace Haley.Services {
                     // emit.blocking inherits from rule.blocking, defaults to true
                     var emitBlocking = ReadOptionalBool(e, "blocking") ?? ruleBlocking;
 
-                    var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, emitBlocking, load);
+                    // group: optional string field on emit entry; null means ungrouped
+                    var emitGroup = e.GetString("group");
+                    if (string.IsNullOrWhiteSpace(emitGroup)) emitGroup = null;
+
+                    var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, emitBlocking, emitGroup, load);
 
                     var (emitSuccess, emitFailure) = ReadCompletionEvents(e);
 
@@ -141,7 +145,8 @@ namespace Haley.Services {
                         Deadline = deadline,
                         Payload = payload,
                         Params = resolvedParams,
-                        IsBlocking = emitBlocking
+                        IsBlocking = emitBlocking,
+                        GroupName = emitGroup
                     });
                 }
             }

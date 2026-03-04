@@ -16,11 +16,14 @@ namespace Haley.Internal {
             return await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId), (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
         }
 
-        public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, DbExecutionLoad load = default) {
-            //Wrap it inside a transaction.
+        public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, DbExecutionLoad load = default) {
             // Ensure hook_route row exists (idempotent) and get its id.
             var routeId = await Db.ScalarAsync<long>(QRY_HOOK_ROUTE.UPSERT_BY_NAME_RETURN_ID, load, (ROUTE, route));
-            return await Db.ScalarAsync<long>(QRY_HOOK.UPSERT_BY_KEY_RETURN_ID, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId), (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId), (BLOCKING, blocking ? 1 : 0));
+            // Resolve group_id: upsert group row if a name is provided, else pass SQL NULL.
+            long? groupId = null;
+            if (!string.IsNullOrWhiteSpace(groupName))
+                groupId = await Db.ScalarAsync<long>(QRY_HOOK_GROUP.UPSERT_BY_NAME_RETURN_ID, load, (GROUP_NAME, groupName));
+            return await Db.ScalarAsync<long>(QRY_HOOK.UPSERT_BY_KEY_RETURN_ID, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId), (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
         }
 
         public Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default)

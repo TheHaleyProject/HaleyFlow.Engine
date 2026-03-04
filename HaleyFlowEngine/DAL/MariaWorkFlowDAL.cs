@@ -11,6 +11,7 @@ namespace Haley.Utils {
         public ILifeCycleDAL LifeCycle { get; }
         public ILifeCycleDataDAL LifeCycleData { get; }
         public IHookRouteDAL HookRoute { get; }
+        public IHookGroupDAL HookGroup { get; }
         public IHookDAL Hook { get; }
         public IAckDAL Ack { get; }
         public IAckConsumerDAL AckConsumer { get; }
@@ -29,6 +30,7 @@ namespace Haley.Utils {
             LifeCycle = new MariaLifeCycleDAL(this);
             LifeCycleData = new MariaLifeCycleDataDAL(this);
             HookRoute = new MariaHookRouteDAL(this);
+            HookGroup = new MariaHookGroupDAL(this);
             Hook = new MariaHookDAL(this);
 
             Ack = new MariaAckDAL(this);

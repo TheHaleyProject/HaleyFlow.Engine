@@ -211,7 +211,8 @@ namespace Haley.Services {
                             Params = he.Params,
                             NotBefore = he.NotBefore,
                             Deadline = he.Deadline,
-                            IsBlocking = he.IsBlocking
+                            IsBlocking = he.IsBlocking,
+                            GroupName = he.GroupName
                         };
                         toDispatch.Add(hookEvent);
                     }
@@ -240,7 +241,30 @@ namespace Haley.Services {
             ct.ThrowIfCancellationRequested();
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
             if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
-            await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, new DbExecutionLoad(ct));
+            var load = new DbExecutionLoad(ct);
+            await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, load);
+
+            // Group completion check: only when a hook is being marked Processed.
+            if (outcome == AckOutcome.Processed) {
+                try {
+                    var ctx = await _dal.HookGroup.GetContextByAckGuidAsync(ackGuid, load);
+                    if (ctx != null) {
+                        var pending = await _dal.HookGroup.CountUnresolvedInGroupAsync(
+                            ctx.GetLong("instance_id"), ctx.GetLong("state_id"), ctx.GetLong("via_event"),
+                            ctx.GetBool("on_entry"), ctx.GetLong("group_id"), load);
+                        if (pending == 0) {
+                            var groupName = ctx.GetString("group_name") ?? string.Empty;
+                            var instanceGuid = ctx.GetString("instance_guid") ?? string.Empty;
+                            FireNotice(LifeCycleNotice.Info("HOOK_GROUP_COMPLETE", "HOOK_GROUP_COMPLETE",
+                                $"All hooks in group '{groupName}' are processed. instance={instanceGuid}",
+                                new Dictionary<string, object?> { ["groupName"] = groupName, ["instanceGuid"] = instanceGuid }));
+                        }
+                    }
+                } catch (Exception ex) {
+                    FireNotice(LifeCycleNotice.Warn("HOOK_GROUP_CHECK_ERROR", "HOOK_GROUP_CHECK_ERROR",
+                        $"Group completion check failed for ack={ackGuid}: {ex.Message}"));
+                }
+            }
         }
 
         public async Task<string?> GetTimelineJsonAsync(long instanceId, CancellationToken ct = default) {

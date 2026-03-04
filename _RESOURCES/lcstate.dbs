@@ -328,7 +328,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 		</table>
 		<table name="hook" prior="hooks" >
 			<comment><![CDATA[hooks are raised based on policy.. we just check the policy and then raise these hooks]]></comment>
-			<column name="group" type="INT" />
+			<column name="group_id" prior="group" type="BIGINT" />
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
@@ -361,11 +361,20 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<column name="on_entry" />
 				<column name="route_id" />
 			</index>
+			<index name="fk_hook_hook_route" unique="NORMAL" >
+				<column name="route_id" />
+			</index>
+			<index name="fk_hook_hook_group" unique="NORMAL" >
+				<column name="group_id" />
+			</index>
 			<fk name="fk_hooks_instance" to_schema="lcstate" to_table="instance" >
 				<fk_column name="instance_id" pk="id" />
 			</fk>
 			<fk name="fk_hook_hook_route" to_schema="lcstate" to_table="hook_route" >
 				<fk_column name="route_id" pk="id" />
+			</fk>
+			<fk name="fk_hook_hook_group" to_schema="lcstate" to_table="hook_group" >
+				<fk_column name="group_id" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB
  AUTO_INCREMENT 2000  
@@ -389,9 +398,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_group" prior="hook_g" >
-			<column name="id" type="INT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
+			<column name="id" type="BIGINT" length="20" mandatory="y" />
 			<column name="name" type="VARCHAR" length="140" mandatory="y" />
 			<index name="pk_hook_group" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -399,11 +406,9 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_route" prior="route" >
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
+			<column name="id" type="BIGINT" length="20" mandatory="y" />
 			<column name="name" type="VARCHAR" length="240" mandatory="y" />
-			<index name="pk_route" unique="PRIMARY_KEY" >
+			<index name="pk_hook_route" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_route" unique="UNIQUE_KEY" >
@@ -754,31 +759,31 @@ is_error = 8]]></comment>
 	<diagram_group name="Default" id="e6e08298-9f38-4e2a-8a03-f84a7f7488e3" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="133" y="95" />
-			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="437" y="95" />
-			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1045" />
-			<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="1102" />
-			<entity schema="lcstate" name="category" color="1A4D4D" x="931" y="323" />
-			<entity schema="lcstate" name="consumer" color="0000FF" x="893" y="1007" />
-			<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="817" />
-			<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="589" />
-			<entity schema="lcstate" name="definition" color="0000FF" x="912" y="589" />
-			<entity schema="lcstate" name="environment" color="0000FF" x="912" y="817" />
-			<entity schema="lcstate" name="events" color="1A4D4D" x="665" y="285" />
-			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="570" />
-			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="228" />
-			<entity schema="lcstate" name="hook_group" color="FFFF00" x="57" y="437" />
-			<entity schema="lcstate" name="hook_route" color="FFFF00" x="57" y="817" />
-			<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="627" />
-			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="247" y="228" />
-			<entity schema="lcstate" name="lc_data" color="FFFF00" x="456" y="494" />
+			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="475" y="95" />
+			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1064" />
+			<entity schema="lcstate" name="activity_status" color="00FF00" x="475" y="1121" />
+			<entity schema="lcstate" name="category" color="1A4D4D" x="950" y="323" />
+			<entity schema="lcstate" name="consumer" color="0000FF" x="931" y="1007" />
+			<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="817" />
+			<entity schema="lcstate" name="def_version" color="0000FF" x="703" y="589" />
+			<entity schema="lcstate" name="definition" color="0000FF" x="950" y="589" />
+			<entity schema="lcstate" name="environment" color="0000FF" x="950" y="817" />
+			<entity schema="lcstate" name="events" color="1A4D4D" x="684" y="285" />
+			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="589" />
+			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
+			<entity schema="lcstate" name="hook_group" color="FFFF00" x="57" y="456" />
+			<entity schema="lcstate" name="hook_route" color="FFFF00" x="76" y="836" />
+			<entity schema="lcstate" name="instance" color="FFFF00" x="475" y="627" />
+			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="209" y="247" />
+			<entity schema="lcstate" name="lc_data" color="FFFF00" x="475" y="494" />
 			<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="494" />
-			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="247" y="627" />
-			<entity schema="lcstate" name="policy" color="0000FF" x="817" y="1178" />
-			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="1026" />
-			<entity schema="lcstate" name="runtime_data" color="00FF00" x="76" y="1197" />
-			<entity schema="lcstate" name="state" color="1A4D4D" x="912" y="114" />
-			<entity schema="lcstate" name="timeouts" color="0000FF" x="684" y="969" />
-			<entity schema="lcstate" name="transition" color="1A4D4D" x="665" y="95" />
+			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="627" />
+			<entity schema="lcstate" name="policy" color="0000FF" x="836" y="1197" />
+			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="1045" />
+			<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1216" />
+			<entity schema="lcstate" name="state" color="1A4D4D" x="950" y="114" />
+			<entity schema="lcstate" name="timeouts" color="0000FF" x="703" y="969" />
+			<entity schema="lcstate" name="transition" color="1A4D4D" x="684" y="95" />
 			<group name="Blueprint - Definition" color="0000FF" >
 				<entity schema="lcstate" name="consumer" />
 				<entity schema="lcstate" name="def_policies" />

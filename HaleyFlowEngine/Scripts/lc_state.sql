@@ -183,12 +183,17 @@ CREATE TABLE IF NOT EXISTS `hook` (
   `state_id` int(11) NOT NULL,
   `via_event` int(11) NOT NULL,
   `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'by default, the hooks are for entry.. we can also, setup on leave.\n0 - on leaving\n1 - on entry',
-  `route` varchar(180) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
+  `route_id` bigint(20) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `instance_id` bigint(20) NOT NULL,
   `blocking` bit(1) NOT NULL DEFAULT b'1' COMMENT 'should the instance be allowed to move to next state in case this hook is failed or not? If blocking, this is crucial for next step.',
+  `group_id` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unq_hooks` (`instance_id`,`state_id`,`via_event`,`on_entry`,`route`),
+  UNIQUE KEY `unq_hooks` (`instance_id`,`state_id`,`via_event`,`on_entry`,`route_id`),
+  KEY `fk_hook_hook_route` (`route_id`),
+  KEY `fk_hook_hook_group` (`group_id`),
+  CONSTRAINT `fk_hook_hook_group` FOREIGN KEY (`group_id`) REFERENCES `hook_group` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_hook_hook_route` FOREIGN KEY (`route_id`) REFERENCES `hook_route` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hooks_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='hooks are raised based on policy.. we just check the policy and then raise these hooks';
 
@@ -202,6 +207,25 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
   UNIQUE KEY `unq_hook_ack` (`ack_id`),
   CONSTRAINT `fk_hook_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hook_ack_hook` FOREIGN KEY (`hook_id`) REFERENCES `hook` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.hook_group
+CREATE TABLE IF NOT EXISTS `hook_group` (
+  `id` bigint(20) NOT NULL,
+  `name` varchar(140) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.hook_route
+CREATE TABLE IF NOT EXISTS `hook_route` (
+  `id` bigint(20) NOT NULL,
+  `name` varchar(240) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unq_route` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
