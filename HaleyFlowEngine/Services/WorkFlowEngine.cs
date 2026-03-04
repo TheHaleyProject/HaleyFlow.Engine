@@ -162,6 +162,7 @@ namespace Haley.Services {
 
                 var lcEvent = new LifeCycleEvent() {
                     InstanceGuid = result.InstanceGuid,
+                    DefinitionId = bp.DefinitionId,
                     DefinitionVersionId = bp.DefVersionId,
                     EntityId = req.EntityId,
                     OccurredAt = req.OccurredAt ?? DateTimeOffset.UtcNow,
@@ -183,8 +184,7 @@ namespace Haley.Services {
                         ToStateId = transition.ToStateId,
                         EventCode = transition.EventCode,
                         EventName = transition.EventName ?? string.Empty,
-                        PrevStateMeta = new Dictionary<string, object>(),
-                        PolicyJson = pr.PolicyJson ?? string.Empty
+                        PrevStateMeta = new Dictionary<string, object>()
                     };
                     toDispatch.Add(transitionEvent);
                 }

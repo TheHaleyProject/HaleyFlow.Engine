@@ -134,6 +134,7 @@ namespace Haley.Services {
             foreach (var r in rows) {
                 load.Ct.ThrowIfCancellationRequested();
                 var evt = new LifeCycleTransitionEvent {
+                    DefinitionId = r.GetLong("def_id"),
                     DefinitionVersionId = r.GetLong("def_version_id"),
                     ConsumerId = r.GetLong("consumer"),
                     InstanceGuid = r.GetString("instance_guid"),
@@ -147,11 +148,10 @@ namespace Haley.Services {
                     ToStateId = r.GetLong("to_state"),
                     EventCode = r.GetNullableInt("event_code") ?? 0,
                     EventName = r.GetString("event_name") ?? string.Empty,
-                    PrevStateMeta = null,
-                    PolicyJson = r.GetString("policy_json")
+                    PrevStateMeta = null
                 };
 
-                var policyJson = evt.PolicyJson;
+                var policyJson = r.GetString("policy_json");
                 if (!string.IsNullOrWhiteSpace(policyJson) && evt.DefinitionVersionId > 0) {
                     var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
 
@@ -191,6 +191,7 @@ namespace Haley.Services {
                 var evt = new LifeCycleHookEvent {
                     ConsumerId = r.GetLong("consumer"),
                     InstanceGuid = r.GetString("instance_guid"),
+                    DefinitionId = r.GetNullableLong("def_id") ?? 0,
                     DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
                     EntityId = r.GetString("entity_id") ?? string.Empty,
                     OccurredAt = r.GetDateTimeOffset("hook_created") ?? DateTimeOffset.UtcNow,
