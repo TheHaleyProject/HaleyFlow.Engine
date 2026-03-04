@@ -137,8 +137,7 @@ namespace Haley.Services {
                     DefinitionVersionId = r.GetLong("def_version_id"),
                     ConsumerId = r.GetLong("consumer"),
                     InstanceGuid = r.GetString("instance_guid"),
-                    ExternalRef = r.GetString("external_ref") ?? string.Empty,
-                    RequestId = null,
+                    EntityId = r.GetString("entity_id") ?? string.Empty,
                     OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     AckRequired = true,
@@ -193,15 +192,13 @@ namespace Haley.Services {
                     ConsumerId = r.GetLong("consumer"),
                     InstanceGuid = r.GetString("instance_guid"),
                     DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
-                    ExternalRef = r.GetString("external_ref") ?? string.Empty,
-                    RequestId = null,
+                    EntityId = r.GetString("entity_id") ?? string.Empty,
                     OccurredAt = r.GetDateTimeOffset("hook_created") ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString("ack_guid") ?? string.Empty,
                     AckRequired = true,
                     Payload = null,
-                    HookId = r.GetLong("hook_id"),
                     OnEntry = r.GetBool("on_entry"),
-                    HookCode = r.GetString("route") ?? string.Empty,
+                    Route = r.GetString("route") ?? string.Empty,
                     IsBlocking = r.GetBool("blocking"),
                     GroupName = r.GetString("group_name"),
                     OnSuccessEvent = null,
@@ -215,10 +212,10 @@ namespace Haley.Services {
                     var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
                     var stateId = r.GetLong("state_id");
                     var viaEventId = r.GetLong("via_event");
-                    var hookCode = evt.HookCode;
+                    var hookRoute = evt.Route;
 
                     if (bp.StatesById.TryGetValue(stateId, out var toState) && bp.EventsById.TryGetValue(viaEventId, out var viaEvent)) {
-                        var hctx = _policy.ResolveHookContextFromJson(policyJson!, toState, viaEvent, hookCode, load.Ct);
+                        var hctx = _policy.ResolveHookContextFromJson(policyJson!, toState, viaEvent, hookRoute, load.Ct);
 
                         evt.Params = hctx.Params;
                         evt.OnSuccessEvent = hctx.OnSuccessEvent;

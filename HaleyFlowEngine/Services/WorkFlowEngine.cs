@@ -57,7 +57,7 @@ namespace Haley.Services {
             ct.ThrowIfCancellationRequested();
             if (req == null) throw new ArgumentNullException(nameof(req));
             if (string.IsNullOrWhiteSpace(req.DefName)) throw new ArgumentNullException(nameof(req.DefName));
-            if (string.IsNullOrWhiteSpace(req.ExternalRef)) throw new ArgumentNullException(nameof(req.ExternalRef));
+            if (string.IsNullOrWhiteSpace(req.EntityId)) throw new ArgumentNullException(nameof(req.EntityId));
             if (string.IsNullOrWhiteSpace(req.Event)) throw new ArgumentNullException(nameof(req.Event));
 
             // Blueprint read can be outside txn (pure read + cached).
@@ -85,7 +85,13 @@ namespace Haley.Services {
                 //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
 
                 var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); //latest policy
-                instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
+                instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.EntityId, policy.PolicyId ?? 0, load);
+
+                // If the instance was locked to a different def_version (created under an older version), reload blueprint for that version.
+                var instanceDefVersion = instance.GetLong("def_version");
+                if (instanceDefVersion != bp.DefVersionId) {
+                    bp = await BlueprintManager.GetBlueprintByVersionIdAsync(instanceDefVersion, ct);
+                }
 
                 // ACK gate: reject the transition if the last lifecycle entry still has unresolved consumers.
                 if (_opt.AckGateEnabled && !req.SkipAckGate) {
@@ -105,7 +111,7 @@ namespace Haley.Services {
                     }
                 }
 
-                transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, req.OccurredAt, load);
+                transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.Actor, req.Payload, req.OccurredAt, load);
 
                 var result = new LifeCycleTriggerResult {
                     Applied = transition.Applied,
@@ -157,8 +163,7 @@ namespace Haley.Services {
                 var lcEvent = new LifeCycleEvent() {
                     InstanceGuid = result.InstanceGuid,
                     DefinitionVersionId = bp.DefVersionId,
-                    ExternalRef = req.ExternalRef,
-                    RequestId = req.RequestId,
+                    EntityId = req.EntityId,
                     OccurredAt = req.OccurredAt ?? DateTimeOffset.UtcNow,
                     AckGuid = lcAckGuid,
                     AckRequired = req.AckRequired,
@@ -203,9 +208,8 @@ namespace Haley.Services {
                         var hookEvent = new LifeCycleHookEvent(lcEvent) {
                             ConsumerId = consumerId,
                             AckGuid = hookAckGuid,
-                            HookId = he.HookId,
                             OnEntry = he.OnEntry,
-                            HookCode = he.HookCode ?? string.Empty,
+                            Route = he.Route ?? string.Empty,
                             OnSuccessEvent = he.OnSuccessEvent ?? string.Empty,
                             OnFailureEvent = he.OnFailureEvent ?? string.Empty,
                             Params = he.Params,
@@ -280,7 +284,7 @@ namespace Haley.Services {
             for (var i = 0; i < rows.Count; i++) {
                 var r = rows[i];
                 result.Add(new InstanceRefItem {
-                    ExternalRef = r.GetString("external_ref") ?? string.Empty,
+                    EntityId = r.GetString("entity_id") ?? string.Empty,
                     InstanceGuid = r.GetString("instance_guid") ?? string.Empty,
                     Created = r.GetDateTime("created")
                 });
@@ -402,8 +406,8 @@ namespace Haley.Services {
                             FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
                         }
                     } else {
-                        var hookCode = item.Event is ILifeCycleHookEvent h ? h.HookCode : string.Empty;
-                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Non-blocking hook failed after max retries. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} hook={hookCode} instance={item.Event.InstanceGuid}"));
+                        var hookRoute = item.Event is ILifeCycleHookEvent h ? h.Route : string.Empty;
+                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Non-blocking hook failed after max retries. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} route={hookRoute} instance={item.Event.InstanceGuid}"));
                     }
 
                     continue;
@@ -481,7 +485,7 @@ namespace Haley.Services {
                     var r = rows[i];
                     var instanceId = Convert.ToInt64(r["instance_id"]);
                     var instanceGuid = (string)r["instance_guid"];
-                    var externalRef = r["external_ref"] as string ?? string.Empty;
+                    var entityId = r["entity_id"] as string ?? string.Empty;
                     var defVersionId = Convert.ToInt64(r["def_version_id"]);
                     var stateId = Convert.ToInt64(r["current_state_id"]);
                     var stateName = r["state_name"] as string ?? string.Empty;
@@ -501,11 +505,11 @@ namespace Haley.Services {
                         if (_overDueLastAt.TryGetValue(k0, out var last0) && (now - last0) < dur) continue;
                         _overDueLastAt[k0] = now;
 
-                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale (no consumers resolved). instance={instanceGuid} ext={externalRef} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
+                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale (no consumers resolved). instance={instanceGuid} entity={entityId} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
                             ["consumerId"] = 0L,
                             ["instanceId"] = instanceId,
                             ["instanceGuid"] = instanceGuid,
-                            ["externalRef"] = externalRef,
+                            ["entityId"] = entityId,
                             ["defVersionId"] = defVersionId,
                             ["currentStateId"] = stateId,
                             ["stateName"] = stateName,
@@ -521,11 +525,11 @@ namespace Haley.Services {
                         if (_overDueLastAt.TryGetValue(key, out var last) && (now - last) < dur) continue;
                         _overDueLastAt[key] = now;
 
-                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale. consumer={consumerId} instance={instanceGuid} ext={externalRef} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
+                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale. consumer={consumerId} instance={instanceGuid} entity={entityId} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
                             ["consumerId"] = consumerId,
                             ["instanceId"] = instanceId,
                             ["instanceGuid"] = instanceGuid,
-                            ["externalRef"] = externalRef,
+                            ["entityId"] = entityId,
                             ["defVersionId"] = defVersionId,
                             ["currentStateId"] = stateId,
                             ["stateName"] = stateName,

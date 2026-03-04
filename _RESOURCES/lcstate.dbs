@@ -199,7 +199,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<column name="parent" />
 				<column name="version" />
 			</index>
-			<index name="fk_def_version_definition" unique="NORMAL" >
+			<index name="fk_def_version_definition" unique="UNIQUE_KEY" >
 				<column name="parent" />
 			</index>
 			<index name="unq_def_version_0" unique="UNIQUE_KEY" >
@@ -425,6 +425,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 		</table>
 		<table name="instance" prior="insta" >
 			<comment><![CDATA[remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance]]></comment>
+			<column name="def_version" type="INT" mandatory="y" />
 			<column name="current_state" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 			</column>
@@ -432,11 +433,12 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
+			<column name="entity_id" prior="entity_ref" type="VARCHAR" length="36" mandatory="y" >
+				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
+			</column>
+			<column name="def_id" type="INT" mandatory="y" />
 			<column name="policy_id" type="INT" >
 				<defo><![CDATA[0]]></defo>
-			</column>
-			<column name="external_ref" type="CHAR" length="36" >
-				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
@@ -449,7 +451,6 @@ archive = 16]]></comment>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
@@ -475,15 +476,19 @@ archive = 16]]></comment>
 			<index name="fk_instance_def_version" unique="NORMAL" >
 				<column name="def_version" />
 			</index>
-			<index name="unq_instance_0" unique="UNIQUE_KEY" >
-				<column name="def_version" />
-				<column name="external_ref" />
-			</index>
 			<index name="idx_instance" unique="NORMAL" >
-				<column name="external_ref" />
+				<column name="entity_id" />
+			</index>
+			<index name="unq_instance_0" unique="UNIQUE_KEY" >
+				<comment><![CDATA[this uniqueness helps dedupe the request..  one entity can only go through a single version of a definition.. for example, if definition (onboarding), then an entity can only be onboaded only once (across all versions... it cannot be onboarded for different versions of same defintion).]]></comment>
+				<column name="def_id" />
+				<column name="entity_id" />
 			</index>
 			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
+			</fk>
+			<fk name="fk_instance_def_version_0" to_schema="lcstate" to_table="def_version" >
+				<fk_column name="def_id" pk="parent" />
 			</fk>
 			<options><![CDATA[engine=InnoDB
  AUTO_INCREMENT 1857  
@@ -763,7 +768,7 @@ is_error = 8]]></comment>
 ]]></options>
 		</table>
 	</schema>
-	<diagram_group name="Default" id="e6e08298-9f38-4e2a-8a03-f84a7f7488e3" >
+	<diagram_group name="Default" id="1d2ee47d-c010-4085-8ab9-885effaf7af9" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="133" y="95" />
 			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="475" y="95" />
@@ -771,25 +776,25 @@ is_error = 8]]></comment>
 			<entity schema="lcstate" name="activity_status" color="00FF00" x="475" y="1121" />
 			<entity schema="lcstate" name="category" color="1A4D4D" x="950" y="323" />
 			<entity schema="lcstate" name="consumer" color="0000FF" x="931" y="1007" />
-			<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="817" />
-			<entity schema="lcstate" name="def_version" color="0000FF" x="703" y="589" />
+			<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="874" />
+			<entity schema="lcstate" name="def_version" color="0000FF" x="703" y="627" />
 			<entity schema="lcstate" name="definition" color="0000FF" x="950" y="589" />
 			<entity schema="lcstate" name="environment" color="0000FF" x="950" y="817" />
 			<entity schema="lcstate" name="events" color="1A4D4D" x="684" y="285" />
 			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="589" />
 			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
 			<entity schema="lcstate" name="hook_group" color="FFFF00" x="57" y="456" />
-			<entity schema="lcstate" name="hook_route" color="FFFF00" x="76" y="836" />
+			<entity schema="lcstate" name="hook_route" color="FFFF00" x="57" y="836" />
 			<entity schema="lcstate" name="instance" color="FFFF00" x="475" y="627" />
 			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="209" y="247" />
 			<entity schema="lcstate" name="lc_data" color="FFFF00" x="475" y="494" />
 			<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="494" />
-			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="627" />
+			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="608" />
 			<entity schema="lcstate" name="policy" color="0000FF" x="836" y="1197" />
 			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="1045" />
 			<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1216" />
 			<entity schema="lcstate" name="state" color="1A4D4D" x="950" y="114" />
-			<entity schema="lcstate" name="timeouts" color="0000FF" x="703" y="969" />
+			<entity schema="lcstate" name="timeouts" color="0000FF" x="703" y="1026" />
 			<entity schema="lcstate" name="transition" color="1A4D4D" x="684" y="95" />
 			<group name="Blueprint - Definition" color="0000FF" >
 				<entity schema="lcstate" name="consumer" />

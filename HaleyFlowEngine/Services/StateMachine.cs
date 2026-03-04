@@ -16,14 +16,14 @@ namespace Haley.Services {
 
         public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
 
-        public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string externalRef, long policyId, DbExecutionLoad load = default) {
+        public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string entityId, long policyId, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(externalRef)) throw new ArgumentNullException(nameof(externalRef));
+            if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentNullException(nameof(entityId));
 
             var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId, load.Ct);
             var initStateId = bp.InitialStateId;
 
-            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, externalRef, initStateId, null, policyId, (uint)LifeCycleInstanceFlag.Active, load);
+            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, entityId, initStateId, null, policyId, (uint)LifeCycleInstanceFlag.Active, load);
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException("Instance upsert failed (guid null).");
 
             var row = await _dal.Instance.GetByGuidAsync(guid, load);
@@ -31,7 +31,7 @@ namespace Haley.Services {
             return row;
         }
 
-        public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DateTimeOffset? occurredAt = null, DbExecutionLoad load = default) {
+        public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? actor, IReadOnlyDictionary<string, object?>? payload, DateTimeOffset? occurredAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (bp == null) throw new ArgumentNullException(nameof(bp));
             if (instance == null) throw new ArgumentNullException(nameof(instance));
@@ -68,11 +68,7 @@ namespace Haley.Services {
             res.Applied = true;
             res.LifeCycleId = lcId;
 
-            var store = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            if (!string.IsNullOrWhiteSpace(requestId)) store["requestId"] = requestId;
-            if (payload != null && payload.Count > 0) store["payload"] = payload;
-
-            var payloadJson = store.Count == 0 ? null : JsonSerializer.Serialize(store);
+            var payloadJson = payload != null && payload.Count > 0 ? JsonSerializer.Serialize(payload) : null;
             await _dal.LifeCycleData.UpsertAsync(lcId, actor, payloadJson, load);
 
             return res;

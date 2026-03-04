@@ -32,7 +32,8 @@ namespace Haley.Internal {
         public const string FROZEN = "@FROZEN";
 
         public const string INSTANCE_ID = "@INSTANCE_ID";
-        public const string EXTERNAL_REF = "@EXTERNAL_REF";
+        public const string ENTITY_ID = "@ENTITY_ID";
+        public const string DEF_ID = "@DEF_ID";
         public const string CONSUMER = "@CONSUMER";
         public const string MAX_RETRY = "@MAX_RETRY";
         public const string RECHECK_SECONDS = "@RECHECK_SECONDS";

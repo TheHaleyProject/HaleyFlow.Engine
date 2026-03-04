@@ -5,7 +5,7 @@
     { "code": "PARAMS.ONBOARD.PWD.LINK", "data": { "link": { "fresh": true, "ttl": "P2D" } } }
   ],
   "rules": [
-    { "state": "AwaitPasswordCreation", "via": 1000, "params": ["PARAMS.ONBOARD.PWD.LINK"], "emit": [ { "event": "APP.ONBOARD.PASSWORD.LINK.SEND" } ] },
-    { "state": "AwaitPasswordCreation", "via": 1002, "params": ["PARAMS.ONBOARD.PWD.LINK"], "emit": [ { "event": "APP.ONBOARD.PASSWORD.LINK.REMIND" } ] }
+    { "state": "AwaitPasswordCreation", "via": 1000, "params": ["PARAMS.ONBOARD.PWD.LINK"], "emit": [ { "route": "APP.ONBOARD.PASSWORD.LINK.SEND" } ] },
+    { "state": "AwaitPasswordCreation", "via": 1002, "params": ["PARAMS.ONBOARD.PWD.LINK"], "emit": [ { "route": "APP.ONBOARD.PASSWORD.LINK.REMIND" } ] }
   ]
 }

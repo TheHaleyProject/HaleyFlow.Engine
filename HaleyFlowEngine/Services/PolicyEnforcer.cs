@@ -108,7 +108,7 @@ namespace Haley.Services {
                 foreach (var e in emitEl.EnumerateArray()) {
                     load.Ct.ThrowIfCancellationRequested();
 
-                    var hookCode = e.GetString("event");
+                    var hookCode = e.GetString("route");
                     if (string.IsNullOrWhiteSpace(hookCode)) continue;
 
                     // emit.blocking inherits from rule.blocking, defaults to true
@@ -138,7 +138,7 @@ namespace Haley.Services {
                         HookId = hookId,
                         StateId = applied.ToStateId,
                         OnEntry = true,
-                        HookCode = hookCode!,
+                        Route = hookCode!,
                         OnSuccessEvent = onSuccess,
                         OnFailureEvent = onFailure,
                         NotBefore = notBefore,
@@ -305,7 +305,7 @@ namespace Haley.Services {
 
             foreach (var e in emitEl.EnumerateArray()) {
                 ct.ThrowIfCancellationRequested();
-                var ev = e.GetString("event");
+                var ev = e.GetString("route");
                 if (!string.IsNullOrWhiteSpace(ev) && string.Equals(ev, hookCode, StringComparison.OrdinalIgnoreCase)) { emit = e; return true; }
             }
             return false;

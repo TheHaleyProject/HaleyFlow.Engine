@@ -1,24 +1,25 @@
 {
   "policy_name": "vendorregistration.policy",
+  "defName": "VendorRegistration",
   "for": { "definition": "vendorregistration", "version": 1 },
   "params": [
     { "code": "PARAMS.REG.PQ.VALIDATE", "data": { "approval": { "rule": "any", "selector": { "mode": "role", "value": "procurement" } } } }
   ],
   "rules": [
-    { "state": "CheckVendorRegistered", "complete": { "success": 1001, "failure": 1002 }, "emit": [ { "event": "APP.REG.CHECK.VENDOR_REGISTERED", "complete": { "success": 1001, "failure": 1002 } } ] },
+    { "state": "CheckVendorRegistered", "complete": { "success": 1001, "failure": 1002 }, "emit": [ { "route": "APP.REG.CHECK.VENDOR_REGISTERED", "complete": { "success": 1001, "failure": 1002 } } ] },
 
-    { "state": "CheckRecentSubmission", "complete": { "success": 1003, "failure": 1004 }, "emit": [ { "event": "APP.REG.CHECK.RECENT_SUBMISSION", "complete": { "success": 1003, "failure": 1004 } } ] },
+    { "state": "CheckRecentSubmission", "complete": { "success": 1003, "failure": 1004 }, "emit": [ { "route": "APP.REG.CHECK.RECENT_SUBMISSION", "complete": { "success": 1003, "failure": 1004 } } ] },
 
-    { "state": "RequestAccepted", "auto": [ { "event": 1005 } ] },
+    { "state": "RequestAccepted", "auto": [ { "route": 1005 } ] },
 
     { "state": "PendingPQValidation", "params": ["PARAMS.REG.PQ.VALIDATE"], "complete": { "success": 1006, "failure": 1008 }, 
-    "emit": [ { "event": "APP.REG.PQ.VALIDATION.REQUIRED", "complete": { "success": 1006, "failure": 1008 } } ] },
+    "emit": [ { "route": "APP.REG.PQ.VALIDATION.REQUIRED", "complete": { "success": 1006, "failure": 1008 } } ] },
 
-    { "state": "Overdue", "via": 1010, "emit": [ { "event": "APP.REG.PQ.OVERDUE.ENTER" } ] },
+    { "state": "Overdue", "via": 1010, "emit": [ { "route": "APP.REG.PQ.OVERDUE.ENTER" } ] },
 
-    { "state": "Overdue", "via": 1011, "emit": [ { "event": "APP.REG.PQ.OVERDUE.REMIND" } ] },
+    { "state": "Overdue", "via": 1011, "emit": [ { "route": "APP.REG.PQ.OVERDUE.REMIND" } ] },
     
-    { "state": "VendorCreation", "complete": { "success": 1007 }, "emit": [ { "event": "APP.REG.VENDOR_CREATE", "complete": { "success": 1007 } } ] }
+    { "state": "VendorCreation", "complete": { "success": 1007 }, "emit": [ { "route": "APP.REG.VENDOR_CREATE", "complete": { "success": 1007 } } ] }
   ],
   "timeouts": [
     { "state": "PendingPQValidation", "timeout": "P2D", "timeout_event": 1010 },

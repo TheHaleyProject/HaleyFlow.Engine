@@ -49,7 +49,7 @@ namespace WFE.Test {
         };
 
         private long _lastInstanceId;
-        private string _lastExternalRef = "";
+        private string _lastEntityId = "";
 
         public VendorRegistrationConsoleApp(VendorRegistrationConsoleAppSettings settings) {
             _s = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -122,14 +122,13 @@ namespace WFE.Test {
             await engine.StartMonitorAsync(ct);
 
             // Trigger first event
-            _lastExternalRef = Guid.NewGuid().ToString("N");
+            _lastEntityId = Guid.NewGuid().ToString("N");
             var first = new LifeCycleTriggerRequest {
                 EnvCode = _s.EnvCode,
                 DefName = _s.DefName,
-                ExternalRef = _lastExternalRef,
+                EntityId = _lastEntityId,
                 Event = "1000",
                 Actor = "console",
-                RequestId = Guid.NewGuid().ToString("N"),
                 AckRequired = _s.AckRequired,
                 Payload = new Dictionary<string, object> {
                     ["demo"] = true,
@@ -168,7 +167,7 @@ namespace WFE.Test {
 
             if (evt.Kind == LifeCycleEventKind.Transition) {
                 var t = (ILifeCycleTransitionEvent)evt;
-                Console.WriteLine($"[TRN] ext={t.ExternalRef} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
+                Console.WriteLine($"[TRN] entity={t.EntityId} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
 
                 if (t.AckRequired && !string.IsNullOrWhiteSpace(t.AckGuid))
                     await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Delivered, "transition-received", ct: ct);
@@ -178,22 +177,21 @@ namespace WFE.Test {
 
             if (evt.Kind == LifeCycleEventKind.Hook) {
                 var h = (ILifeCycleHookEvent)evt;
-                Console.WriteLine($"[HOOK] ext={h.ExternalRef} code={h.HookCode} onSuccess={h.OnSuccessEvent} onFailure={h.OnFailureEvent} ack={h.AckGuid}");
+                Console.WriteLine($"[HOOK] entity={h.EntityId} route={h.Route} onSuccess={h.OnSuccessEvent} onFailure={h.OnFailureEvent} ack={h.AckGuid}");
 
                 // FIX: do NOT return before ACK + auto-trigger
                 if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
                     await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Delivered, "hook-processed", ct: ct);
 
-                if (_hookAutoResponses.TryGetValue(h.HookCode ?? string.Empty, out var nextEventCode)) {
+                if (_hookAutoResponses.TryGetValue(h.Route ?? string.Empty, out var nextEventCode)) {
                     var followUp = new LifeCycleTriggerRequest {
                         EnvCode = _s.EnvCode,
                         DefName = _s.DefName,
-                        ExternalRef = h.ExternalRef,
+                        EntityId = h.EntityId,
                         Event = nextEventCode.ToString(),
                         Actor = "console-auto",
-                        RequestId = Guid.NewGuid().ToString("N"),
                         AckRequired = _s.AckRequired,
-                        Payload = new Dictionary<string, object> { ["fromHook"] = h.HookCode ?? "" }
+                        Payload = new Dictionary<string, object> { ["fromHook"] = h.Route ?? "" }
                     };
 
                     var r = await engine.TriggerAsync(followUp, ct);
@@ -204,7 +202,7 @@ namespace WFE.Test {
                 return;
             }
 
-            Console.WriteLine($"[EVT] kind={evt.Kind} ext={evt.ExternalRef} ack={evt.AckGuid}");
+            Console.WriteLine($"[EVT] kind={evt.Kind} entity={evt.EntityId} ack={evt.AckGuid}");
             if (evt.AckRequired && !string.IsNullOrWhiteSpace(evt.AckGuid))
                 await engine.AckAsync(evt.ConsumerId, evt.AckGuid, AckOutcome.Delivered, "event-received", ct: ct);
         }

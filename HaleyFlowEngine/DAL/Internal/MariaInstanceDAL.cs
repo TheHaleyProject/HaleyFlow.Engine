@@ -1,4 +1,4 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Models;
 using static Haley.Internal.QueryFields;
 
@@ -12,15 +12,18 @@ namespace Haley.Internal {
         public Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default)
             => Db.ScalarAsync<long?>(QRY_INSTANCE.GET_ID_BY_GUID, load, (GUID, guid));
 
-        public Task<long?> GetIdByKeyAsync(long defVersionId, string externalRef, DbExecutionLoad load = default)
-            => Db.ScalarAsync<long?>(QRY_INSTANCE.GET_ID_BY_PARENT_AND_EXTERNAL_REF, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef));
+        public Task<long?> GetIdByKeyAsync(long defVersionId, string entityId, DbExecutionLoad load = default)
+            => Db.ScalarAsync<long?>(QRY_INSTANCE.GET_ID_BY_DEF_VERSION_AND_ENTITY_ID, load, (PARENT_ID, defVersionId), (ENTITY_ID, entityId));
 
-        public async Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string externalRef, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default) {
-            var exists = await Db.ScalarAsync<string?>(QRY_INSTANCE.GET_GUID_BY_PARENT_AND_EXTERNAL_REF, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef));
+        public Task<DbRow?> GetByDefIdAndEntityIdAsync(long defId, string entityId, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_INSTANCE.GET_BY_DEF_ID_AND_ENTITY_ID, load, (DEF_ID, defId), (ENTITY_ID, entityId));
+
+        public async Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string entityId, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default) {
+            var exists = await Db.ScalarAsync<string?>(QRY_INSTANCE.GET_GUID_BY_DEF_VERSION_AND_ENTITY_ID, load, (PARENT_ID, defVersionId), (ENTITY_ID, entityId));
             if (!string.IsNullOrWhiteSpace(exists)) return exists;
-            return await Db.ScalarAsync<string?>(QRY_INSTANCE.UPSERT_BY_PARENT_AND_EXTERNAL_REF_RETURN_GUID, load, (PARENT_ID, defVersionId), (EXTERNAL_REF, externalRef), (STATE_ID, currentStateId), (EVENT_ID, lastEventId), (POLICY_ID, policyId), (FLAGS, flags));
+            return await Db.ScalarAsync<string?>(QRY_INSTANCE.UPSERT_BY_DEF_ID_AND_ENTITY_ID_RETURN_GUID, load, (PARENT_ID, defVersionId), (ENTITY_ID, entityId), (STATE_ID, currentStateId), (EVENT_ID, lastEventId), (POLICY_ID, policyId), (FLAGS, flags));
         }
-        
+
         public Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.UPDATE_CURRENT_STATE_CAS, load, (ID, instanceId), (FROM_ID, expectedFromStateId), (TO_ID, newToStateId), (EVENT_ID, lastEventId));
 
@@ -34,7 +37,7 @@ namespace Haley.Internal {
             => Db.ExecAsync(QRY_INSTANCE.REMOVE_FLAGS, load, (ID, instanceId), (FLAGS, flags));
 
         public Task<int> SetMessageAsync(long instanceId, string? message, DbExecutionLoad load = default)
-       => Db.ExecAsync(QRY_INSTANCE.SET_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (MESSAGE, message));
+            => Db.ExecAsync(QRY_INSTANCE.SET_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (MESSAGE, message));
 
         public Task<int> ClearMessageAsync(long instanceId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.CLEAR_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId));
@@ -54,7 +57,8 @@ namespace Haley.Internal {
         public Task<int> UnsetFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.UNSUSPEND_BY_ID, load, (INSTANCE_ID, instanceId), (FLAGS, flags));
 
-        public Task<DbRows> ListStaleByDefaultStateDurationPagedAsync(int staleSeconds, int processedAckStatus, uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default) => Db.RowsAsync(QRY_INSTANCE.LIST_STALE_BY_DEFAULT_STATE_DURATION_PAGED, load, (STALE_SECONDS, staleSeconds), (ACK_STATUS, processedAckStatus), (FLAGS, excludedInstanceFlagsMask), (SKIP, skip), (TAKE, take));
+        public Task<DbRows> ListStaleByDefaultStateDurationPagedAsync(int staleSeconds, int processedAckStatus, uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_INSTANCE.LIST_STALE_BY_DEFAULT_STATE_DURATION_PAGED, load, (STALE_SECONDS, staleSeconds), (ACK_STATUS, processedAckStatus), (FLAGS, excludedInstanceFlagsMask), (SKIP, skip), (TAKE, take));
 
         public Task<DbRows> ListByFlagsAndDefVersionPagedAsync(long defVersionId, uint flagsMask, int skip, int take, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_INSTANCE.LIST_BY_FLAGS_AND_DEF_VERSION_PAGED, load, (PARENT_ID, defVersionId), (FLAGS, flagsMask), (SKIP, skip), (TAKE, take));
