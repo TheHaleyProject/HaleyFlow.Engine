@@ -6,8 +6,8 @@ namespace Haley.Internal {
     internal sealed class MariaLifeCycleDAL : MariaDALBase, ILifeCycleDAL {
         public MariaLifeCycleDAL(IDALUtilBase db) : base(db) { }
 
-        public Task<long> InsertAsync(long instanceId, long fromStateId, long toStateId, long eventId, DbExecutionLoad load = default)
-            => Db.ScalarAsync<long>(QRY_LIFECYCLE.INSERT, load, (INSTANCE_ID, instanceId), (FROM_ID, fromStateId), (TO_ID, toStateId), (EVENT_ID, eventId));
+        public Task<long> InsertAsync(long instanceId, long fromStateId, long toStateId, long eventId, DateTime? occurred = null, DbExecutionLoad load = default)
+            => Db.ScalarAsync<long>(QRY_LIFECYCLE.INSERT, load, (INSTANCE_ID, instanceId), (FROM_ID, fromStateId), (TO_ID, toStateId), (EVENT_ID, eventId), (OCCURRED, (object?)occurred ?? DBNull.Value));
 
         public Task<DbRow?> GetLastByInstanceAsync(long instanceId, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_LIFECYCLE.GET_LAST_BY_INSTANCE, load, (INSTANCE_ID, instanceId));

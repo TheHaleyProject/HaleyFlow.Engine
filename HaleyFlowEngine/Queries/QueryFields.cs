@@ -50,6 +50,7 @@ namespace Haley.Internal {
         public const string ON_ENTRY = "@ON_ENTRY";
         public const string ROUTE = "@ROUTE";
         public const string BLOCKING = "@BLOCKING";
+        public const string OCCURRED = "@OCCURRED";
 
         public const string ACK_ID = "@ACK_ID";
         public const string LC_ID = "@LC_ID";

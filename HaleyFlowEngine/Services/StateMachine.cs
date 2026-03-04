@@ -31,7 +31,7 @@ namespace Haley.Services {
             return row;
         }
 
-        public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DbExecutionLoad load = default) {
+        public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? requestId, string? actor, IReadOnlyDictionary<string, object?>? payload, DateTimeOffset? occurredAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (bp == null) throw new ArgumentNullException(nameof(bp));
             if (instance == null) throw new ArgumentNullException(nameof(instance));
@@ -64,7 +64,7 @@ namespace Haley.Services {
             var cas = await _dal.Instance.UpdateCurrentStateCasAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);
             if (cas != 1) { res.Reason = "ConcurrencyConflict"; return res; }
 
-            var lcId = await _dal.LifeCycle.InsertAsync(instanceId, fromStateId, res.ToStateId, ev.Id, load);
+            var lcId = await _dal.LifeCycle.InsertAsync(instanceId, fromStateId, res.ToStateId, ev.Id, occurredAt?.UtcDateTime, load);
             res.Applied = true;
             res.LifeCycleId = lcId;
 

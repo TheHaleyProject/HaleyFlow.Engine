@@ -86,7 +86,7 @@ namespace Haley.Services {
 
                 var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); //latest policy
                 instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
-                transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, load);
+                transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, req.OccurredAt, load);
 
                 var result = new LifeCycleTriggerResult {
                     Applied = transition.Applied,
@@ -140,7 +140,7 @@ namespace Haley.Services {
                     DefinitionVersionId = bp.DefVersionId,
                     ExternalRef = req.ExternalRef,
                     RequestId = req.RequestId,
-                    OccurredAt = DateTimeOffset.UtcNow,
+                    OccurredAt = req.OccurredAt ?? DateTimeOffset.UtcNow,
                     AckGuid = lcAckGuid,
                     AckRequired = req.AckRequired,
                     Payload = req.Payload,
