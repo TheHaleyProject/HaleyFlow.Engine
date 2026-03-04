@@ -46,12 +46,15 @@ namespace Haley.Services {
             return pr;
         }
 
-        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
+        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, string? resolvedPolicyJson = null) {
             load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
 
-            var pol = await _dal.Blueprint.GetPolicyForDefinition(bp.DefinitionId ,load);
-            var policyJson = pol?.GetString("content");
+            string? policyJson = resolvedPolicyJson;
+            if (string.IsNullOrWhiteSpace(policyJson)) {
+                var pol = await _dal.Blueprint.GetPolicyForDefinition(bp.DefinitionId, load);
+                policyJson = pol?.GetString("content");
+            }
             if (string.IsNullOrWhiteSpace(policyJson)) return Array.Empty<ILifeCycleHookEmission>();
 
             if (!bp.StatesById.TryGetValue(applied.ToStateId, out var toState)) return Array.Empty<ILifeCycleHookEmission>();
@@ -74,7 +77,6 @@ namespace Haley.Services {
 
                     IReadOnlyDictionary<string, object?>? data = null;
                     if (p.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object) {
-                        // Use your existing helper pattern (same as payload)
                         data = p.GetDictionary("data");
                     }
                     paramCatalog[code!] = data;
@@ -95,8 +97,9 @@ namespace Haley.Services {
                     if (!viaCode.HasValue || viaCode.Value != viaEvent.Code) continue;
                 }
 
-                // rule-level param codes (array)
+                // rule-level param codes and blocking default
                 var ruleParamCodes = ReadParamCodes(rule, "params");
+                var ruleBlocking = ReadOptionalBool(rule, "blocking") ?? true;
 
                 if (!rule.TryGetProperty("emit", out var emitEl) || emitEl.ValueKind != JsonValueKind.Array) continue;
 
@@ -108,7 +111,10 @@ namespace Haley.Services {
                     var hookCode = e.GetString("event");
                     if (string.IsNullOrWhiteSpace(hookCode)) continue;
 
-                    var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, load);
+                    // emit.blocking inherits from rule.blocking, defaults to true
+                    var emitBlocking = ReadOptionalBool(e, "blocking") ?? ruleBlocking;
+
+                    var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, emitBlocking, load);
 
                     var (emitSuccess, emitFailure) = ReadCompletionEvents(e);
 
@@ -134,12 +140,20 @@ namespace Haley.Services {
                         NotBefore = notBefore,
                         Deadline = deadline,
                         Payload = payload,
-                        Params = resolvedParams
+                        Params = resolvedParams,
+                        IsBlocking = emitBlocking
                     });
                 }
             }
-            
+
             return emissions;
+        }
+
+        private static bool? ReadOptionalBool(JsonElement obj, string propName) {
+            if (!obj.TryGetProperty(propName, out var el)) return null;
+            if (el.ValueKind == JsonValueKind.True) return true;
+            if (el.ValueKind == JsonValueKind.False) return false;
+            return null;
         }
 
         private static IReadOnlyList<string> ReadParamCodes(JsonElement obj, string propName) {

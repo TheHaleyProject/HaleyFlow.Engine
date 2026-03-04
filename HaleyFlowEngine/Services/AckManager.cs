@@ -202,6 +202,7 @@ namespace Haley.Services {
                     HookId = r.GetLong("hook_id"),
                     OnEntry = r.GetBool("on_entry"),
                     HookCode = r.GetString("route") ?? string.Empty,
+                    IsBlocking = r.GetBool("blocking"),
                     OnSuccessEvent = null,
                     OnFailureEvent = null,
                     NotBefore = null,

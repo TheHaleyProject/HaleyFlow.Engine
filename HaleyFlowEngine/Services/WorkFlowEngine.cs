@@ -191,7 +191,8 @@ namespace Haley.Services {
                             OnFailureEvent = he.OnFailureEvent ?? string.Empty,
                             Params = he.Params,
                             NotBefore = he.NotBefore,
-                            Deadline = he.Deadline
+                            Deadline = he.Deadline,
+                            IsBlocking = he.IsBlocking
                         };
                         toDispatch.Add(hookEvent);
                     }
@@ -331,13 +332,19 @@ namespace Haley.Services {
                 if (item.TriggerCount >= _opt.MaxRetryCount) {
                     await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
 
-                    var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
-                    if (instanceId > 0) {
-                        var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
-                        await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
-                        FireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
+                    var isBlocking = item.Event is ILifeCycleHookEvent hev && hev.IsBlocking;
+                    if (isBlocking) {
+                        var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
+                        if (instanceId > 0) {
+                            var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
+                            await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
+                            FireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
+                        } else {
+                            FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                        }
                     } else {
-                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                        var hookCode = item.Event is ILifeCycleHookEvent h ? h.HookCode : string.Empty;
+                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Non-blocking hook failed after max retries. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} hook={hookCode} instance={item.Event.InstanceGuid}"));
                     }
 
                     continue;
