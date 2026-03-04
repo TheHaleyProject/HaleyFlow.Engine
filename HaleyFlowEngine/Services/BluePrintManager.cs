@@ -1,4 +1,4 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
@@ -89,7 +89,7 @@ namespace Haley.Services {
                 if (isInitial) { if (initialStateId != 0) throw new InvalidOperationException($"Multiple initial states detected. defVersionId={defVersionId}"); initialStateId = st.Id; }
             }
 
-            if (initialStateId == 0 && statesById.Count > 0) initialStateId = statesById.Values.First().Id; // keep fallback if you want; otherwise throw
+            if (initialStateId == 0 && statesById.Count > 0) throw new InvalidOperationException($"No initial state defined for defVersionId={defVersionId}. Mark exactly one state with is_initial=true.");
 
             var eventsById = new Dictionary<long, EventDef>();
             var eventsByName = new Dictionary<string, EventDef>(StringComparer.OrdinalIgnoreCase);

@@ -31,44 +31,4 @@ namespace Haley.Internal {
         public const string DELETE = $@"DELETE FROM runtime WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM runtime WHERE instance_id = {INSTANCE_ID};";
     }
-
-    internal class QRY_RUNTIME_DATA {
-        public const string EXISTS_BY_ID = $@"SELECT 1 FROM runtime_data WHERE runtime = {ID} LIMIT 1;";
-        public const string GET_BY_ID = $@"SELECT * FROM runtime_data WHERE runtime = {ID} LIMIT 1;";
-
-        // runtime is PK; return it as id for consistency
-        public const string UPSERT = $@"INSERT INTO runtime_data (runtime, data, payload) VALUES ({ID}, {DATA}, {PAYLOAD}) ON DUPLICATE KEY UPDATE data = VALUES(data), payload = VALUES(payload); SELECT {ID} AS id;";
-
-        public const string DELETE = $@"DELETE FROM runtime_data WHERE runtime = {ID};";
-    }
-
-    internal class QRY_ACTIVITY {
-        public const string EXISTS_BY_ID = $@"SELECT 1 FROM activity WHERE id = {ID} LIMIT 1;";
-        public const string EXISTS_BY_NAME = $@"SELECT 1 FROM activity WHERE name = lower(trim({NAME})) LIMIT 1;";
-
-        public const string GET_BY_ID = $@"SELECT * FROM activity WHERE id = {ID} LIMIT 1;";
-        public const string GET_BY_NAME = $@"SELECT * FROM activity WHERE name = lower(trim({NAME})) LIMIT 1;";
-
-        public const string LIST_ALL = $@"SELECT * FROM activity ORDER BY id;";
-
-        // NOTE: activity.name is GENERATED from display_name (do not set name)
-        public const string INSERT = $@"INSERT INTO activity (display_name) VALUES ({DISPLAY_NAME}); SELECT LAST_INSERT_ID() AS id;";
-        public const string UPDATE = $@"UPDATE activity SET display_name = {DISPLAY_NAME} WHERE id = {ID};";
-        public const string DELETE = $@"DELETE FROM activity WHERE id = {ID};";
-    }
-
-    internal class QRY_ACTIVITY_STATUS {
-        public const string EXISTS_BY_ID = $@"SELECT 1 FROM activity_status WHERE id = {ID} LIMIT 1;";
-        public const string EXISTS_BY_NAME = $@"SELECT 1 FROM activity_status WHERE name = lower(trim({NAME})) LIMIT 1;";
-
-        public const string GET_BY_ID = $@"SELECT * FROM activity_status WHERE id = {ID} LIMIT 1;";
-        public const string GET_BY_NAME = $@"SELECT * FROM activity_status WHERE name = lower(trim({NAME})) LIMIT 1;";
-
-        public const string LIST_ALL = $@"SELECT * FROM activity_status ORDER BY id;";
-
-        // NOTE: activity_status.name is GENERATED from display_name (do not set name)
-        public const string INSERT = $@"INSERT INTO activity_status (display_name) VALUES ({DISPLAY_NAME}); SELECT LAST_INSERT_ID() AS id;";
-        public const string UPDATE = $@"UPDATE activity_status SET display_name = {DISPLAY_NAME} WHERE id = {ID};";
-        public const string DELETE = $@"DELETE FROM activity_status WHERE id = {ID};";
-    }
 }

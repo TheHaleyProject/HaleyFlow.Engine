@@ -79,11 +79,7 @@ namespace Haley.Services {
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
                 // expected on stop
             } catch (Exception ex) {
-                if (_onError != null) { 
-                    _onError.Invoke(ex); 
-                } else {
-                    Console.WriteLine(ex.StackTrace);
-                }
+                _onError?.Invoke(ex);
             }
         }
 

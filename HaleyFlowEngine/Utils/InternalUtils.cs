@@ -12,12 +12,21 @@ using System.Text.Json.Nodes;
 
 namespace Haley.Utils {
     internal static class InternalUtils {
+        internal const string KEY_STATES = "states";
+        internal const string KEY_EVENTS = "events";
+        internal const string KEY_TRANSITIONS = "transitions";
+        internal const string KEY_POLICYNAME = "policy_name";
+        internal const string KEY_PARAMS = "params";
+        internal const string KEY_RULES = "rules";
+        internal const string KEY_TIMEOUT = "timeouts";
+
+
         public static string BuildDefinitionHashMaterial(this JsonElement root) {
             // keep ONLY states/events/transitions
             var obj = new JsonObject {
-                ["states"] = BuildSanitizedStatesForHash(root),
-                ["events"] = root.TryGetProperty("events", out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
-                ["transitions"] = root.TryGetProperty("transitions", out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
+                [KEY_STATES] = BuildSanitizedStatesForHash(root),
+                [KEY_EVENTS] = root.TryGetProperty(KEY_EVENTS, out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
+                [KEY_TRANSITIONS] = root.TryGetProperty(KEY_TRANSITIONS, out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
             };
 
             var canon = obj.Canonicalize(); //ignore case..
@@ -25,19 +34,19 @@ namespace Haley.Utils {
         }
 
         public static string BuildPolicyHashMaterial(this JsonElement root) {
-            // keep ONLY policy_name/policies/routes (ignore "for")
+            // keep ONLY policy_name/rules/params/timeouts (ignore "for")
             var obj = new JsonObject {
-                ["policy_name"] = root.TryGetProperty("policy_name", out var pn) ? pn.GetString() : (string?)null,
-                ["policies"] = root.TryGetProperty("policies", out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
-                ["routes"] = root.TryGetProperty("routes", out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
-                ["timeouts"] = root.TryGetProperty("timeouts", out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
+                [KEY_POLICYNAME] = root.TryGetProperty(KEY_POLICYNAME, out var pn) ? pn.GetString() : (string?)null,
+                [KEY_RULES] = root.TryGetProperty(KEY_RULES, out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
+                [KEY_PARAMS] = root.TryGetProperty(KEY_PARAMS, out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
+                [KEY_TIMEOUT] = root.TryGetProperty(KEY_TIMEOUT, out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
             };
 
             var canon = obj.Canonicalize();
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
         static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
-            if (!root.TryGetProperty("states", out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
+            if (!root.TryGetProperty(KEY_STATES, out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
                 return new JsonArray();
 
             var arr = new JsonArray();

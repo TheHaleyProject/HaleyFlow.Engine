@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS `hook` (
   `route` varchar(180) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `instance_id` bigint(20) NOT NULL,
+  `blocking` bit(1) NOT NULL DEFAULT b'1' COMMENT 'should the instance be allowed to move to next state in case this hook is failed or not? If blocking, this is crucial for next step.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hooks` (`instance_id`,`state_id`,`via_event`,`on_entry`,`route`),
   CONSTRAINT `fk_hooks_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
@@ -271,6 +272,7 @@ CREATE TABLE IF NOT EXISTS `lifecycle` (
   `event` int(11) NOT NULL,
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `instance_id` bigint(20) NOT NULL,
+  `occurred` datetime DEFAULT NULL COMMENT 'In case of a replay or late join, a lifecycle event would have occured at a different time.. But would be created or captured in the engine at a different time.. So, we need occurred time for proper capturing.',
   PRIMARY KEY (`id`),
   KEY `fk_transition_log_instance` (`instance_id`),
   CONSTRAINT `fk_transition_log_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION

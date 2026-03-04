@@ -108,8 +108,10 @@ namespace Haley.Services {
             using var doc = JsonDocument.Parse(policyJson);
             var root = doc.RootElement;
 
-            var defName = root.GetString("defName") ?? root.GetString("definitionName") ?? root.GetString("name") ?? root.GetString("displayName");
-            if (string.IsNullOrWhiteSpace(defName)) throw new InvalidOperationException("Policy JSON missing defName/definitionName/name/displayName.");
+            string? defName = root.GetString("defName") ?? root.GetString("definitionName") ?? root.GetString("name") ?? root.GetString("displayName");
+            if (string.IsNullOrWhiteSpace(defName) && root.TryGetProperty("for", out var forEl) && forEl.ValueKind == JsonValueKind.Object)
+                defName = forEl.GetString("definition") ?? forEl.GetString("name");
+            if (string.IsNullOrWhiteSpace(defName)) throw new InvalidOperationException("Policy JSON missing defName/definitionName/name/displayName/for.definition.");
 
             var transaction = _dal.CreateNewTransaction();
             using var tx = transaction.Begin(false);

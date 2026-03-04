@@ -1,4 +1,4 @@
-﻿using static Haley.Internal.QueryFields;
+using static Haley.Internal.QueryFields;
 
 namespace Haley.Internal {
     internal class QRY_INSTANCE {
@@ -57,58 +57,6 @@ namespace Haley.Internal {
 
         public const string GET_TIMELINE_JSON_BY_INSTANCE_ID = $@"WITH inst AS ( SELECT * FROM instance WHERE id = {INSTANCE_ID} LIMIT 1 ), timeline AS ( SELECT JSON_ARRAYAGG( JSON_OBJECT( 'lifecycle_id', l.id, 'created', l.created, 'from_state', sf.display_name, 'to_state', st.display_name, 'event', ev.display_name, 'event_code', ev.code, 'actor', ld.actor, 'activities', COALESCE(( SELECT JSON_ARRAYAGG( JSON_OBJECT( 'runtime_id', r.id, 'lc_id', r.lc_id, 'state', rs.display_name, 'actor_id', r.actor_id, 'activity', act.display_name, 'status', ast.display_name, 'created', r.created, 'modified', r.modified, 'frozen', IF(r.frozen = 1, JSON_EXTRACT('true','$'), JSON_EXTRACT('false','$')) ) ) FROM runtime r JOIN state rs ON rs.id = r.state_id JOIN activity act ON act.id = r.activity JOIN activity_status ast ON ast.id = r.status WHERE r.instance_id = i.id AND r.lc_id = l.id ), JSON_ARRAY()) ) ) AS j FROM inst i JOIN lifecycle l ON l.instance_id = i.id JOIN state sf ON sf.id = l.from_state JOIN state st ON st.id = l.to_state JOIN events ev ON ev.id = l.event LEFT JOIN lc_data ld ON ld.lc_id = l.id ), other_activities AS ( SELECT JSON_ARRAYAGG( JSON_OBJECT( 'runtime_id', r.id, 'lc_id', r.lc_id, 'state', rs.display_name, 'actor_id', r.actor_id, 'activity', act.display_name, 'status', ast.display_name, 'created', r.created, 'modified', r.modified, 'frozen', IF(r.frozen = 1, JSON_EXTRACT('true','$'), JSON_EXTRACT('false','$')) ) ) AS j FROM inst i JOIN runtime r ON r.instance_id = i.id JOIN state rs ON rs.id = r.state_id JOIN activity act ON act.id = r.activity JOIN activity_status ast ON ast.id = r.status WHERE (r.lc_id = 0 OR NOT EXISTS ( SELECT 1 FROM lifecycle l2 WHERE l2.id = r.lc_id AND l2.instance_id = r.instance_id )) ) SELECT JSON_OBJECT( 'instance', JSON_OBJECT( 'id', i.id, 'guid', i.guid, 'external_ref', i.external_ref, 'def_version', i.def_version, 'current_state', i.current_state, 'last_event', i.last_event, 'created', i.created, 'modified', i.modified ), 'timeline', COALESCE(t.j, JSON_ARRAY()), 'Other Activities', COALESCE(o.j, JSON_ARRAY()) ) AS json FROM inst i LEFT JOIN timeline t ON 1=1 LEFT JOIN other_activities o ON 1=1;";
 
-        public const string LIST_STALE_BY_DEFAULT_STATE_DURATION_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.external_ref AS external_ref, i.def_version AS def_version_id, i.current_state AS current_state_id, s.display_name AS state_name, l.id AS lc_id, l.created AS entered_at, TIMESTAMPDIFF(SECOND, l.created, UTC_TIMESTAMP()) AS stale_seconds FROM instance i JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version JOIN lifecycle l ON l.id = (SELECT l2.id FROM lifecycle l2 WHERE l2.instance_id = i.id AND l2.to_state = i.current_state ORDER BY l2.id DESC LIMIT 1) WHERE (i.flags & {FLAGS}) = 0 AND (s.timeout_minutes IS NULL OR s.timeout_event IS NULL) AND l.created <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL {STALE_SECONDS} SECOND) AND NOT EXISTS (SELECT 1 FROM lc_ack la JOIN ack_consumer ac ON ac.ack_id = la.ack_id WHERE la.lc_id = l.id AND ac.status <> {ACK_STATUS}) AND NOT EXISTS (SELECT 1 FROM hook h JOIN hook_ack ha ON ha.hook_id = h.id JOIN ack_consumer ac2 ON ac2.ack_id = ha.ack_id WHERE h.instance_id = i.id AND h.state_id = i.current_state AND ac2.status <> {ACK_STATUS}) ORDER BY l.created ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
-    }
-    internal class QRY_HOOK {
-        public const string EXISTS_BY_ID = $@"SELECT 1 FROM hook WHERE id = {ID} LIMIT 1;";
-        public const string EXISTS_BY_KEY = $@"SELECT 1 FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND via_event = {EVENT_ID} AND on_entry = {ON_ENTRY} AND route = {ROUTE} LIMIT 1;";
-
-        public const string GET_BY_ID = $@"SELECT * FROM hook WHERE id = {ID} LIMIT 1;";
-        public const string GET_BY_KEY =
-        $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND via_event = {EVENT_ID} AND on_entry = {ON_ENTRY} AND route = {ROUTE}  LIMIT 1;";
-        public const string LIST_BY_INSTANCE = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC;";
-        public const string LIST_BY_INSTANCE_AND_STATE = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} ORDER BY created DESC, id DESC;";
-        public const string LIST_BY_INSTANCE_STATE_ENTRY = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND on_entry = {ON_ENTRY} ORDER BY created DESC, id DESC;";
-
-        public const string INSERT = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE}); SELECT LAST_INSERT_ID() AS id;";
-
-        public const string UPSERT_BY_KEY_RETURN_ID = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;";
-
-        public const string DELETE = $@"DELETE FROM hook WHERE id = {ID};";
-        public const string DELETE_BY_INSTANCE = $@"DELETE FROM hook WHERE instance_id = {INSTANCE_ID};";
-    }
-    internal class QRY_LC_DATA {
-        public const string EXISTS_BY_ID = $@"SELECT 1 FROM lc_data WHERE lc_id = {ID} LIMIT 1;";
-        public const string GET_BY_ID = $@"SELECT * FROM lc_data WHERE lc_id = {ID} LIMIT 1;";
-
-        // lc_id is the PK; return it as id for consistency
-        public const string UPSERT = $@"INSERT INTO lc_data (lc_id, actor, payload) VALUES ({ID}, {ACTOR}, {PAYLOAD}) ON DUPLICATE KEY UPDATE actor = VALUES(actor), payload = VALUES(payload); SELECT {ID} AS id;";
-
-        public const string DELETE = $@"DELETE FROM lc_data WHERE lc_id = {ID};";
-    }
-    internal class QRY_LIFECYCLE {
-        public const string EXISTS_BY_ID = $@"SELECT 1 FROM lifecycle WHERE id = {ID} LIMIT 1;";
-
-        public const string GET_BY_ID = $@"SELECT * FROM lifecycle WHERE id = {ID} LIMIT 1;";
-        public const string GET_LAST_BY_INSTANCE = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC LIMIT 1;";
-
-        public const string LIST_BY_INSTANCE = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC;";
-        public const string LIST_BY_INSTANCE_PAGED = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC LIMIT {TAKE} OFFSET {SKIP};";
-
-        public const string INSERT = $@"INSERT INTO lifecycle (from_state, to_state, event, instance_id) VALUES ({FROM_ID}, {TO_ID}, {EVENT_ID}, {INSTANCE_ID}); SELECT LAST_INSERT_ID() AS id;";
-
-        public const string DELETE = $@"DELETE FROM lifecycle WHERE id = {ID};";
-        public const string DELETE_BY_INSTANCE = $@"DELETE FROM lifecycle WHERE instance_id = {INSTANCE_ID};";
-    }
-    internal class QRY_LC_TIMEOUT {
-
-        public const string EXISTS_BY_LC_ID = $@"SELECT 1 FROM lc_timeout WHERE lc_id = {LC_ID} LIMIT 1;";
-        public const string INSERT_IGNORE = $@"INSERT IGNORE INTO lc_timeout (lc_id) VALUES ({LC_ID});";
-        public const string DELETE_BY_LC_ID = $@"DELETE FROM lc_timeout WHERE lc_id = {LC_ID};";
-
-        // Due timeouts (no record yet) based on latest lifecycle entry == current state
-        // NOTE: requires each instance to have at least one lifecycle row for current_state 
-        public const string LIST_DUE_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.external_ref AS external_ref, i.def_version AS def_version_id, i.current_state AS state_id, l.id AS entry_lc_id, l.created AS entered_at, tm.duration AS timeout_duration, tm.mode AS timeout_mode, tm.event_code AS timeout_event_code, DATE_ADD(l.created, INTERVAL tm.duration MINUTE) AS due_at FROM instance i JOIN lifecycle l ON l.id = (SELECT MAX(l2.id) FROM lifecycle l2 WHERE l2.instance_id = i.id) JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version JOIN timeouts tm ON tm.policy_id = i.policy_id AND tm.state_name = s.name LEFT JOIN lc_timeout lt ON lt.lc_id = l.id WHERE (i.flags & {FLAGS}) = 0 AND l.to_state = i.current_state AND tm.duration > 0 AND tm.event_code IS NOT NULL AND lt.lc_id IS NULL AND DATE_ADD(l.created, INTERVAL tm.duration MINUTE) <= UTC_TIMESTAMP() ORDER BY due_at ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
-
+        public const string LIST_STALE_BY_DEFAULT_STATE_DURATION_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.external_ref AS external_ref, i.def_version AS def_version_id, i.current_state AS current_state_id, s.display_name AS state_name, l.id AS lc_id, l.created AS entered_at, TIMESTAMPDIFF(SECOND, l.created, UTC_TIMESTAMP()) AS stale_seconds FROM instance i JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version JOIN lifecycle l ON l.id = (SELECT l2.id FROM lifecycle l2 WHERE l2.instance_id = i.id AND l2.to_state = i.current_state ORDER BY l2.id DESC LIMIT 1) WHERE (i.flags & {FLAGS}) = 0 AND NOT EXISTS (SELECT 1 FROM timeouts tm WHERE tm.policy_id = i.policy_id AND tm.state_name = s.name AND tm.event_code IS NOT NULL) AND l.created <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL {STALE_SECONDS} SECOND) AND NOT EXISTS (SELECT 1 FROM lc_ack la JOIN ack_consumer ac ON ac.ack_id = la.ack_id WHERE la.lc_id = l.id AND ac.status <> {ACK_STATUS}) AND NOT EXISTS (SELECT 1 FROM hook h JOIN hook_ack ha ON ha.hook_id = h.id JOIN ack_consumer ac2 ON ac2.ack_id = ha.ack_id WHERE h.instance_id = i.id AND h.state_id = i.current_state AND ac2.status <> {ACK_STATUS}) ORDER BY l.created ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
     }
 }

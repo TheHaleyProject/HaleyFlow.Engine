@@ -6,7 +6,7 @@
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
@@ -38,7 +38,7 @@
     Failed=4]]></comment>
 			</column>
 			<column name="last_trigger" prior="last_retry" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 				<comment><![CDATA[when was the last time, this trigger was initiated.. Whenever we send the ack to consumer, we mark it.]]></comment>
 			</column>
 			<column name="trigger_count" prior="retry_count" type="INT" mandatory="y" >
@@ -47,13 +47,13 @@
 			</column>
 			<column name="next_due" type="DATETIME" />
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
-			<index name="pk_ack_log" unique="PRIMARY_KEY" >
+			<index name="pk_ack_consumer" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_ack_consumer" unique="UNIQUE_KEY" >
@@ -83,9 +83,9 @@
 			</column>
 			<column name="display_name" type="VARCHAR" length="140" mandatory="y" />
 			<column name="name" type="VARCHAR" length="140" >
-				<identity><![CDATA[GENERATED ALWAYS AS ( lower(trim(display_name)) ) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
-			<index name="pk_runtime_activity" unique="PRIMARY_KEY" >
+			<index name="pk_activity" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<options><![CDATA[engine=InnoDB
@@ -99,9 +99,9 @@
 			</column>
 			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
 			<column name="name" type="VARCHAR" length="120" >
-				<identity><![CDATA[GENERATED ALWAYS AS ( lower(trim(display_name)) ) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
-			<index name="pk_ext_state" unique="PRIMARY_KEY" >
+			<index name="pk_activity_status" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<options><![CDATA[engine=InnoDB
@@ -114,9 +114,9 @@
 			</column>
 			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
 			<column name="name" type="VARCHAR" length="120" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
-			<index name="pk_tbl" unique="PRIMARY_KEY" >
+			<index name="pk_category" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_category" unique="UNIQUE_KEY" >
@@ -135,12 +135,12 @@
 				<comment><![CDATA[guid expected]]></comment>
 			</column>
 			<column name="last_beat" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 				<comment><![CDATA[consumer is nothing but the application.. application should notify that it is still running.. by updating itself, here.. if this application has crashed down, we should identify, when it was last working..
 
 lets say every 10 seconds, we expect the beat..]]></comment>
 			</column>
-			<index name="pk_consumer_beat" unique="PRIMARY_KEY" >
+			<index name="pk_consumer" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_consumer_beat" unique="UNIQUE_KEY" >
@@ -158,10 +158,13 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<column name="definition" type="INT" mandatory="y" />
 			<column name="policy" type="INT" mandatory="y" />
 			<column name="modified" prior="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
-			<index name="pk_definition_policy" unique="PRIMARY_KEY" >
+			<index name="pk_def_policies" unique="PRIMARY_KEY" >
 				<column name="definition" />
+				<column name="policy" />
+			</index>
+			<index name="fk_def_policies_policy" unique="NORMAL" >
 				<column name="policy" />
 			</index>
 			<fk name="fk_def_policies_definition" to_schema="lcstate" to_table="definition" >
@@ -183,10 +186,10 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<defo><![CDATA[1]]></defo>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
 			<column name="parent" type="INT" mandatory="y" />
@@ -231,7 +234,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
 			<column name="description" type="TEXT" />
 			<column name="id" type="INT" mandatory="y" >
@@ -239,7 +242,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<comment><![CDATA[it should be a code provided by the user.]]></comment>
 			</column>
 			<column name="created" prior="created_at" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<index name="pk_definition" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -272,7 +275,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			</column>
 			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
 			<column name="name" type="VARCHAR" length="120" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
 			<column name="code" type="INT" mandatory="y" />
 			<column name="guid" type="VARCHAR" length="42" mandatory="y" >
@@ -301,7 +304,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
 			<column name="code" type="INT" mandatory="y" />
 			<column name="name" type="VARCHAR" length="120" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
 			<column name="def_version" type="INT" mandatory="y" />
 			<index name="pk_events" unique="PRIMARY_KEY" >
@@ -340,10 +343,14 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<comment><![CDATA[event or the route name that needs to be triggered or hooked.]]></comment>
 			</column>
 			<column name="created" prior="creted" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="instance_id" type="BIGINT" mandatory="y" />
-			<index name="pk_hooks" unique="PRIMARY_KEY" >
+			<column name="blocking" type="BIT" mandatory="y" >
+				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[should the instance be allowed to move to next state in case this hook is failed or not? If blocking, this is crucial for next step.]]></comment>
+			</column>
+			<index name="pk_hook" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_hooks" unique="UNIQUE_KEY" >
@@ -401,11 +408,11 @@ failed = 8,
 archive = 16]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="def_version" type="INT" mandatory="y" />
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 			</column>
 			<column name="id" type="BIGINT" mandatory="y" >
@@ -466,7 +473,7 @@ archive = 16]]></comment>
 			<column name="payload" prior="metadata" type="LONGTEXT" >
 				<comment><![CDATA[Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)]]></comment>
 			</column>
-			<index name="pk_transition_data" unique="PRIMARY_KEY" >
+			<index name="pk_lc_data" unique="PRIMARY_KEY" >
 				<column name="lc_id" />
 			</index>
 			<fk name="fk_transition_data_transition_log" to_schema="lcstate" to_table="lifecycle" >
@@ -477,9 +484,9 @@ archive = 16]]></comment>
 		<table name="lc_timeout" prior="timeout" >
 			<column name="lc_id" type="BIGINT" mandatory="y" />
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
-			<index name="pk_timeout" unique="PRIMARY_KEY" >
+			<index name="pk_lc_timeout" unique="PRIMARY_KEY" >
 				<column name="lc_id" />
 			</index>
 			<fk name="fk_timeout_lifecycle" to_schema="lcstate" to_table="lifecycle" >
@@ -496,10 +503,13 @@ archive = 16]]></comment>
 			<column name="to_state" type="INT" mandatory="y" />
 			<column name="event" type="INT" mandatory="y" />
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="instance_id" type="BIGINT" mandatory="y" />
-			<index name="pk_transition_log" unique="PRIMARY_KEY" >
+			<column name="occurred" type="DATETIME" >
+				<comment><![CDATA[In case of a replay or late join, a lifecycle event would have occured at a different time.. But would be created or captured in the engine at a different time.. So, we need occurred time for proper capturing.]]></comment>
+			</column>
+			<index name="pk_lifecycle" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="fk_transition_log_instance" unique="NORMAL" >
@@ -523,7 +533,7 @@ archive = 16]]></comment>
 				<comment><![CDATA[supposedly the policy json]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<index name="pk_policy" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -545,10 +555,10 @@ archive = 16]]></comment>
 			</column>
 			<column name="status" prior="runtime_state" type="INT" mandatory="y" />
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="frozen" type="BIT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
@@ -560,7 +570,7 @@ archive = 16]]></comment>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
 			</column>
-			<index name="pk_micro_log" unique="PRIMARY_KEY" >
+			<index name="pk_runtime" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_execution" unique="UNIQUE_KEY" >
@@ -568,6 +578,12 @@ archive = 16]]></comment>
 				<column name="state_id" />
 				<column name="activity" />
 				<column name="actor_id" />
+			</index>
+			<index name="fk_execution_runtime_state" unique="NORMAL" >
+				<column name="status" />
+			</index>
+			<index name="fk_runtime_activity" unique="NORMAL" >
+				<column name="activity" />
 			</index>
 			<fk name="fk_execution_runtime_state" to_schema="lcstate" to_table="activity_status" >
 				<fk_column name="status" pk="id" />
@@ -604,7 +620,7 @@ archive = 16]]></comment>
 			</column>
 			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
 			<column name="name" type="VARCHAR" length="200" >
-				<identity><![CDATA[GENERATED  ALWAYS AS (lower(trim(display_name))) PERSISTENT]]></identity>
+				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
 			</column>
 			<column name="category" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
@@ -618,7 +634,7 @@ is_system = 4
 is_error = 8]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="def_version" type="INT" mandatory="y" />
 			<index name="pk_state" unique="PRIMARY_KEY" >
@@ -653,7 +669,7 @@ is_error = 8]]></comment>
 			<column name="event_code" prior="timeout_event_code" type="INT" >
 				<comment><![CDATA[CODE]]></comment>
 			</column>
-			<index name="pk_policy_timeouts" unique="PRIMARY_KEY" >
+			<index name="pk_timeouts" unique="PRIMARY_KEY" >
 				<column name="policy_id" />
 				<column name="state_name" />
 			</index>
@@ -669,7 +685,7 @@ is_error = 8]]></comment>
 			<column name="from_state" type="INT" mandatory="y" />
 			<column name="to_state" type="INT" mandatory="y" />
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
 			</column>
 			<column name="def_version" prior="def" type="INT" mandatory="y" />
 			<column name="event" type="INT" mandatory="y" />
@@ -708,64 +724,66 @@ is_error = 8]]></comment>
 ]]></options>
 		</table>
 	</schema>
-	<layout name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
-		<entity schema="lcstate" name="lc_data" color="FFFF00" x="76" y="456" />
-		<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="589" />
-		<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
-		<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="513" />
-		<entity schema="lcstate" name="state" color="1A4D4D" x="893" y="114" />
-		<entity schema="lcstate" name="runtime_data" color="00FF00" x="76" y="1083" />
-		<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="988" />
-		<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="912" />
-		<entity schema="lcstate" name="lifecycle" color="FFFF00" x="247" y="608" />
-		<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="228" />
-		<entity schema="lcstate" name="lc_ack" color="FF00FF" x="190" y="228" />
-		<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="342" y="95" />
-		<entity schema="lcstate" name="transition" color="1A4D4D" x="684" y="95" />
-		<entity schema="lcstate" name="category" color="1A4D4D" x="912" y="323" />
-		<entity schema="lcstate" name="events" color="1A4D4D" x="684" y="285" />
-		<entity schema="lcstate" name="definition" color="0000FF" x="912" y="532" />
-		<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="494" />
-		<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="532" />
-		<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="760" />
-		<entity schema="lcstate" name="timeouts" color="0000FF" x="684" y="893" />
-		<entity schema="lcstate" name="consumer" color="0000FF" x="893" y="912" />
-		<entity schema="lcstate" name="environment" color="0000FF" x="912" y="741" />
-		<entity schema="lcstate" name="policy" color="0000FF" x="817" y="1064" />
-		<entity schema="lcstate" name="activity" color="00FF00" x="57" y="931" />
-		<group name="Blueprint - Definition" color="0000FF" >
-			<entity schema="lcstate" name="definition" />
-			<entity schema="lcstate" name="def_version" />
-			<entity schema="lcstate" name="def_policies" />
-			<entity schema="lcstate" name="timeouts" />
-			<entity schema="lcstate" name="consumer" />
-			<entity schema="lcstate" name="environment" />
-			<entity schema="lcstate" name="policy" />
-		</group>
-		<group name="Instance Core" color="FFFF00" >
-			<entity schema="lcstate" name="lc_data" />
-			<entity schema="lcstate" name="hook" />
-			<entity schema="lcstate" name="instance" />
-			<entity schema="lcstate" name="lifecycle" />
-			<entity schema="lcstate" name="lc_timeout" />
-		</group>
-		<group name="Runtime Activities" color="00FF00" >
-			<entity schema="lcstate" name="runtime_data" />
-			<entity schema="lcstate" name="activity_status" />
-			<entity schema="lcstate" name="runtime" />
-			<entity schema="lcstate" name="activity" />
-		</group>
-		<group name="Acknowledgement" color="FF00FF" >
-			<entity schema="lcstate" name="ack" />
-			<entity schema="lcstate" name="hook_ack" />
-			<entity schema="lcstate" name="lc_ack" />
-			<entity schema="lcstate" name="ack_consumer" />
-		</group>
-		<group name="Blueprint-State" color="1A4D4D" >
-			<entity schema="lcstate" name="state" />
-			<entity schema="lcstate" name="transition" />
-			<entity schema="lcstate" name="category" />
-			<entity schema="lcstate" name="events" />
-		</group>
-	</layout>
+	<diagram_group name="Default" id="e6e08298-9f38-4e2a-8a03-f84a7f7488e3" >
+		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
+			<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
+			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="342" y="95" />
+			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="931" />
+			<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="988" />
+			<entity schema="lcstate" name="category" color="1A4D4D" x="912" y="323" />
+			<entity schema="lcstate" name="consumer" color="0000FF" x="893" y="912" />
+			<entity schema="lcstate" name="def_policies" color="0000FF" x="684" y="760" />
+			<entity schema="lcstate" name="def_version" color="0000FF" x="684" y="532" />
+			<entity schema="lcstate" name="definition" color="0000FF" x="912" y="532" />
+			<entity schema="lcstate" name="environment" color="0000FF" x="912" y="741" />
+			<entity schema="lcstate" name="events" color="1A4D4D" x="684" y="285" />
+			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="589" />
+			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="228" />
+			<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="513" />
+			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="190" y="228" />
+			<entity schema="lcstate" name="lc_data" color="FFFF00" x="76" y="456" />
+			<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="494" />
+			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="247" y="608" />
+			<entity schema="lcstate" name="policy" color="0000FF" x="817" y="1064" />
+			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="912" />
+			<entity schema="lcstate" name="runtime_data" color="00FF00" x="76" y="1083" />
+			<entity schema="lcstate" name="state" color="1A4D4D" x="893" y="114" />
+			<entity schema="lcstate" name="timeouts" color="0000FF" x="684" y="893" />
+			<entity schema="lcstate" name="transition" color="1A4D4D" x="684" y="95" />
+			<group name="Blueprint - Definition" color="0000FF" >
+				<entity schema="lcstate" name="consumer" />
+				<entity schema="lcstate" name="def_policies" />
+				<entity schema="lcstate" name="def_version" />
+				<entity schema="lcstate" name="definition" />
+				<entity schema="lcstate" name="environment" />
+				<entity schema="lcstate" name="policy" />
+				<entity schema="lcstate" name="timeouts" />
+			</group>
+			<group name="Instance Core" color="FFFF00" >
+				<entity schema="lcstate" name="hook" />
+				<entity schema="lcstate" name="instance" />
+				<entity schema="lcstate" name="lc_data" />
+				<entity schema="lcstate" name="lc_timeout" />
+				<entity schema="lcstate" name="lifecycle" />
+			</group>
+			<group name="Runtime Activities" color="00FF00" >
+				<entity schema="lcstate" name="activity" />
+				<entity schema="lcstate" name="activity_status" />
+				<entity schema="lcstate" name="runtime" />
+				<entity schema="lcstate" name="runtime_data" />
+			</group>
+			<group name="Acknowledgement" color="FF00FF" >
+				<entity schema="lcstate" name="ack" />
+				<entity schema="lcstate" name="ack_consumer" />
+				<entity schema="lcstate" name="hook_ack" />
+				<entity schema="lcstate" name="lc_ack" />
+			</group>
+			<group name="Blueprint-State" color="1A4D4D" >
+				<entity schema="lcstate" name="category" />
+				<entity schema="lcstate" name="events" />
+				<entity schema="lcstate" name="state" />
+				<entity schema="lcstate" name="transition" />
+			</group>
+		</diagram>
+	</diagram_group>
 </project>

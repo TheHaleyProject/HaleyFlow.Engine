@@ -166,7 +166,7 @@ namespace Haley.Services {
                 }
 
                 // Hooks (create hook rows in txn; dispatch after commit)
-                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load); //CHECK ONCE MORE
+                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr?.PolicyJson);
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                    if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
