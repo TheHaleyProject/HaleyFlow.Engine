@@ -272,6 +272,22 @@ namespace Haley.Services {
             return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(instanceId, new DbExecutionLoad(ct));
         }
 
+        public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(int envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            var bp = await BlueprintManager.GetBlueprintLatestAsync(envCode, defName, ct);
+            var rows = await _dal.Instance.ListByFlagsAndDefVersionPagedAsync(bp.DefVersionId, (uint)flags, skip, take);
+            var result = new List<InstanceRefItem>(rows.Count);
+            for (var i = 0; i < rows.Count; i++) {
+                var r = rows[i];
+                result.Add(new InstanceRefItem {
+                    ExternalRef = r.GetString("external_ref") ?? string.Empty,
+                    InstanceGuid = r.GetString("instance_guid") ?? string.Empty,
+                    Created = r.GetDateTime("created")
+                });
+            }
+            return result;
+        }
+
         public Task ClearCacheAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Clear(); return Task.CompletedTask; }
 
         public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(envCode, defName); return Task.CompletedTask; }
