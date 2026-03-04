@@ -398,15 +398,22 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_group" prior="hook_g" >
-			<column name="id" type="BIGINT" length="20" mandatory="y" />
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
 			<column name="name" type="VARCHAR" length="140" mandatory="y" />
 			<index name="pk_hook_group" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
+			<index name="unq_hook_group" unique="UNIQUE_KEY" >
+				<column name="name" />
+			</index>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_route" prior="route" >
-			<column name="id" type="BIGINT" length="20" mandatory="y" />
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+			</column>
 			<column name="name" type="VARCHAR" length="240" mandatory="y" />
 			<index name="pk_hook_route" unique="PRIMARY_KEY" >
 				<column name="id" />

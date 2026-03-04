@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haley Workflow Engine — Documentation</title>
+<style>
+  :root {
+    --brand: #e05252;
+    --brand-dark: #c03a3a;
+    --sidebar-bg: #111827;
+    --sidebar-text: #9ca3af;
+    --sidebar-active: #e05252;
+    --sidebar-hover: #1f2937;
+    --sidebar-group: #6b7280;
+    --content-bg: #f9fafb;
+    --card-bg: #ffffff;
+    --text: #1f2937;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --code-bg: #0f172a;
+    --code-text: #e2e8f0;
+    --inline-code-bg: #f1f5f9;
+    --inline-code-text: #be123c;
+    --badge-error: #dc2626;
+    --badge-warn: #d97706;
+    --badge-info: #2563eb;
+    --badge-overdue: #7c3aed;
+    --badge-ok: #059669;
+    --heading: #111827;
+    --accent-light: #fff5f5;
+    --rule-bg: #fafafa;
+    --tip-bg: #eff6ff;
+    --tip-border: #3b82f6;
+    --warn-bg: #fffbeb;
+    --warn-border: #f59e0b;
+    --new-bg: #f0fdf4;
+    --new-border: #22c55e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--content-bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 280px; min-width: 280px; background: var(--sidebar-bg);
+    display: flex; flex-direction: column; overflow: hidden;
+    border-right: 1px solid #1f2937;
+  }
+  #sidebar-header {
+    padding: 20px 16px 14px; border-bottom: 1px solid #1f2937; flex-shrink: 0;
+  }
+  #sidebar-header .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  #sidebar-header .logo-icon {
+    width: 32px; height: 32px; background: var(--brand); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; color: #fff; font-size: 14px; font-style: italic;
+  }
+  #sidebar-header .logo-text { color: #fff; font-weight: 700; font-size: 14px; line-height: 1.2; }
+  #sidebar-header .logo-sub { color: var(--sidebar-text); font-size: 11px; }
+  #search-wrap { position: relative; }
+  #search { width: 100%; background: #1f2937; border: 1px solid #374151; border-radius: 6px;
+    padding: 7px 10px 7px 30px; color: #e5e7eb; font-size: 12px; outline: none; }
+  #search::placeholder { color: #6b7280; }
+  #search:focus { border-color: var(--brand); }
+  #search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+    color: #6b7280; font-size: 12px; pointer-events: none; }
+
+  #nav { flex: 1; overflow-y: auto; padding: 8px 0 20px; }
+  #nav::-webkit-scrollbar { width: 4px; }
+  #nav::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+
+  .nav-section { margin-bottom: 4px; }
+  .nav-group-btn {
+    width: 100%; background: none; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 16px; color: var(--sidebar-group); font-size: 10px;
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    transition: color .15s;
+  }
+  .nav-group-btn:hover { color: #9ca3af; }
+  .nav-group-btn .caret { transition: transform .2s; font-size: 9px; }
+  .nav-group-btn.collapsed .caret { transform: rotate(-90deg); }
+  .nav-items { overflow: hidden; transition: max-height .25s ease; }
+  .nav-items.collapsed { max-height: 0 !important; }
+
+  .nav-item {
+    display: block; padding: 6px 16px 6px 24px; color: var(--sidebar-text);
+    font-size: 12.5px; text-decoration: none; cursor: pointer;
+    border-left: 2px solid transparent; transition: all .15s; line-height: 1.4;
+    background: none; border-right: none; border-top: none; border-bottom: none;
+    width: 100%; text-align: left;
+  }
+  .nav-item:hover { background: var(--sidebar-hover); color: #e5e7eb; }
+  .nav-item.active { color: var(--brand); border-left-color: var(--brand); background: rgba(224,82,82,.08); }
+  .nav-item .badge-new { background: var(--brand); color: #fff; font-size: 9px;
+    border-radius: 3px; padding: 1px 4px; margin-left: 5px; font-weight: 700; vertical-align: middle; }
+
+  /* ── Content ── */
+  #content { flex: 1; overflow-y: auto; padding: 0; }
+  #content::-webkit-scrollbar { width: 6px; }
+  #content::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+
+  .content-inner { max-width: 860px; margin: 0 auto; padding: 40px 48px 80px; }
+
+  /* Hero */
+  .hero { background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+    border-radius: 12px; padding: 36px 40px; margin-bottom: 40px;
+    display: flex; align-items: center; gap: 24px; }
+  .hero-logo { width: 56px; height: 56px; background: var(--brand); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; color: #fff; font-size: 24px; font-style: italic; flex-shrink: 0; }
+  .hero h1 { color: #fff; font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+  .hero p { color: #9ca3af; font-size: 14px; line-height: 1.6; }
+  .hero-meta { margin-top: 12px; display: flex; gap: 16px; }
+  .hero-tag { background: rgba(255,255,255,.08); color: #d1d5db;
+    font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+
+  /* Sections */
+  .doc-section { margin-bottom: 56px; scroll-margin-top: 24px; }
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--brand); margin-bottom: 8px; }
+  h2.section-title { font-size: 24px; font-weight: 800; color: var(--heading);
+    border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 24px; }
+  h3.sub-title { font-size: 16px; font-weight: 700; color: var(--heading);
+    margin: 28px 0 12px; display: flex; align-items: center; gap: 8px; }
+  h3.sub-title .tag { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 3px; }
+  h4.mini-title { font-size: 13.5px; font-weight: 700; color: var(--heading); margin: 20px 0 8px; }
+
+  p { font-size: 14px; line-height: 1.75; color: var(--text); margin-bottom: 12px; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { font-size: 14px; line-height: 1.75; color: var(--text); margin-bottom: 3px; }
+  li ul { margin-top: 4px; margin-bottom: 4px; }
+
+  /* Callout boxes */
+  .callout { border-radius: 8px; padding: 14px 16px; margin: 16px 0; font-size: 13.5px; line-height: 1.65; }
+  .callout.tip { background: var(--tip-bg); border-left: 3px solid var(--tip-border); }
+  .callout.warn { background: var(--warn-bg); border-left: 3px solid var(--warn-border); }
+  .callout.new { background: var(--new-bg); border-left: 3px solid var(--new-border); }
+  .callout.danger { background: #fff5f5; border-left: 3px solid #e05252; }
+  .callout-title { font-weight: 700; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .callout.tip .callout-title { color: #1d4ed8; }
+  .callout.warn .callout-title { color: #92400e; }
+  .callout.new .callout-title { color: #166534; }
+  .callout.danger .callout-title { color: #be123c; }
+
+  /* Code */
+  code { font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace; }
+  p code, li code, td code {
+    background: var(--inline-code-bg); color: var(--inline-code-text);
+    padding: 1px 5px; border-radius: 3px; font-size: 12.5px;
+  }
+  pre {
+    background: var(--code-bg); border-radius: 10px; padding: 20px 22px;
+    overflow-x: auto; margin: 16px 0; position: relative;
+  }
+  pre code { color: var(--code-text); font-size: 12.5px; line-height: 1.7; background: none; padding: 0; }
+  .lang-label { position: absolute; top: 8px; right: 12px;
+    font-size: 10px; color: #475569; font-family: sans-serif; font-weight: 600; letter-spacing: .05em; }
+
+  /* Syntax tokens */
+  .kw { color: #c792ea; }
+  .ty { color: #82aaff; }
+  .st { color: #c3e88d; }
+  .cm { color: #546e7a; font-style: italic; }
+  .nm { color: #ffcb6b; }
+  .fn { color: #82aaff; }
+  .nb { color: #f78c6c; }
+  .op { color: #89ddff; }
+  .jk { color: #89ddff; }
+  .jv { color: #c3e88d; }
+  .jn { color: #f78c6c; }
+  .sql-kw { color: #c792ea; }
+  .sql-fn { color: #82aaff; }
+  .sql-id { color: #ffcb6b; }
+  .sql-cm { color: #546e7a; font-style: italic; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin: 16px 0; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #f1f5f9; font-weight: 700; color: #374151;
+    padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.55; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #f9fafb; }
+
+  /* Notice badges */
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
+    border-radius: 3px; text-transform: uppercase; letter-spacing: .04em; }
+  .badge.error { background: #fee2e2; color: var(--badge-error); }
+  .badge.warn  { background: #fef3c7; color: var(--badge-warn);  }
+  .badge.info  { background: #dbeafe; color: var(--badge-info);  }
+  .badge.overdue { background: #ede9fe; color: var(--badge-overdue); }
+  .badge.ok    { background: #d1fae5; color: var(--badge-ok);    }
+  .badge.new   { background: #dcfce7; color: #166534; }
+
+  /* Step list */
+  .step-list { list-style: none; padding: 0; }
+  .step-list li { display: flex; gap: 12px; margin-bottom: 10px; align-items: flex-start; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--brand);
+    color: #fff; font-size: 11px; font-weight: 800; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-num.new-step { background: #22c55e; }
+  .step-body { flex: 1; font-size: 13.5px; line-height: 1.65; }
+  .step-body strong { color: var(--heading); }
+
+  /* Grid cards */
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 18px; }
+  .card-title { font-weight: 700; font-size: 13px; color: var(--heading); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .card-icon { color: var(--brand); font-size: 16px; }
+  .card ul { padding-left: 16px; margin: 0; }
+  .card li { font-size: 12.5px; color: var(--text-muted); margin-bottom: 3px; }
+
+  /* Flow diagram */
+  .flow { background: var(--code-bg); border-radius: 10px; padding: 20px 22px; margin: 16px 0; overflow-x: auto; }
+  .flow pre { background: none; padding: 0; margin: 0; border-radius: 0; }
+  .flow pre code { color: #94a3b8; font-size: 12px; }
+  .flow .flow-hl { color: #c3e88d; }
+  .flow .flow-new { color: var(--brand); font-weight: 700; }
+
+  /* Definition list */
+  dl { margin: 12px 0; }
+  dt { font-weight: 700; font-size: 13.5px; color: var(--heading); margin-top: 10px; }
+  dd { margin-left: 16px; font-size: 13.5px; line-height: 1.65; color: var(--text); margin-top: 2px; }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+  /* Back to top */
+  #back-top { position: fixed; bottom: 24px; right: 24px; width: 38px; height: 38px;
+    background: var(--brand); color: #fff; border: none; border-radius: 50%; font-size: 16px;
+    cursor: pointer; display: none; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,.2); z-index: 100; }
+  #back-top.show { display: flex; }
+
+  /* Version pill */
+  .ver { display: inline-flex; align-items: center; gap: 6px;
+    background: #1f2937; color: #9ca3af; font-size: 11px;
+    padding: 3px 9px; border-radius: 12px; margin-left: 8px; vertical-align: middle; }
+  .ver span { color: var(--brand); font-weight: 700; }
+
+  /* Inline highlight */
+  .hl { background: #fef9c3; padding: 1px 4px; border-radius: 3px; }
+
+  @media (max-width: 900px) {
+    #sidebar { display: none; }
+    .content-inner { padding: 24px 20px 60px; }
+    .card-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon">h.</div>
+      <div>
+        <div class="logo-text">Haley Flow Engine</div>
+        <div class="logo-sub">Concepts &amp; Implementation Guide</div>
+      </div>
+    </div>
+    <div id="search-wrap">
+      <span id="search-icon">🔍</span>
+      <input id="search" type="text" placeholder="Search sections…" autocomplete="off">
+    </div>
+  </div>
+
+  <div id="nav">
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Overview <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('overview')">Introduction</button>
+        <button class="nav-item" onclick="scrollTo('objective')">Objective &amp; Non-goals</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Coding Rules <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('rules-sql')">SQL + DAL Discipline</button>
+        <button class="nav-item" onclick="scrollTo('rules-format')">Formatting Rules</button>
+        <button class="nav-item" onclick="scrollTo('rules-txn')">Transactions &amp; DbExecutionLoad</button>
+        <button class="nav-item" onclick="scrollTo('rules-ensure')">Ensure / Exists Rule</button>
+        <button class="nav-item" onclick="scrollTo('rules-naming')">Naming Conventions</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Core Runtime Flow <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('flow-trigger')">Trigger (App → Engine)</button>
+        <button class="nav-item" onclick="scrollTo('flow-persist')">Engine Evaluates + Persists</button>
+        <button class="nav-item" onclick="scrollTo('flow-ackgate')">ACK Gate <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="scrollTo('flow-emit')">Emit Outbound Events</button>
+        <button class="nav-item" onclick="scrollTo('flow-ack')">ACK Updates</button>
+        <button class="nav-item" onclick="scrollTo('flow-monitor')">Monitor (Reliability)</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Components <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('comp-dal')">WorkFlowDAL</button>
+        <button class="nav-item" onclick="scrollTo('comp-importer')">BlueprintImporter</button>
+        <button class="nav-item" onclick="scrollTo('comp-manager')">BlueprintManager</button>
+        <button class="nav-item" onclick="scrollTo('comp-sm')">StateMachine</button>
+        <button class="nav-item" onclick="scrollTo('comp-pe')">PolicyEnforcer</button>
+        <button class="nav-item" onclick="scrollTo('comp-ack')">AckManager</button>
+        <button class="nav-item" onclick="scrollTo('comp-monitor')">LifeCycleMonitor</button>
+        <button class="nav-item" onclick="scrollTo('comp-engine')">WorkFlowEngine</button>
+        <button class="nav-item" onclick="scrollTo('comp-runtime')">RuntimeEngine</button>
+        <button class="nav-item" onclick="scrollTo('comp-timeline')">Timeline</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Consumer Choreography <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('chore-saga')">Saga Choreography</button>
+        <button class="nav-item" onclick="scrollTo('chore-owner')">No Instance Owner</button>
+        <button class="nav-item" onclick="scrollTo('chore-fact')">Transition = Fact</button>
+        <button class="nav-item" onclick="scrollTo('chore-dup')">Duplicate Prevention</button>
+        <button class="nav-item" onclick="scrollTo('chore-hb')">Consumer Heartbeat</button>
+        <button class="nav-item" onclick="scrollTo('chore-retry')">Retry Not Burned</button>
+        <button class="nav-item" onclick="scrollTo('chore-order')">Ordering Rule</button>
+        <button class="nav-item" onclick="scrollTo('chore-atleast')">At-Least-Once</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">JSON Policy Reference <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('pol-structure')">Policy Structure</button>
+        <button class="nav-item" onclick="scrollTo('pol-emit')">Emit Fields</button>
+        <button class="nav-item" onclick="scrollTo('pol-blocking')">Blocking Flag <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="scrollTo('pol-groups')">Hook Groups <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="scrollTo('pol-timeouts')">Timeouts</button>
+        <button class="nav-item" onclick="scrollTo('pol-lifecycle')">Policy Attachment Lifecycle</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Schema Reference <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('schema-core')">Core Tables</button>
+        <button class="nav-item" onclick="scrollTo('schema-hook')">Hook Tables <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="scrollTo('schema-ack')">ACK Tables</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Reference <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('ref-notices')">Notice Codes</button>
+        <button class="nav-item" onclick="scrollTo('ref-options')">Engine Options</button>
+        <button class="nav-item" onclick="scrollTo('ref-quickstart')">Quick Start</button>
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════ CONTENT ═══════════════════════════════ -->
+<main id="content">
+<div class="content-inner">
+
+  <!-- Hero -->
+  <div class="hero" id="overview">
+    <div class="hero-logo">h.</div>
+    <div>
+      <h1>Haley Workflow Engine</h1>
+      <p>A dumb, reliable, DB-backed workflow/state machine engine. Tracks business entities through policy-driven transitions, emits hook events for downstream work, and retries delivery until acknowledged.</p>
+      <div class="hero-meta">
+        <span class="hero-tag">MariaDB</span>
+        <span class="hero-tag">C# / .NET</span>
+        <span class="hero-tag">v0.7</span>
+        <span class="hero-tag">Saga Choreography</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────────── OBJECTIVE ──────────────── -->
+  <section class="doc-section" id="objective">
+    <div class="section-label">Section 2</div>
+    <h2 class="section-title">Concept &amp; Objective</h2>
+    <p>The engine is <strong>intentionally "dumb"</strong> — it enforces state transitions and tracks delivery, but carries no business logic.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title"><span class="card-icon">✅</span> What the engine does</div>
+        <ul>
+          <li>Transitions instances through states via triggers (macro workflow)</li>
+          <li>Emits lifecycle transition events (consumers decide what to do)</li>
+          <li>Emits hook events — directly tells consumers which method to call</li>
+          <li>Tracks delivery/processing via ACKs and re-sends until completed</li>
+          <li>Produces timeline/reporting</li>
+          <li>Auto-triggers timeout events when configured</li>
+          <li>Fires advisory notices for stale states without timeouts</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="card-icon">🚫</span> Non-goals</div>
+        <ul>
+          <li>Business logic — lives in the application + JSON policy/routes</li>
+          <li>Micro-workflow (use hooks for that)</li>
+          <li>Auto-advancing state without a consumer trigger</li>
+          <li>Runtime state ownership — no "instance owner" concept</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">Lifecycle vs. Hook</div>
+      Lifecycle events tell consumers <em>"the state changed"</em> — the consumer decides what to do. Hook events directly instruct <em>"call this route"</em> — configured via policy JSON, no hard-coding in the application.
+    </div>
+  </section>
+
+  <!-- ──────────────── CODING RULES ──────────────── -->
+  <section class="doc-section" id="rules-sql">
+    <div class="section-label">Section 1</div>
+    <h2 class="section-title">General Coding Rules <em style="font-size:14px;font-weight:400;color:var(--brand)">(non-negotiable)</em></h2>
+
+    <h3 class="sub-title">1.1 SQL + DAL Discipline</h3>
+    <ul>
+      <li><strong>SQL queries are first-class citizens</strong> — every DB operation must be a named constant in the relevant <code>QRY_*</code> class.</li>
+      <li><code>WorkFlowDAL</code> is the <strong>only</strong> DB entry point for the engine. Components must not call leaf DALs directly.</li>
+      <li>Adding new DB capability: (1) add query to <code>QRY_*</code> class → (2) extend DAL → (3) expose via <code>IWorkFlowDAL</code>.</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="rules-format">
+    <h3 class="sub-title">1.2 Formatting Rules</h3>
+    <ul>
+      <li><strong>Models</strong>: prefer object initializer style — <code>new X { A = a, B = b }</code>, not constructor overloads.</li>
+      <li>Method signatures and constructors: one line, no multi-line wrapping.</li>
+      <li>SQL query strings: one line.</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="rules-txn">
+    <h3 class="sub-title">1.3 Transactions + Cancellation (DbExecutionLoad)</h3>
+    <p><code>DbExecutionLoad</code> = <code>CancellationToken</code> + <code>TransactionHandler</code>. Public engine APIs accept <code>CancellationToken</code>; internal DB methods accept <code>DbExecutionLoad</code>.</p>
+    <pre><code><span class="kw">var</span> transaction = _dal.CreateNewTransaction();
+<span class="kw">using var</span> tx = transaction.Begin(<span class="nb">false</span>);
+<span class="kw">var</span> load = <span class="kw">new</span> <span class="ty">DbExecutionLoad</span>(ct, transaction);
+<span class="cm">// committed flag guards Commit/Rollback</span>
+<span class="kw">var</span> committed = <span class="nb">false</span>;
+<span class="kw">try</span> {
+    <span class="cm">// ... DB operations ...</span>
+    transaction.Commit(); committed = <span class="nb">true</span>;
+} <span class="kw">catch</span> {
+    <span class="kw">if</span> (!committed) { <span class="kw">try</span> { transaction.Rollback(); } <span class="kw">catch</span> { } }
+    <span class="kw">throw</span>;
+}</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="rules-ensure">
+    <h3 class="sub-title">1.4 "Ensure / Exists then Insert" Rule</h3>
+    <p>For upsert-style operations, prefer:</p>
+    <ul>
+      <li>EXISTS → return id</li>
+      <li>else INSERT → return id</li>
+    </ul>
+    <div class="callout danger">
+      <div class="callout-title">Avoid</div>
+      The pattern <code>id = LAST_INSERT_ID(id)</code> / mutating primary key semantics. Use <code>INSERT ... ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;</code> only for normalized lookup tables (<code>hook_route</code>, <code>hook_group</code>) where the pattern is intentional and the column is <code>AUTO_INCREMENT</code>.
+    </div>
+  </section>
+
+  <section class="doc-section" id="rules-naming">
+    <h3 class="sub-title">1.5 Naming Conventions</h3>
+    <ul>
+      <li>Flag enums prefixed: <code>LifeCycleStateFlag</code>, <code>LifeCycleInstanceFlag</code>, etc.</li>
+      <li>DAL group classes: <code>internal sealed</code> (except <code>WorkflowDAL</code> / <code>DALUtil</code>).</li>
+      <li>Query placeholders for JOIN queries: use unique identifiers — e.g. <code>ENV_NAME</code>, <code>DEF_NAME</code>, <code>ROUTE_ID</code>, <code>GROUP_ID</code> instead of generic <code>NAME</code>.</li>
+    </ul>
+  </section>
+
+  <!-- ──────────────── FLOW ──────────────── -->
+  <section class="doc-section" id="flow-trigger">
+    <div class="section-label">Section 3</div>
+    <h2 class="section-title">Core Runtime Flow</h2>
+    <h3 class="sub-title">3.1 Trigger (Application → Engine)</h3>
+    <p>Application calls <code>TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct)</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>EnvCode</code></td><td>✅</td><td>Environment identifier</td></tr>
+          <tr><td><code>DefName</code></td><td>✅</td><td>Definition name — finds the target def_version</td></tr>
+          <tr><td><code>ExternalRef</code></td><td>✅</td><td>Application correlation key (stable GUID)</td></tr>
+          <tr><td><code>Event</code></td><td>✅</td><td>Event name or code to trigger the transition</td></tr>
+          <tr><td><code>RequestId</code></td><td>Recommended</td><td>Stable across retries — enables idempotency</td></tr>
+          <tr><td><code>Actor</code></td><td>Optional</td><td>For timeline tracking</td></tr>
+          <tr><td><code>Payload</code></td><td>Optional</td><td>Carried forward to next stage</td></tr>
+          <tr><td><code>AckRequired</code></td><td>Optional</td><td>Default <code>true</code> — creates ACK rows</td></tr>
+          <tr><td><code>OccurredAt</code></td><td>Optional <span class="badge new">NEW</span></td><td>Real-world event time for replay/backdating. <code>null</code> = engine uses UTC now. Stored in <code>lifecycle.occurred</code>; never overwrites <code>lifecycle.created</code>.</td></tr>
+          <tr><td><code>SkipAckGate</code></td><td>Optional <span class="badge new">NEW</span></td><td>Bypass the ACK gate for this specific call. Default <code>false</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="flow-persist">
+    <h3 class="sub-title">3.2 Engine Evaluates + Persists (inside one transaction)</h3>
+    <ol class="step-list">
+      <li><div class="step-num">1</div><div class="step-body"><strong>Load blueprint</strong> (<code>IBlueprintManager</code>) — cached read. Done <em>outside</em> the transaction.</div></li>
+      <li><div class="step-num">2</div><div class="step-body"><strong>Resolve consumers</strong> — at least one transition consumer must exist. Hook consumers are optional.</div></li>
+      <li><div class="step-num">3</div><div class="step-body"><strong>Resolve policy</strong> (<code>IPolicyEnforcer.ResolvePolicyAsync</code>) — gets the latest policy for the definition.</div></li>
+      <li><div class="step-num">4</div><div class="step-body"><strong>Ensure instance</strong> (<code>IStateMachine.EnsureInstanceAsync</code>) — creates or retrieves. Policy is attached at creation time and never changes for that instance.</div></li>
+      <li><div class="step-num new-step">4b</div><div class="step-body"><strong>ACK gate check</strong> <span class="badge new">NEW</span> — if <code>AckGateEnabled &amp;&amp; !SkipAckGate</code>, counts <code>ack_consumer</code> rows for the last lifecycle entry of this instance that are NOT in terminal status (Processed / Failed). If any exist, commits and returns <code>Applied=false, Reason="BlockedByPendingAck"</code>.</div></li>
+      <li><div class="step-num">5</div><div class="step-body"><strong>Apply transition</strong> (<code>IStateMachine.ApplyTransitionAsync</code>) — validates transition, CAS-updates instance state, inserts lifecycle row. If already moved → commits and returns early.</div></li>
+      <li><div class="step-num">6</div><div class="step-body"><strong>Resolve rule context</strong> from policy JSON — extracts <code>params</code>, <code>on_success_event</code>, <code>on_failure_event</code> for the matched rule.</div></li>
+      <li><div class="step-num">7</div><div class="step-body"><strong>Create lifecycle ACK</strong> (<code>IAckManager.CreateLifecycleAckAsync</code>) — one <code>ack_guid</code>, multiple consumer rows, linked via <code>lc_ack</code>.</div></li>
+      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hooks</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — upserts <code>hook</code> rows. Resolves route string → <code>hook_route.id</code> (FK). Resolves group name → <code>hook_group.id</code> (FK, nullable). Returns <code>LifeCycleHookEmission</code> list in memory — not dispatched yet.</div></li>
+      <li><div class="step-num">9</div><div class="step-body"><strong>Create hook ACKs</strong> (<code>IAckManager.CreateHookAckAsync</code>) — one <code>ack_guid</code> per hook, multiple consumer rows, linked via <code>hook_ack</code>.</div></li>
+      <li><div class="step-num">10</div><div class="step-body"><strong>Commit first.</strong> Only after commit does the engine raise C# events via <code>FireEvent</code>. Dispatch failures become notices; monitor will re-send via pending ACK rows.</div></li>
+    </ol>
+  </section>
+
+  <section class="doc-section" id="flow-ackgate">
+    <h3 class="sub-title">3.2b ACK Gate <span class="badge new">NEW</span></h3>
+    <p>Prevents a new state transition from being applied while the last lifecycle entry of the instance still has unresolved ACK consumers.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">Opt-in (disabled by default)</div>
+        <pre style="margin:8px 0 0"><code><span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
+    AckGateEnabled = <span class="nb">true</span>
+};</code></pre>
+      </div>
+      <div class="card">
+        <div class="card-title">Per-request bypass</div>
+        <pre style="margin:8px 0 0"><code>req.SkipAckGate = <span class="nb">true</span>;
+<span class="cm">// force transition regardless of pending ACKs</span></code></pre>
+      </div>
+    </div>
+    <p>When blocked, <code>TriggerAsync</code> returns:</p>
+    <pre><code>{ Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByPendingAck"</span>, InstanceGuid: <span class="st">"..."</span> }</code></pre>
+    <div class="callout tip">
+      <div class="callout-title">Use case</div>
+      Enable when strict ordering is required — a downstream system must fully process a transition before the workflow can advance. Leave disabled for high-throughput flows where ordering is application-managed.
+    </div>
+  </section>
+
+  <section class="doc-section" id="flow-emit">
+    <h3 class="sub-title">3.3 Emit Outbound Events (Engine → Application)</h3>
+    <p>The engine exposes <strong>two C# events only</strong>:</p>
+    <dl>
+      <dt><code>EventRaised(ILifeCycleEvent)</code> — actionable</dt>
+      <dd>Used for both lifecycle transition events and hook events. Handlers are invoked fire-and-forget via <code>RunHandlerSafeAsync</code>. Failures are caught and raised as <code>EVENT_HANDLER_ERROR</code> notices.</dd>
+      <dt><code>NoticeRaised(LifeCycleNotice)</code> — informational</dt>
+      <dd>Retries, failures, stale warnings, suspensions, group completions, etc. Notice handler errors are swallowed to prevent infinite loops.</dd>
+    </dl>
+
+    <h4 class="mini-title">Notice Codes</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Code</th><th>Kind</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>ACK_RETRY</code></td><td><span class="badge warn">Warn</span></td><td>ACK pending/delivered too long; event re-raised</td></tr>
+          <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>blocking</strong> hook; instance suspended</td></tr>
+          <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td></tr>
+          <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> All hooks in a named group are Processed for this instance</td></tr>
+          <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Group completion DB check failed; ACK itself was still accepted</td></tr>
+          <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance stuck in state with no open ACKs and no policy timeout</td></tr>
+          <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop</td></tr>
+          <tr><td><code>EVENT_HANDLER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception in an <code>EventRaised</code> handler</td></tr>
+          <tr><td><code>TRIGGER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception during <code>TriggerAsync</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="flow-ack">
+    <h3 class="sub-title">3.4 ACK Updates (Application → Engine)</h3>
+    <p>Application calls one of:</p>
+    <pre><code><span class="cm">// by numeric consumer ID</span>
+<span class="kw">await</span> engine.AckAsync(consumerId, ackGuid, outcome, message?, retryAt?);
+<span class="cm">// friendly overload — resolves consumerId internally</span>
+<span class="kw">await</span> engine.AckAsync(envCode, consumerGuid, ackGuid, outcome, ...);</code><span class="lang-label">C#</span></pre>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>AckOutcome (input)</th><th>AckStatus (persisted)</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>Delivered</code></td><td><code>Delivered</code></td><td>"I received it" — fast, &lt;30 s</td></tr>
+          <tr><td><code>Processed</code></td><td><code>Processed</code></td><td>"I finished processing it" — &lt;5 min</td></tr>
+          <tr><td><code>Retry</code></td><td><code>Pending</code> + reschedule</td><td>Transient fault — retry later</td></tr>
+          <tr><td><code>Failed</code></td><td><code>Failed</code></td><td>Terminal — no more retries</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout new">
+      <div class="callout-title">Hook Group Completion Check (NEW)</div>
+      After any <code>AckAsync(Processed)</code> call, the engine automatically checks whether the ACK belongs to a grouped hook. If all sibling hooks in the group (same <code>instance_id + state_id + via_event + on_entry</code>) are now Processed, a <code>HOOK_GROUP_COMPLETE</code> Info notice fires. Errors in this check are isolated — the ACK itself succeeds regardless.
+    </div>
+  </section>
+
+  <section class="doc-section" id="flow-monitor">
+    <h3 class="sub-title">3.5 Reliability: Monitor</h3>
+    <p><code>LifeCycleMonitor</code> runs on a <code>PeriodicTimer</code>. Single active execution guaranteed via <code>Interlocked</code> gate. Each tick runs three jobs:</p>
+
+    <h4 class="mini-title">A) Default Staleness "OverDue" — runs first</h4>
+    <ul>
+      <li>Scans instances in the same state longer than <code>WorkFlowEngineOptions.DefaultStateStaleDuration</code></li>
+      <li>Only applies to states where no policy timeout is configured</li>
+      <li>Only raises notice when there are <strong>no open ACKs</strong> — Pending/Delivered ACKs mean the ACK monitor already covers it</li>
+      <li>Excludes Suspended, Completed, Failed, Archived instances</li>
+      <li>No DB writes. In-memory throttle prevents spamming same notice every tick</li>
+    </ul>
+
+    <h4 class="mini-title">B) ACK Re-dispatch — per consumer</h4>
+    <p><strong>Step 1:</strong> <code>PushNextDueForDownAsync</code> — pushes <code>next_due</code> forward for consumers with stale heartbeat, without incrementing <code>trigger_count</code>. Dead services don't burn max retries.</p>
+    <p><strong>Step 2:</strong> For each due ACK (<code>next_due &lt;= now</code>):</p>
+    <ul>
+      <li>If <code>TriggerCount &gt;= MaxRetryCount</code>:
+        <ul>
+          <li>Mark ACK Failed (<code>next_due = NULL</code>)</li>
+          <li>If hook was <strong>blocking</strong>: suspend instance + fire <code>ACK_SUSPEND</code></li>
+          <li>If hook was <strong>non-blocking</strong>: fire <code>ACK_FAIL</code> notice, instance continues</li>
+        </ul>
+      </li>
+      <li>Otherwise: increment trigger count, set next <code>next_due</code>, fire <code>ACK_RETRY</code>, re-raise event</li>
+    </ul>
+
+    <h4 class="mini-title">C) Policy-Defined Timeout Automation</h4>
+    <p>When a timeout is due, the engine auto-triggers the <code>timeout_event</code> through the same transactional pipeline as a normal application trigger. The <code>lc_timeout</code> table records completion for idempotency.</p>
+  </section>
+
+  <!-- ──────────────── COMPONENTS ──────────────── -->
+  <section class="doc-section" id="comp-dal">
+    <div class="section-label">Section 4</div>
+    <h2 class="section-title">Major Components</h2>
+    <h3 class="sub-title">4.1 WorkFlowDAL <span class="tag" style="background:#f1f5f9;color:#374151">DB gateway</span></h3>
+    <ul>
+      <li>Single entry point to DB for all engine operations</li>
+      <li>Consolidates all read/write DALs behind <code>IWorkFlowDAL</code></li>
+      <li>Enforces query-first discipline (<code>QRY_*</code>)</li>
+      <li>Exposes <code>CreateNewTransaction()</code> for engine-owned transactions</li>
+      <li>DAL properties: <code>Instance</code>, <code>LifeCycle</code>, <code>LcAck</code>, <code>HookAck</code>, <code>AckConsumer</code>, <code>Hook</code>, <code>HookRoute</code> <span class="badge new">NEW</span>, <code>HookGroup</code> <span class="badge new">NEW</span>, <code>Blueprint</code>, <code>Policy</code>, …</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-importer">
+    <h3 class="sub-title">4.2 BlueprintImporter</h3>
+    <p><strong>Role:</strong> Import-time canonicalization (JSON → SQL).</p>
+    <ul>
+      <li>Loads definition JSON: states / events / transitions / categories / timeouts</li>
+      <li>Loads policy JSON: rules / hooks / emit entries / params / timeouts</li>
+      <li>Writes normalized SQL rows in one transaction</li>
+      <li>Policy hashed (SHA-256) for deduplication — same content = same policy row</li>
+      <li>Timeouts parsed from ISO 8601 (<code>"P2D"</code>) or direct <code>timeout_minutes</code></li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-manager">
+    <h3 class="sub-title">4.3 BlueprintManager</h3>
+    <p><strong>Role:</strong> Runtime blueprint read + cache.</p>
+    <ul>
+      <li>Builds <code>LifeCycleBlueprint</code>: <code>StatesById</code>, <code>EventsById</code>, <code>EventsByCode</code>, <code>Transitions</code> map, <code>InitialStateId</code></li>
+      <li>Caches by <code>(env_code, def_name)</code> and by <code>def_version_id</code></li>
+      <li>Supports invalidation after imports: <code>InvalidateAsync()</code></li>
+      <li>Important: do not poison cache with a canceled task (avoid capturing <code>ct</code> inside cached lazy)</li>
+      <li>Consumer management: <code>EnsureConsumerIdAsync</code>, <code>BeatConsumerAsync</code></li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-sm">
+    <h3 class="sub-title">4.4 StateMachine</h3>
+    <p><strong>Role:</strong> Pure state transition executor (dumb by design).</p>
+    <ul>
+      <li>Ensures instance exists for <code>(def_version_id, external_ref)</code></li>
+      <li>Resolves event by code or name</li>
+      <li>Validates transition exists in the definition</li>
+      <li>Updates <code>instance.current_state</code> using CAS to avoid race conflicts</li>
+      <li>Writes <code>lifecycle</code> + <code>lc_data</code> rows (includes <code>occurred</code> column for replay)</li>
+      <li>Returns <code>ApplyTransitionResult</code> (Applied / Reason / From / To / Event / LifeCycleId)</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-pe">
+    <h3 class="sub-title">4.5 PolicyEnforcer</h3>
+    <p><strong>Role:</strong> Policy evaluation + hook emission.</p>
+    <ul>
+      <li><code>ResolvePolicyAsync(definitionId)</code> — latest policy for a definition</li>
+      <li><code>ResolvePolicyByIdAsync(policyId)</code> — specific policy (for instance-attached policies)</li>
+      <li><code>ResolveRuleContextFromJson(policyJson, toState, viaEvent)</code> — returns <code>RuleContext</code> with params, success/failure events</li>
+      <li><code>ResolveHookContextFromJson(policyJson, toState, viaEvent, hookCode)</code> — hook-specific context including <code>not_before</code>, <code>deadline</code></li>
+      <li><code>EmitHooksAsync(blueprint, instance, transition, load, policyJson)</code>:
+        <ul>
+          <li>Matches policy rules by <code>(state, via_event)</code></li>
+          <li>For each emit entry: resolves <code>route</code> string → <code>hook_route.id</code> (upsert, global table) <span class="badge new">NEW</span></li>
+          <li>If <code>"group"</code> present: resolves group name → <code>hook_group.id</code> (upsert, global table) <span class="badge new">NEW</span></li>
+          <li>Upserts <code>hook</code> row with <code>route_id</code>, <code>blocking</code>, <code>group_id</code></li>
+          <li>Returns <code>LifeCycleHookEmission</code> with: <code>HookId</code>, <code>HookCode</code>, <code>OnEntry</code>, <code>IsBlocking</code> <span class="badge new">NEW</span>, <code>GroupName</code> <span class="badge new">NEW</span>, <code>OnSuccessEvent</code>, <code>OnFailureEvent</code>, <code>NotBefore</code>, <code>Deadline</code>, <code>Params</code></li>
+        </ul>
+      </li>
+    </ul>
+    <div class="callout tip">
+      <div class="callout-title">Blocking inheritance chain</div>
+      <code>emit.blocking</code> → <code>rule.blocking</code> → default <code>true</code>. The emit-level value wins if present.
+    </div>
+  </section>
+
+  <section class="doc-section" id="comp-ack">
+    <h3 class="sub-title">4.6 AckManager</h3>
+    <p><strong>Role:</strong> ACK persistence + consumer tracking + monitor-ready dispatch lists.</p>
+    <ul>
+      <li>Creates <code>ack</code> records and links: <code>lc_ack</code> (lifecycle_id → ack_id), <code>hook_ack</code> (hook_id → ack_id)</li>
+      <li>Creates <code>ack_consumer</code> rows with initial status and <code>next_due</code> scheduling</li>
+      <li><strong>Insert-only rule:</strong> <code>EnsureConsumersInsertOnlyAsync</code> — never overwrites existing status/next_due. Prevents rescheduling on restart</li>
+      <li>Updates statuses on <code>AckAsync</code> calls</li>
+      <li>Monitor dispatch: <code>ListDueLifecycleDispatchAsync</code>, <code>ListDueHookDispatchAsync</code> (carry <code>group_name</code> <span class="badge new">NEW</span>)</li>
+      <li><strong>Critical:</strong> ACK identifiers are stable — re-dispatch always uses the same <code>ack_guid</code></li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-monitor">
+    <h3 class="sub-title">4.7 LifeCycleMonitor</h3>
+    <p><strong>Role:</strong> Timer + safety gate. Runs <code>WorkFlowEngine.RunMonitorOnceInternalAsync</code> each tick. No business logic lives here — logic is in <code>WorkFlowEngine</code>.</p>
+    <ul>
+      <li>Configurable <code>PeriodicTimer</code> interval</li>
+      <li>Single active execution via <code>Interlocked</code> gate on <code>_runGate</code></li>
+      <li>Implements <code>IAsyncDisposable</code></li>
+      <li>Supports manual <code>RunOnceAsync(ct)</code> for testing</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-engine">
+    <h3 class="sub-title">4.8 WorkFlowEngine</h3>
+    <p><strong>Role:</strong> The orchestrator + public API surface. Implements <code>IWorkFlowEngine</code> + <code>ILifeCycleEngine</code>.</p>
+    <p><strong>Public operations:</strong></p>
+    <ul>
+      <li><code>TriggerAsync</code> — full transactional trigger pipeline (includes ACK gate check) <span class="badge new">NEW</span></li>
+      <li><code>AckAsync</code> — two overloads; after Processed: runs hook group completion check <span class="badge new">NEW</span></li>
+      <li><code>RegisterConsumerAsync</code>, <code>BeatConsumerAsync</code></li>
+      <li><code>InvalidateAsync</code>, <code>ClearCacheAsync</code></li>
+      <li><code>StartMonitorAsync</code>, <code>StopMonitorAsync</code></li>
+      <li><code>GetTimelineJsonAsync</code></li>
+      <li><code>UpsertRuntimeAsync</code>, <code>SetRuntimeStatusAsync</code>, <code>FreezeRuntimeAsync</code>, <code>UnfreezeRuntimeAsync</code></li>
+    </ul>
+    <p>Raises only two C# events: <code>EventRaised</code> (actionable) and <code>NoticeRaised</code> (informational). Implements <code>IAsyncDisposable</code>.</p>
+  </section>
+
+  <section class="doc-section" id="comp-runtime">
+    <h3 class="sub-title">4.9 RuntimeEngine</h3>
+    <p><strong>Role:</strong> Observability + app activity/status storage. <em>Not smart workflow.</em></p>
+    <ul>
+      <li><code>UpsertAsync(RuntimeLogByNameRequest)</code> — create or update runtime activity rows by name</li>
+      <li><code>SetStatusAsync(runtimeId, status)</code> — update activity status</li>
+      <li><code>SetFrozenAsync(runtimeId, frozen)</code> — freeze/unfreeze a runtime activity</li>
+      <li>Runtime rows link to: <code>instance_id</code>, <code>lc_id</code>, <code>state_id</code>, <code>activity</code>, <code>status</code>, <code>actor_id</code></li>
+      <li>Does not participate in workflow correctness — reporting and timeline only</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="comp-timeline">
+    <h3 class="sub-title">4.10 Timeline &amp; <code>occurred</code></h3>
+    <p><code>GetTimelineJsonAsync(instanceId)</code> returns a comprehensive JSON document built via a single SQL query using JSON aggregation.</p>
+    <dl>
+      <dt><code>lifecycle.created</code></dt><dd>When the engine captured the transition. Always set by the engine. Never overridden.</dd>
+      <dt><code>lifecycle.occurred</code> <span class="badge new">NEW</span></dt><dd>The real-world event time. Set by the caller via <code>req.OccurredAt</code> for replay or late-join scenarios. <code>null</code> for normal flow.</dd>
+    </dl>
+    <div class="callout tip"><div class="callout-title">Display rule</div>When rendering a timeline, prefer <code>occurred</code> if present, fall back to <code>created</code>. Never override <code>created</code>.</div>
+  </section>
+
+  <!-- ──────────────── CHOREOGRAPHY ──────────────── -->
+  <section class="doc-section" id="chore-saga">
+    <div class="section-label">Section 5</div>
+    <h2 class="section-title">Consumer Choreography</h2>
+    <h3 class="sub-title" id="chore-saga">5.1 Saga Choreography</h3>
+    <p>A decentralized, event-driven process where each consumer (microservice) reacts independently and makes the state transition after completing their work. Other consumers remain as observers.</p>
+  </section>
+
+  <section class="doc-section" id="chore-owner">
+    <h3 class="sub-title">5.2 No Instance Owner</h3>
+    <p>An instance is not owned by one application. Each consumer owns only the steps it is responsible for. Any consumer may listen; only responsible consumers attempt the next transition.</p>
+  </section>
+
+  <section class="doc-section" id="chore-fact">
+    <h3 class="sub-title">5.3 "Transition Event" is a Fact, not a Command</h3>
+    <p>A transition event means: <em>"The workflow moved from State A → State B via Event X."</em></p>
+    <ul>
+      <li>Some consumers perform side effects (audit, dashboard, enrichment)</li>
+      <li>Some consumers perform business work and then trigger the next transition (only if within their scope)</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="chore-dup">
+    <h3 class="sub-title">5.4 Duplicate Transitions Prevented by the Engine</h3>
+    <p>Multiple consumers may receive the same event. The engine prevents chaos via CAS update on <code>instance.current_state</code> + transition validation. If a consumer triggers an event that no longer matches, the transition does not apply.</p>
+  </section>
+
+  <section class="doc-section" id="chore-hb">
+    <h3 class="sub-title">5.6 Consumer Heartbeat</h3>
+    <p>Each application registers and heartbeats periodically. A consumer is alive if <code>now − last_beat ≤ TTL</code>. Heartbeat is used only to decide when to dispatch, not for workflow correctness.</p>
+    <pre><code><span class="kw">var</span> id = <span class="kw">await</span> engine.RegisterConsumerAsync(envCode, myGuid);
+<span class="cm">// run every ~10 seconds:</span>
+<span class="kw">await</span> engine.BeatConsumerAsync(envCode, myGuid);</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="chore-retry">
+    <h3 class="sub-title">5.7 Retry Attempts Not Burned While Consumer is Down</h3>
+    <p><code>PushNextDueForDownAsync</code> pushes <code>next_due</code> forward for stale-heartbeat consumers without incrementing <code>trigger_count</code>. Dead services don't burn max retries. Retries represent actual delivery attempts.</p>
+  </section>
+
+  <section class="doc-section" id="chore-order">
+    <h3 class="sub-title">5.8 Per-Consumer Per-Instance Ordering</h3>
+    <p>When catching up after downtime, events are dispatched in <code>lifecycle.id</code> ascending order per <code>(consumer, instance)</code>. Keeps consumer replay deterministic.</p>
+  </section>
+
+  <section class="doc-section" id="chore-atleast">
+    <h3 class="sub-title">5.9 "At-Least-Once" Events</h3>
+    <div class="callout warn">
+      <div class="callout-title">Consumers must treat events as At-Least-Once and potentially stale</div>
+      Before performing any action that could trigger a state change, the consumer must re-check the current instance state and confirm the work is still applicable. If the instance already moved past the expected point, ACK as Processed and skip stale side effects.
+    </div>
+  </section>
+
+  <!-- ──────────────── POLICY REFERENCE ──────────────── -->
+  <section class="doc-section" id="pol-structure">
+    <div class="section-label">Section 6</div>
+    <h2 class="section-title">JSON Policy Reference</h2>
+    <h3 class="sub-title">6.1 Policy Structure</h3>
+    <pre><code>{
+  <span class="jk">"policy_name"</span>: <span class="jv">"vendor-registration.policy"</span>,
+  <span class="jk">"for"</span>: { <span class="jk">"definition"</span>: <span class="jv">"vendorregistration"</span>, <span class="jk">"version"</span>: <span class="jn">1</span> },
+
+  <span class="jk">"params"</span>: [
+    {
+      <span class="jk">"code"</span>: <span class="jv">"PARAMS.REG.PQ.VALIDATE"</span>,
+      <span class="jk">"data"</span>: { <span class="jk">"sla_hours"</span>: <span class="jn">48</span>, <span class="jk">"escalation_email"</span>: <span class="jv">"ops@example.com"</span> }
+    }
+  ],
+
+  <span class="jk">"rules"</span>: [
+    {
+      <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>,
+      <span class="jk">"via"</span>: <span class="jn">1001</span>,
+      <span class="jk">"blocking"</span>: <span class="nb">true</span>,
+      <span class="jk">"complete"</span>: { <span class="jk">"success"</span>: <span class="jn">2001</span>, <span class="jk">"failure"</span>: <span class="jn">2002</span> },
+      <span class="jk">"emit"</span>: [
+        {
+          <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.NOTIFY_REVIEWER"</span>,
+          <span class="jk">"blocking"</span>: <span class="nb">true</span>,
+          <span class="jk">"group"</span>: <span class="jv">"review_checks"</span>,
+          <span class="jk">"params"</span>: [<span class="jv">"PARAMS.REG.PQ.VALIDATE"</span>],
+          <span class="jk">"complete"</span>: { <span class="jk">"success"</span>: <span class="jn">2001</span>, <span class="jk">"failure"</span>: <span class="jn">2002</span> }
+        },
+        {
+          <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.RUN_CREDIT_CHECK"</span>,
+          <span class="jk">"blocking"</span>: <span class="nb">true</span>,
+          <span class="jk">"group"</span>: <span class="jv">"review_checks"</span>
+        },
+        {
+          <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.AUDIT_LOG"</span>,
+          <span class="jk">"blocking"</span>: <span class="nb">false</span>
+        }
+      ]
+    }
+  ],
+
+  <span class="jk">"timeouts"</span>: [
+    {
+      <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>,
+      <span class="jk">"timeout"</span>: <span class="jv">"P2D"</span>,
+      <span class="jk">"timeout_event"</span>: <span class="jn">9001</span>
+    }
+  ]
+}</code><span class="lang-label">JSON</span></pre>
+  </section>
+
+  <section class="doc-section" id="pol-emit">
+    <h3 class="sub-title">6.2 Emit Entry Fields</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>event</code></td><td>string</td><td>Route / hook code. Stored in <code>hook_route</code> table (normalized). Consumers use this to dispatch work.</td></tr>
+          <tr><td><code>blocking</code></td><td>bool</td><td><span class="badge new">NEW</span> If <code>true</code> (default), ACK failure suspends the instance. If <code>false</code>, failure fires <code>ACK_FAIL</code> notice and instance continues.</td></tr>
+          <tr><td><code>group</code></td><td>string?</td><td><span class="badge new">NEW</span> Group name. Emits sharing the same group in the same rule are tracked together. <code>HOOK_GROUP_COMPLETE</code> fires when all are Processed.</td></tr>
+          <tr><td><code>params</code></td><td>string[]</td><td>Param codes to resolve from the <code>params</code> catalog. Overrides rule-level params.</td></tr>
+          <tr><td><code>complete</code></td><td>object</td><td><code>{ "success": eventCode, "failure": eventCode }</code>. Overrides rule-level complete.</td></tr>
+          <tr><td><code>on_entry</code></td><td>bool</td><td>Default <code>true</code>. Set <code>false</code> for on-exit hooks.</td></tr>
+          <tr><td><code>not_before</code></td><td>duration?</td><td>Delay before the hook becomes deliverable</td></tr>
+          <tr><td><code>deadline</code></td><td>duration?</td><td>Time window; after deadline the hook may be considered expired</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="pol-blocking">
+    <h3 class="sub-title">6.3 Blocking Flag <span class="badge new">NEW</span></h3>
+    <p>Controls what happens when an ACK consumer exceeds max retries.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">blocking: true (default)</div>
+        <ul>
+          <li>ACK marked <code>Failed</code></li>
+          <li>Instance <code>Suspended</code> with message</li>
+          <li><code>ACK_SUSPEND</code> notice fired</li>
+          <li>Engine stops all further ACK re-dispatch for this instance</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title">blocking: false</div>
+        <ul>
+          <li>ACK marked <code>Failed</code></li>
+          <li>Instance <strong>continues</strong> normally</li>
+          <li><code>ACK_FAIL</code> warn notice fired</li>
+          <li>Use for advisory/non-critical hooks (audit log, notifications)</li>
+        </ul>
+      </div>
+    </div>
+    <h4 class="mini-title">Inheritance chain</h4>
+    <pre><code><span class="cm">// emit-level wins if present; falls back to rule-level; then defaults true</span>
+<span class="kw">var</span> isBlocking = emit.blocking ?? rule.blocking ?? <span class="nb">true</span>;</code><span class="lang-label">C# (conceptual)</span></pre>
+  </section>
+
+  <section class="doc-section" id="pol-groups">
+    <h3 class="sub-title">6.4 Hook Groups <span class="badge new">NEW</span></h3>
+    <p>Two or more emit entries sharing the same <code>"group"</code> value in the same rule belong to a <strong>hook group</strong>. The engine tracks all hooks in the group and fires a notice when all are Processed.</p>
+    <div class="callout new">
+      <div class="callout-title">Key design decisions</div>
+      <ul style="margin:6px 0 0;padding-left:18px">
+        <li>Group names are stored in a global <code>hook_group</code> table (no <code>instance_id</code>) — same pattern as <code>hook_route</code></li>
+        <li>Group name is stamped at hook creation time. If the policy later renames the group, existing instances retain the original <code>group_id</code> permanently</li>
+        <li>Completion is scoped by <code>instance_id + state_id + via_event + on_entry + group_id</code> — not globally</li>
+        <li>Ungrouped hooks are unaffected — <code>GetContextByAckGuidAsync</code> INNER JOINs <code>hook_group</code>, returning <code>null</code> for ungrouped hooks</li>
+      </ul>
+    </div>
+
+    <h4 class="mini-title">Example — parallel review hooks</h4>
+    <pre><code><span class="jk">"emit"</span>: [
+  { <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.NOTIFY_REVIEWER"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.RUN_CREDIT_CHECK"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.AUDIT_LOG"</span>,       <span class="jk">"blocking"</span>: <span class="nb">false</span> } <span class="cm">// not in group</span>
+]</code><span class="lang-label">JSON</span></pre>
+
+    <h4 class="mini-title">Handling the group complete notice</h4>
+    <pre><code>engine.NoticeRaised += <span class="kw">async</span> (n) => {
+    <span class="kw">if</span> (n.Code == <span class="st">"HOOK_GROUP_COMPLETE"</span>) {
+        <span class="kw">var</span> groupName    = (<span class="ty">string</span>)n.Data[<span class="st">"groupName"</span>];
+        <span class="kw">var</span> instanceGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
+        <span class="cm">// all hooks in the group are done — trigger next step</span>
+        <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+            ExternalRef = instanceGuid,
+            Event = <span class="st">"review_complete"</span>,
+            <span class="cm">// ...</span>
+        });
+    }
+};</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="pol-timeouts">
+    <h3 class="sub-title">6.5 Timeouts</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>state</code></td><td>State name the timeout applies to</td></tr>
+          <tr><td><code>timeout</code></td><td>ISO 8601 duration: <code>"P2D"</code> = 2 days, <code>"PT30M"</code> = 30 min</td></tr>
+          <tr><td><code>timeout_minutes</code></td><td>Alternative to <code>timeout</code> — direct integer in minutes</td></tr>
+          <tr><td><code>timeout_mode</code></td><td><code>"once"</code> (default) or <code>"repeat"</code></td></tr>
+          <tr><td><code>timeout_event</code></td><td>Event code auto-triggered when timeout fires</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="pol-lifecycle">
+    <h3 class="sub-title">6.6 Policy Attachment Lifecycle</h3>
+    <ol>
+      <li><strong>Import time:</strong> <code>BlueprintImporter</code> parses, hashes, stores policy. Timeouts extracted to <code>timeouts</code> table. Linked via <code>def_policy</code>.</li>
+      <li><strong>Instance creation:</strong> Latest policy attached to instance (<code>instance.policy_id</code>). Never changes for that instance.</li>
+      <li><strong>Runtime:</strong> Engine reads the instance's attached policy (not the latest) to resolve rules, params, hooks. Behavioral consistency for in-flight instances.</li>
+      <li><strong>Re-dispatch:</strong> Monitor re-resolves policy context from stored <code>policy_json</code> column alongside ACK dispatch data. Retries use the same policy that was active when the event was first created.</li>
+    </ol>
+  </section>
+
+  <!-- ──────────────── SCHEMA ──────────────── -->
+  <section class="doc-section" id="schema-core">
+    <div class="section-label">Schema Reference</div>
+    <h2 class="section-title">Database Schema</h2>
+    <h3 class="sub-title">Core Tables</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Purpose</th><th>Key Columns</th></tr></thead>
+        <tbody>
+          <tr><td><code>environment</code></td><td>Environment registry</td><td><code>id</code>, <code>code</code>, <code>name</code></td></tr>
+          <tr><td><code>definition</code></td><td>State machine schemas</td><td><code>id</code>, <code>env</code>, <code>name</code></td></tr>
+          <tr><td><code>def_version</code></td><td>Versioned definition JSON (hashed)</td><td><code>id</code>, <code>parent</code>, <code>version</code>, <code>hash</code>, <code>data</code></td></tr>
+          <tr><td><code>state</code></td><td>States per def_version</td><td><code>id</code>, <code>def_version</code>, <code>name</code>, <code>flags</code></td></tr>
+          <tr><td><code>events</code></td><td>Events per def_version</td><td><code>id</code>, <code>def_version</code>, <code>code</code>, <code>name</code></td></tr>
+          <tr><td><code>transition</code></td><td>Valid state transitions</td><td><code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>def_version</code></td></tr>
+          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>external_ref</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code></td></tr>
+          <tr><td><code>lifecycle</code></td><td>Transition audit log</td><td><code>id</code>, <code>instance_id</code>, <code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>created</code>, <code>occurred</code> <span class="badge new">NEW</span></td></tr>
+          <tr><td><code>lc_data</code></td><td>Payload / actor per lifecycle entry</td><td><code>lc_id</code>, <code>actor</code>, <code>payload</code></td></tr>
+          <tr><td><code>policy</code></td><td>Policy content (hashed)</td><td><code>id</code>, <code>hash</code>, <code>content</code></td></tr>
+          <tr><td><code>def_policies</code></td><td>Policy ↔ definition link</td><td><code>definition</code>, <code>policy</code></td></tr>
+          <tr><td><code>timeouts</code></td><td>Timeout config per state+policy</td><td><code>policy_id</code>, <code>state_name</code>, <code>duration</code>, <code>mode</code>, <code>event_code</code></td></tr>
+          <tr><td><code>lc_timeout</code></td><td>Timeout processed tracking</td><td><code>lc_id</code></td></tr>
+          <tr><td><code>consumer</code></td><td>Registered consumers + heartbeat</td><td><code>id</code>, <code>env</code>, <code>consumer_guid</code>, <code>last_beat</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="schema-hook">
+    <h3 class="sub-title">Hook Tables <span class="badge new">NEW</span></h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Purpose</th><th>Key Columns</th></tr></thead>
+        <tbody>
+          <tr><td><code>hook_route</code> <span class="badge new">NEW</span></td><td>Global normalized lookup for route names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(240) UNIQUE</code></td></tr>
+          <tr><td><code>hook_group</code> <span class="badge new">NEW</span></td><td>Global normalized lookup for group names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(140) UNIQUE</code></td></tr>
+          <tr><td><code>hook</code></td><td>Work items derived from policy emit rules</td><td><code>id</code>, <code>instance_id</code>, <code>state_id</code>, <code>via_event</code>, <code>on_entry</code>, <code>route_id FK→hook_route</code>, <code>blocking</code> <span class="badge new">NEW</span>, <code>group_id FK→hook_group</code> <span class="badge new">NEW</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <pre><code><span class="sql-kw">CREATE TABLE</span> <span class="sql-id">hook_route</span> (
+  <span class="sql-id">id</span>   BIGINT       <span class="sql-kw">NOT NULL AUTO_INCREMENT PRIMARY KEY</span>,
+  <span class="sql-id">name</span> VARCHAR(240) <span class="sql-kw">NOT NULL</span>,
+  <span class="sql-kw">UNIQUE KEY</span> <span class="sql-id">unq_route</span> (<span class="sql-id">name</span>)
+);
+
+<span class="sql-kw">CREATE TABLE</span> <span class="sql-id">hook_group</span> (
+  <span class="sql-id">id</span>   BIGINT       <span class="sql-kw">NOT NULL AUTO_INCREMENT PRIMARY KEY</span>,
+  <span class="sql-id">name</span> VARCHAR(140) <span class="sql-kw">NOT NULL</span>,
+  <span class="sql-kw">UNIQUE KEY</span> <span class="sql-id">uk_hook_group_name</span> (<span class="sql-id">name</span>)
+);
+
+<span class="sql-cm">-- hook.route replaced by route_id FK; group_id added</span>
+<span class="sql-kw">ALTER TABLE</span> <span class="sql-id">hook</span>
+  <span class="sql-kw">ADD COLUMN</span> <span class="sql-id">route_id</span> BIGINT <span class="sql-kw">NOT NULL</span>,
+  <span class="sql-kw">ADD COLUMN</span> <span class="sql-id">group_id</span> BIGINT <span class="sql-kw">NULL</span>,
+  <span class="sql-kw">ADD CONSTRAINT</span> <span class="sql-id">fk_hook_route</span>  <span class="sql-kw">FOREIGN KEY</span> (<span class="sql-id">route_id</span>) <span class="sql-kw">REFERENCES</span> <span class="sql-id">hook_route</span>(<span class="sql-id">id</span>),
+  <span class="sql-kw">ADD CONSTRAINT</span> <span class="sql-id">fk_hook_group</span>  <span class="sql-kw">FOREIGN KEY</span> (<span class="sql-id">group_id</span>) <span class="sql-kw">REFERENCES</span> <span class="sql-id">hook_group</span>(<span class="sql-id">id</span>);</code><span class="lang-label">SQL</span></pre>
+  </section>
+
+  <section class="doc-section" id="schema-ack">
+    <h3 class="sub-title">ACK Tables</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>ack</code></td><td>One row per acknowledgeable event (guid)</td></tr>
+          <tr><td><code>ack_consumer</code></td><td>One row per (ack, consumer) — tracks status, next_due, trigger_count</td></tr>
+          <tr><td><code>lc_ack</code></td><td>Links lifecycle_id → ack_id</td></tr>
+          <tr><td><code>hook_ack</code></td><td>Links hook_id → ack_id</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>ACK status values: <code>Pending=1</code>, <code>Delivered=2</code>, <code>Processed=3</code>, <code>Failed=4</code>. Terminal = 3 or 4 (no more re-dispatch).</p>
+  </section>
+
+  <!-- ──────────────── REFERENCE ──────────────── -->
+  <section class="doc-section" id="ref-notices">
+    <div class="section-label">Reference</div>
+    <h2 class="section-title">Notice Codes Reference</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Code</th><th>Kind</th><th>Description</th><th>Data Keys</th></tr></thead>
+        <tbody>
+          <tr><td><code>TRIGGER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in <code>TriggerAsync</code></td><td><code>exception</code></td></tr>
+          <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop tick</td><td><code>exception</code></td></tr>
+          <tr><td><code>EVENT_HANDLER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception thrown by a consumer's <code>EventRaised</code> handler</td><td><code>exception</code></td></tr>
+          <tr><td><code>ACK_RETRY</code></td><td><span class="badge warn">Warn</span></td><td>Monitor re-dispatching a due event (pending or delivered too long)</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Instance suspended — max retries exceeded on a blocking hook</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>hookCode</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> All hooks in a named group are Processed for this instance+state</td><td><code>groupName</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Group completion DB check failed; ACK itself was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
+          <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance overdue in current state (no open ACKs, no policy timeout)</td><td><code>consumerId</code>, <code>instanceId</code>, <code>instanceGuid</code>, <code>stateName</code>, <code>staleSeconds</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="ref-options">
+    <h3 class="sub-title">Engine Options (WorkFlowEngineOptions)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Option</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>AckGateEnabled</code> <span class="badge new">NEW</span></td><td><code>false</code></td><td>Block new transitions while last lifecycle entry has pending consumers</td></tr>
+          <tr><td><code>AckPendingResendAfter</code></td><td>40 seconds</td><td><code>next_due</code> interval for Pending status</td></tr>
+          <tr><td><code>AckDeliveredResendAfter</code></td><td>4 minutes</td><td><code>next_due</code> interval for Delivered status</td></tr>
+          <tr><td><code>MaxRetryCount</code></td><td>configurable</td><td>Max dispatch attempts before failure/suspension</td></tr>
+          <tr><td><code>ConsumerTtlSeconds</code></td><td>30</td><td>Heartbeat freshness threshold</td></tr>
+          <tr><td><code>ConsumerDownRecheckSeconds</code></td><td>configurable</td><td>How far to push <code>next_due</code> for down consumers</td></tr>
+          <tr><td><code>MonitorInterval</code></td><td>configurable</td><td>Monitor tick frequency</td></tr>
+          <tr><td><code>MonitorPageSize</code></td><td>200</td><td>Paging size for dispatch queries</td></tr>
+          <tr><td><code>DefaultStateStaleDuration</code></td><td>configurable</td><td>Duration before STATE_STALE notice fires (zero = disabled)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="doc-section" id="ref-quickstart">
+    <h3 class="sub-title">Quick Start</h3>
+    <pre><code><span class="cm">// 1. Build engine</span>
+<span class="kw">var</span> engine = <span class="kw">new</span> <span class="ty">WorkFlowEngine</span>(dal, <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
+    AckGateEnabled           = <span class="nb">true</span>,
+    DefaultStateStaleDuration = TimeSpan.FromHours(<span class="jn">24</span>),
+    MaxRetryCount             = <span class="jn">5</span>
+});
+
+<span class="cm">// 2. Subscribe to events and notices</span>
+engine.EventRaised  += HandleEventAsync;
+engine.NoticeRaised += HandleNoticeAsync;
+
+<span class="cm">// 3. Import schema and policy (idempotent — safe every startup)</span>
+<span class="kw">await</span> engine.BlueprintImporter.ImportDefinitionJsonAsync(defJson);
+<span class="kw">await</span> engine.BlueprintImporter.ImportPolicyJsonAsync(policyJson);
+
+<span class="cm">// 4. Register consumer + start heartbeat</span>
+<span class="kw">var</span> consumerId = <span class="kw">await</span> engine.RegisterConsumerAsync(envCode, myGuid);
+_ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="cm">// every ~10s</span>
+
+<span class="cm">// 5. Start monitor</span>
+<span class="kw">await</span> engine.StartMonitorAsync(cts.Token);
+
+<span class="cm">// 6. Trigger a transition</span>
+<span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    EnvCode     = envCode,
+    DefName     = <span class="st">"loan-approval"</span>,
+    ExternalRef = loanId.ToString(),
+    Event       = <span class="st">"submit"</span>,
+    RequestId   = requestId,   <span class="cm">// stable for retries</span>
+    Actor       = userId,
+    AckRequired = <span class="nb">true</span>,
+    OccurredAt  = <span class="nb">null</span>,        <span class="cm">// set DateTimeOffset for replay</span>
+    SkipAckGate = <span class="nb">false</span>        <span class="cm">// set true to bypass ACK gate once</span>
+});
+
+<span class="kw">if</span> (!result.Applied) {
+    Console.WriteLine($<span class="st">"Blocked: {result.Reason}"</span>); <span class="cm">// e.g. "BlockedByPendingAck"</span>
+    <span class="kw">return</span>;
+}
+
+<span class="cm">// 7. In event handler — ACK after processing</span>
+<span class="kw">async</span> Task HandleEventAsync(<span class="ty">ILifeCycleEvent</span> e) {
+    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleHookEvent</span> hook) {
+        <span class="cm">// dispatch based on hook.HookCode</span>
+        <span class="kw">await</span> DispatchHookAsync(hook);
+        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, AckOutcome.Processed);
+        <span class="cm">// ↑ if hook belongs to a group and all siblings are Processed,</span>
+        <span class="cm">//   HOOK_GROUP_COMPLETE notice fires automatically</span>
+    }
+}
+
+<span class="cm">// 8. Handle notices</span>
+<span class="kw">async</span> Task HandleNoticeAsync(<span class="ty">LifeCycleNotice</span> n) {
+    <span class="kw">switch</span> (n.Code) {
+        <span class="kw">case</span> <span class="st">"HOOK_GROUP_COMPLETE"</span>:
+            <span class="kw">var</span> group    = (<span class="ty">string</span>)n.Data[<span class="st">"groupName"</span>];
+            <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
+            <span class="cm">// all hooks in group done — trigger next macro event</span>
+            <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+                ExternalRef = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
+            });
+            <span class="kw">break</span>;
+        <span class="kw">case</span> <span class="st">"ACK_SUSPEND"</span>:
+            logger.LogCritical(<span class="st">"Instance suspended: {msg}"</span>, n.Message);
+            <span class="kw">break</span>;
+        <span class="kw">case</span> <span class="st">"STATE_STALE"</span>:
+            logger.LogWarning(<span class="st">"Instance overdue: {guid}"</span>, n.Data[<span class="st">"instanceGuid"</span>]);
+            <span class="kw">break</span>;
+    }
+}</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <hr class="divider">
+  <p style="text-align:center;color:var(--text-muted);font-size:12px">Haley Workflow Engine — v0.7 — March 2026</p>
+
+</div><!-- content-inner -->
+</main>
+
+<button id="back-top" onclick="document.getElementById('content').scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+  // ── Toggle nav groups ──
+  function toggleGroup(btn) {
+    btn.classList.toggle('collapsed');
+    const items = btn.nextElementSibling;
+    if (btn.classList.contains('collapsed')) {
+      items.style.maxHeight = '0';
+    } else {
+      items.style.maxHeight = items.scrollHeight + 'px';
+    }
+  }
+  // Set initial max-heights
+  document.querySelectorAll('.nav-items').forEach(el => {
+    el.style.maxHeight = el.scrollHeight + 'px';
+  });
+
+  // ── Scroll to section ──
+  function scrollTo(id) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActive(id);
+    }
+  }
+
+  // ── Active nav item ──
+  function setActive(id) {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(b => {
+      if (b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + id + "'")) {
+        b.classList.add('active');
+      }
+    });
+  }
+
+  // ── Scroll spy ──
+  const content = document.getElementById('content');
+  const sections = document.querySelectorAll('.doc-section, h3.sub-title');
+
+  content.addEventListener('scroll', () => {
+    // Back to top
+    document.getElementById('back-top').classList.toggle('show', content.scrollTop > 300);
+
+    // Find current section
+    let current = '';
+    document.querySelectorAll('[id]').forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < 120) current = el.id;
+    });
+    if (current) setActive(current);
+  });
+
+  // ── Search ──
+  document.getElementById('search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      const match = btn.textContent.toLowerCase().includes(q);
+      btn.style.display = match ? '' : 'none';
+    });
+    // Show all groups when empty
+    if (!q) {
+      document.querySelectorAll('.nav-group-btn').forEach(b => {
+        b.classList.remove('collapsed');
+        const items = b.nextElementSibling;
+        items.style.maxHeight = items.scrollHeight + 'px';
+      });
+    }
+  });
+</script>
+</body>
+</html>

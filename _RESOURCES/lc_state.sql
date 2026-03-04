@@ -213,16 +213,17 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
 
 -- Dumping structure for table lcstate.hook_group
 CREATE TABLE IF NOT EXISTS `hook_group` (
-  `id` bigint(20) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `name` varchar(140) NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_hook_group_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook_route
 CREATE TABLE IF NOT EXISTS `hook_route` (
-  `id` bigint(20) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `name` varchar(240) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_route` (`name`)

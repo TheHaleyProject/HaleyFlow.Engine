@@ -361,6 +361,12 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<column name="on_entry" />
 				<column name="route_id" />
 			</index>
+			<index name="fk_hook_hook_route" unique="NORMAL" >
+				<column name="route_id" />
+			</index>
+			<index name="fk_hook_hook_group" unique="NORMAL" >
+				<column name="group_id" />
+			</index>
 			<fk name="fk_hooks_instance" to_schema="lcstate" to_table="instance" >
 				<fk_column name="instance_id" pk="id" />
 			</fk>
@@ -392,9 +398,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_group" prior="hook_g" >
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
+			<column name="id" type="BIGINT" length="20" mandatory="y" />
 			<column name="name" type="VARCHAR" length="140" mandatory="y" />
 			<index name="pk_hook_group" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -402,11 +406,9 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_route" prior="route" >
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
+			<column name="id" type="BIGINT" length="20" mandatory="y" />
 			<column name="name" type="VARCHAR" length="240" mandatory="y" />
-			<index name="pk_route" unique="PRIMARY_KEY" >
+			<index name="pk_hook_route" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_route" unique="UNIQUE_KEY" >

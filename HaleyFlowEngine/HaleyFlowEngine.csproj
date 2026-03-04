@@ -34,36 +34,20 @@
     </None>
   </ItemGroup>
 
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-		<DebugType>portable</DebugType>
-		<DebugSymbols>true</DebugSymbols>
-	</PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
 
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-		<GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
-		<DebugType>full</DebugType>
-		<DebugSymbols>true</DebugSymbols>
-		<WarningLevel>2</WarningLevel>
-		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-	</PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <WarningLevel>2</WarningLevel>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
 
   <Import Project="$(SolutionDir)ProjectReferences_$(SolutionName).txt" Condition="Exists('$(SolutionDir)ProjectReferences_$(SolutionName).txt')" />
-
-  <!--<Choose>
-    <When Condition="Exists($(HaleyEvents))">
-      <ItemGroup>
-        <ProjectReference Include="$(HaleyEvents)\HaleyEvents.csproj">
-          <Name>HaleyEvents</Name>
-        </ProjectReference>
-      </ItemGroup>
-    </When>
-    <Otherwise>
-      <ItemGroup>
-        <PackageReference Include="Haley.Events" Version="$(HaleyEventsVersion)" />
-      </ItemGroup>
-    </Otherwise>
-  </Choose>-->
-  
   <Choose>
     <When Condition="Exists($(HaleyHelpersDB))">
       <ItemGroup>
@@ -78,5 +62,4 @@
       </ItemGroup>
     </Otherwise>
   </Choose>
-  
 </Project>

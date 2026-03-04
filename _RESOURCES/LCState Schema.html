@@ -1086,18 +1086,6 @@ Referred by lc_timeout ( lc_id -&gt; id ) </title><use x='385' y='660' href='#re
 <text x='604' y='1183' text-anchor='end' class='colType'>t</text>  <a href='#lcstate.activity_status.name'><g><title>&#10697;  name
      varchar(120)</title><text id='lcstate&#46;activity&#95;status&#46;name' x='498' y='1206'>name</text></g></a>
 <text x='604' y='1202' text-anchor='end' class='colType'>t</text>
-<!-- == Table 'hook_route' == -->
-<rect id='depict_lcstate&#46;hook&#95;route' class='entity' style='stroke:#FCFCF9' x='76' y='827' width='95' height='95' rx='4' ry='4' />
-<rect x='76' y='827' width='95' height='8' rx='4' ry='4' style='stroke-width:0;fill:url(#ttl_FFFF00);'/>
-<rect x='76' y='831' width='95' height='29' style='stroke-width:0;fill:url(#tbg_FFFF00);'/>
-<a href='#lcstate.hook_route'><g><title>Table lcstate.hook_route</title><text id='depict&#45;lcstate&#46;hook&#95;route' x='85' y='849' class='tableHeader' style='fill:#484841;'>hook&#95;route</text></g></a>
-  <use x='77' y='870' href='#nn'/><g><title>&#x1F511;  Pk pk_hook_route ( id ) </title><use x='78' y='869' href='#pk'/></g><a href='#lcstate.hook_route.id'><g><title>&#10697;  id
-     * bigint
- &#8601; hook( route_id )</title><text id='lcstate&#46;hook&#95;route&#46;id' x='99' y='883' onmouseover="hghl(['hook_fk_hook_hook_route','lcstate.hook.route_id'])" onmouseout="uhghl(['hook_fk_hook_hook_route','lcstate.hook.route_id'])" class='colPk'>id</text></g></a>
-<a href='#lcstate.hook_route.id'><g><title>&#x1F517;  Referred by hook ( route_id -&gt; id ) </title><use x='157' y='869' href='#ref'/></g></a>
-  <use x='77' y='889' href='#nn'/><g><title>&#x1F50D;  Unq unq_route ( name ) </title><use x='78' y='888' href='#unq'/></g><a href='#lcstate.hook_route.name'><g><title>&#10697;  name
-     * varchar(240)</title><text id='lcstate&#46;hook&#95;route&#46;name' x='99' y='902'>name</text></g></a>
-<text x='167' y='898' text-anchor='end' class='colType'>t</text>
 <!-- == Table 'hook' == -->
 <rect id='depict_lcstate&#46;hook' class='entity' style='stroke:#FCFCF9' x='57' y='580' width='133' height='228' rx='4' ry='4' />
 <rect x='57' y='580' width='133' height='8' rx='4' ry='4' style='stroke-width:0;fill:url(#ttl_FFFF00);'/>
@@ -1140,18 +1128,6 @@ Referred by lc_timeout ( lc_id -&gt; id ) </title><use x='385' y='660' href='#re
       event or the route name that needs to be triggered or hooked.</title><text id='lcstate&#46;hook&#46;route&#95;id' x='80' y='788' onmouseover="hghl(['hook_fk_hook_hook_route','lcstate.hook_route.id'])" onmouseout="uhghl(['hook_fk_hook_hook_route','lcstate.hook_route.id'])">route&#95;id</text></g></a>
 <a href='#lcstate.hook.route_id'><g><title>&#x1F517;  References hook_route ( route_id -&gt; id ) </title><use x='176' y='774' href='#fk'/></g></a>
 
-<!-- == Table 'hook_group' == -->
-<rect id='depict_lcstate&#46;hook&#95;group' class='entity' style='stroke:#FCFCF9' x='57' y='447' width='114' height='95' rx='4' ry='4' />
-<rect x='57' y='447' width='114' height='8' rx='4' ry='4' style='stroke-width:0;fill:url(#ttl_FFFF00);'/>
-<rect x='57' y='451' width='114' height='29' style='stroke-width:0;fill:url(#tbg_FFFF00);'/>
-<a href='#lcstate.hook_group'><g><title>Table lcstate.hook_group</title><text id='depict&#45;lcstate&#46;hook&#95;group' x='73' y='469' class='tableHeader' style='fill:#484841;'>hook&#95;group</text></g></a>
-  <use x='58' y='490' href='#nn'/><g><title>&#x1F511;  Pk pk_hook_group ( id ) </title><use x='59' y='489' href='#pk'/></g><a href='#lcstate.hook_group.id'><g><title>&#10697;  id
-     * bigint
- &#8601; hook( group_id )</title><text id='lcstate&#46;hook&#95;group&#46;id' x='80' y='503' onmouseover="hghl(['hook_fk_hook_hook_group','lcstate.hook.group_id'])" onmouseout="uhghl(['hook_fk_hook_hook_group','lcstate.hook.group_id'])" class='colPk'>id</text></g></a>
-<a href='#lcstate.hook_group.id'><g><title>&#x1F517;  Referred by hook ( group_id -&gt; id ) </title><use x='157' y='489' href='#ref'/></g></a>
-  <use x='58' y='509' href='#nn'/><a href='#lcstate.hook_group.name'><g><title>&#10697;  name
-     * varchar(140)</title><text id='lcstate&#46;hook&#95;group&#46;name' x='80' y='522'>name</text></g></a>
-<text x='167' y='518' text-anchor='end' class='colType'>t</text>
 <!-- == Table 'policy' == -->
 <rect id='depict_lcstate&#46;policy' class='entity' style='stroke:#F9F9FC' x='836' y='1188' width='114' height='133' rx='4' ry='4' />
 <rect x='836' y='1188' width='114' height='8' rx='4' ry='4' style='stroke-width:0;fill:url(#ttl_0000FF);'/>
@@ -1351,6 +1327,30 @@ Referred by transition ( def_version -&gt; id ) </title><use x='803' y='622' hre
 <text x='813' y='746' text-anchor='end' class='colType'>t</text>  <use x='704' y='756' href='#nn'/><g><title>&#x1F50D;  Unq unq_def_version_1 ( parent, hash ) </title><use x='705' y='755' href='#unq'/></g><a href='#lcstate.def_version.hash'><g><title>&#10697;  hash
      * varchar(48)</title><text id='lcstate&#46;def&#95;version&#46;hash' x='726' y='769'>hash</text></g></a>
 <text x='813' y='765' text-anchor='end' class='colType'>t</text>
+<!-- == Table 'hook_group' == -->
+<rect id='depict_lcstate&#46;hook&#95;group' class='entity' style='stroke:#FCFCF9' x='57' y='447' width='114' height='95' rx='4' ry='4' />
+<rect x='57' y='447' width='114' height='8' rx='4' ry='4' style='stroke-width:0;fill:url(#ttl_FFFF00);'/>
+<rect x='57' y='451' width='114' height='29' style='stroke-width:0;fill:url(#tbg_FFFF00);'/>
+<a href='#lcstate.hook_group'><g><title>Table lcstate.hook_group</title><text id='depict&#45;lcstate&#46;hook&#95;group' x='73' y='469' class='tableHeader' style='fill:#484841;'>hook&#95;group</text></g></a>
+  <use x='58' y='490' href='#nn'/><g><title>&#x1F511;  Pk pk_hook_group ( id ) </title><use x='59' y='489' href='#pk'/></g><a href='#lcstate.hook_group.id'><g><title>&#10697;  id
+     * bigint
+ &#8601; hook( group_id )</title><text id='lcstate&#46;hook&#95;group&#46;id' x='80' y='503' onmouseover="hghl(['hook_fk_hook_hook_group','lcstate.hook.group_id'])" onmouseout="uhghl(['hook_fk_hook_hook_group','lcstate.hook.group_id'])" class='colPk'>id</text></g></a>
+<a href='#lcstate.hook_group.id'><g><title>&#x1F517;  Referred by hook ( group_id -&gt; id ) </title><use x='157' y='489' href='#ref'/></g></a>
+  <use x='58' y='509' href='#nn'/><g><title>&#x1F50D;  Unq unq_hook_group ( name ) </title><use x='59' y='508' href='#unq'/></g><a href='#lcstate.hook_group.name'><g><title>&#10697;  name
+     * varchar(140)</title><text id='lcstate&#46;hook&#95;group&#46;name' x='80' y='522'>name</text></g></a>
+<text x='167' y='518' text-anchor='end' class='colType'>t</text>
+<!-- == Table 'hook_route' == -->
+<rect id='depict_lcstate&#46;hook&#95;route' class='entity' style='stroke:#FCFCF9' x='76' y='827' width='95' height='95' rx='4' ry='4' />
+<rect x='76' y='827' width='95' height='8' rx='4' ry='4' style='stroke-width:0;fill:url(#ttl_FFFF00);'/>
+<rect x='76' y='831' width='95' height='29' style='stroke-width:0;fill:url(#tbg_FFFF00);'/>
+<a href='#lcstate.hook_route'><g><title>Table lcstate.hook_route</title><text id='depict&#45;lcstate&#46;hook&#95;route' x='85' y='849' class='tableHeader' style='fill:#484841;'>hook&#95;route</text></g></a>
+  <use x='77' y='870' href='#nn'/><g><title>&#x1F511;  Pk pk_hook_route ( id ) </title><use x='78' y='869' href='#pk'/></g><a href='#lcstate.hook_route.id'><g><title>&#10697;  id
+     * bigint
+ &#8601; hook( route_id )</title><text id='lcstate&#46;hook&#95;route&#46;id' x='99' y='883' onmouseover="hghl(['hook_fk_hook_hook_route','lcstate.hook.route_id'])" onmouseout="uhghl(['hook_fk_hook_hook_route','lcstate.hook.route_id'])" class='colPk'>id</text></g></a>
+<a href='#lcstate.hook_route.id'><g><title>&#x1F517;  Referred by hook ( route_id -&gt; id ) </title><use x='157' y='869' href='#ref'/></g></a>
+  <use x='77' y='889' href='#nn'/><g><title>&#x1F50D;  Unq unq_route ( name ) </title><use x='78' y='888' href='#unq'/></g><a href='#lcstate.hook_route.name'><g><title>&#10697;  name
+     * varchar(240)</title><text id='lcstate&#46;hook&#95;route&#46;name' x='99' y='902'>name</text></g></a>
+<text x='167' y='898' text-anchor='end' class='colType'>t</text>
 </g></svg></div>
 <script type='text/javascript'>
 var svgContainers = document.getElementsByClassName("svgContainer");
@@ -2267,16 +2267,19 @@ function searchSVG( searchValue) {
 	<tr>
 		<td><span class='text-danger'>*</span><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#pk'/></svg><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#ref'/></svg></td>
 		<td><a name='lcstate.hook_group.id'>id</a></td>
-		<td class='dataType'> BIGINT  </td>
+		<td class='dataType'> BIGINT AUTO_INCREMENT </td>
 	</tr>
 	<tr>
-		<td><span class='text-danger'>*</span></td>
+		<td><span class='text-danger'>*</span><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#unq'/></svg></td>
 		<td><a name='lcstate.hook_group.name'>name</a></td>
 		<td class='dataType'> VARCHAR&#40;140&#41;  </td>
 	</tr>
 <tr><th colspan='3'>Indexes</th></tr>
 	<tr>		<td><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#pk'/></svg></td><td>pk&#95;hook&#95;group</td>
 		<td>Primary Key ON id</td>
+	</tr>
+	<tr>		<td><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#unq'/></svg></td><td>unq&#95;hook&#95;group</td>
+		<td>Unique Key ON name</td>
 	</tr>
 <tr><th colspan='3'>Referring Foreign Key</th></tr>
 	<tr>
@@ -2298,7 +2301,7 @@ function searchSVG( searchValue) {
 	<tr>
 		<td><span class='text-danger'>*</span><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#pk'/></svg><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#ref'/></svg></td>
 		<td><a name='lcstate.hook_route.id'>id</a></td>
-		<td class='dataType'> BIGINT  </td>
+		<td class='dataType'> BIGINT AUTO_INCREMENT </td>
 	</tr>
 	<tr>
 		<td><span class='text-danger'>*</span><svg xmlns="http://www.w3.org/2000/svg" width='14' height='14'><use href='#unq'/></svg></td>
