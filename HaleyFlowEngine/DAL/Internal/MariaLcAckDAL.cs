@@ -14,5 +14,8 @@ namespace Haley.Internal {
 
         public Task<int> DeleteByLcIdAsync(long lcId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_ACK_LC.DELETE_BY_LC_ID, load, (LC_ID, lcId));
+
+        public Task<int> CountPendingForInstanceAsync(long instanceId, DbExecutionLoad load = default)
+            => Db.ScalarAsync<int>(QRY_ACK_LC.COUNT_PENDING_FOR_INSTANCE, load, (INSTANCE_ID, instanceId));
     }
 }

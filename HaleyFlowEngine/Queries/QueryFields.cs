@@ -49,6 +49,7 @@ namespace Haley.Internal {
 
         public const string ON_ENTRY = "@ON_ENTRY";
         public const string ROUTE = "@ROUTE";
+        public const string ROUTE_ID = "@ROUTE_ID";
         public const string BLOCKING = "@BLOCKING";
         public const string OCCURRED = "@OCCURRED";
 

@@ -86,6 +86,25 @@ namespace Haley.Services {
 
                 var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); //latest policy
                 instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.ExternalRef, policy.PolicyId ?? 0, load);
+
+                // ACK gate: reject the transition if the last lifecycle entry still has unresolved consumers.
+                if (_opt.AckGateEnabled && !req.SkipAckGate) {
+                    var gateInstanceId = instance.GetLong("id");
+                    var pendingAckCount = await _dal.LcAck.CountPendingForInstanceAsync(gateInstanceId, load);
+                    if (pendingAckCount > 0) {
+                        transaction.Commit();
+                        committed = true;
+                        return new LifeCycleTriggerResult {
+                            Applied = false,
+                            InstanceGuid = instance.GetString("guid") ?? string.Empty,
+                            InstanceId = gateInstanceId,
+                            Reason = "BlockedByPendingAck",
+                            LifecycleAckGuids = Array.Empty<string>(),
+                            HookAckGuids = Array.Empty<string>()
+                        };
+                    }
+                }
+
                 transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.RequestId, req.Actor, req.Payload, req.OccurredAt, load);
 
                 var result = new LifeCycleTriggerResult {
