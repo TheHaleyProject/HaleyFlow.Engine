@@ -38,7 +38,9 @@ namespace WFE.Test {
 
     public sealed class VendorRegistrationConsoleApp {
         private readonly VendorRegistrationConsoleAppSettings _s;
+        IAdapterGateway _agw;
         private readonly ConcurrentDictionary<string, byte> _dedup = new(StringComparer.OrdinalIgnoreCase);
+        long consumerId { get; set; }
 
         // OPTIONAL: auto-drive hooks
         private readonly Dictionary<string, int> _hookAutoResponses = new(StringComparer.OrdinalIgnoreCase) {
@@ -51,24 +53,17 @@ namespace WFE.Test {
         private long _lastInstanceId;
         private string _lastEntityId = "";
 
-        public VendorRegistrationConsoleApp(VendorRegistrationConsoleAppSettings settings) {
+        public VendorRegistrationConsoleApp(VendorRegistrationConsoleAppSettings settings, IAdapterGateway agw) {
             _s = settings ?? throw new ArgumentNullException(nameof(settings));
+            _agw = agw;
             if (string.IsNullOrWhiteSpace(_s.ConnectionString)) throw new ArgumentNullException(nameof(settings.ConnectionString));
         }
-
-
 
         public async Task RunAsync(CancellationToken ct) {
             Console.WriteLine("Workflow test app started.");
 
             var defPath = FindFile(_s.DefinitionFileName);
             var polPath = FindFile(_s.PolicyFileName);
-
-            IWorkFlowDAL dal = await CreateDalOrThrowAsync(ct);
-
-            // Ensure env + consumer BEFORE creating the engine (so ResolveConsumers can return a real id)
-            var envId = await dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(_s.EnvCode, _s.EnvDisplayName, new DbExecutionLoad(ct));
-            var consumerId = await dal.Consumer.EnsureByEnvIdAndGuidReturnIdAsync(envId, _s.ConsumerGuid, new DbExecutionLoad(ct));
 
             var opt = new WorkFlowEngineOptions {
                 MonitorInterval = _s.MonitorInterval,
@@ -82,11 +77,15 @@ namespace WFE.Test {
                 // IMPORTANT: engine captures this delegate at ctor time
                 ResolveConsumers = (ty, defId, token) => {
                     token.ThrowIfCancellationRequested();
-                    return Task.FromResult<IReadOnlyList<long>>(new[] { Convert.ToInt64(consumerId)});
+                    //return Task.FromResult<IReadOnlyList<long>>(new[] { Convert.ToInt64(consumerId)});
+                    return Task.FromResult<IReadOnlyList<long>>(new[] { Convert.ToInt64(consumerId) });
                 }
             };
 
-            await using var engine = new WorkFlowEngine(dal, opt);
+            var engine = await LifeCycleInitializer.WithConnectionString(_s.ConnectionString).Build(_agw);
+            // Ensure env + consumer BEFORE creating the engine (so ResolveConsumers can return a real id)
+            var envId = await engine.RegisterEnvironmentAsync(_s.EnvCode, _s.EnvDisplayName, ct);
+            consumerId = await engine.RegisterConsumerAsync(envId, _s.ConsumerGuid, ct);
 
             engine.NoticeRaised += n => {
                 Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}");
@@ -104,19 +103,19 @@ namespace WFE.Test {
             var polJson = await File.ReadAllTextAsync(polPath, ct);
             polJson = EnsurePolicyHasDefName(polJson, _s.DefName);
 
-            var defVersionId = await engine.BlueprintImporter.ImportDefinitionJsonAsync(_s.EnvCode, _s.EnvDisplayName, defJson, ct);
+            var defVersionId = await engine.ImportDefinitionJsonAsync(_s.EnvCode, _s.EnvDisplayName, defJson, ct);
             Console.WriteLine($"Imported definition: defVersionId={defVersionId}");
 
-            var policyId = await engine.BlueprintImporter.ImportPolicyJsonAsync(_s.EnvCode, _s.EnvDisplayName, polJson, ct);
+            var policyId = await engine.ImportPolicyJsonAsync(_s.EnvCode, _s.EnvDisplayName, polJson, ct);
             Console.WriteLine($"Imported/attached policy: policyId={policyId}");
 
             await engine.InvalidateAsync(_s.EnvCode, _s.DefName, ct);
 
             // Quick verification
-            var states = await dal.Blueprint.ListStatesAsync(defVersionId, new DbExecutionLoad(ct));
-            var events = await dal.Blueprint.ListEventsAsync(defVersionId, new DbExecutionLoad(ct));
-            var trans = await dal.Blueprint.ListTransitionsAsync(defVersionId, new DbExecutionLoad(ct));
-            Console.WriteLine($"DB check: states={states.Count} events={events.Count} transitions={trans.Count}");
+            //var states = await dal.Blueprint.ListStatesAsync(defVersionId, new DbExecutionLoad(ct));
+            //var events = await dal.Blueprint.ListEventsAsync(defVersionId, new DbExecutionLoad(ct));
+            //var trans = await dal.Blueprint.ListTransitionsAsync(defVersionId, new DbExecutionLoad(ct));
+            //Console.WriteLine($"DB check: states={states.Count} events={events.Count} transitions={trans.Count}");
 
             // Start monitor (dispatch resend / retries)
             await engine.StartMonitorAsync(ct);
@@ -242,17 +241,6 @@ namespace WFE.Test {
 
             node["defName"] = defName;
             return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-        }
-
-        private async Task<IWorkFlowDAL> CreateDalOrThrowAsync(CancellationToken ct) {
-            ct.ThrowIfCancellationRequested();
-
-            var agw = new AdapterGateway { LogQueryInConsole = false };
-            var response = await LifeCycleInitializer.InitializeAsyncWithConString(agw, _s.ConnectionString);
-
-            if (!response.Status) throw new ArgumentException("Unable to initialize the database for the lifecycle state machine");
-
-            return new MariaWorkFlowDAL(agw, response.Result);
         }
     }
 }

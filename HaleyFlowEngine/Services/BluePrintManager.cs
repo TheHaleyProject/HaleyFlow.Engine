@@ -23,10 +23,12 @@ namespace Haley.Services {
             return new Guid(bytes).ToString();
         }
 
-        private async Task<int> EnsureEnvIdAsync(int envCode, DbExecutionLoad load) {
+        public async Task<int> EnsureEnvironmentAsync(int envCode,string? envDisplayName, DbExecutionLoad load) {
+            load.Ct.ThrowIfCancellationRequested();
             // you don’t have envDisplayName at runtime; keep it simple/consistent
-            return await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envCode.ToString(), load);
+            return await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName?? envCode.ToString(), load);
         }
+
         public BlueprintManager(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
         public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
@@ -148,7 +150,7 @@ namespace Haley.Services {
             var committed = false;
 
             try {
-                var envId = await EnsureEnvIdAsync(envCode, load);
+                var envId = await EnsureEnvironmentAsync(envCode,null, load);
                 await _dal.Consumer.UpsertBeatByEnvIdAndGuidAsync(envId, consumerGuid, load); // always refresh beat
                 tx.Commit();
                 committed = true;
@@ -164,7 +166,7 @@ namespace Haley.Services {
             var committed = false;
 
             try {
-                var envId = await EnsureEnvIdAsync(envCode, load);
+                var envId = await EnsureEnvironmentAsync(envCode, null,load);
 
                 // ensure row exists -> id
                 var id = await _dal.Consumer.EnsureByEnvIdAndGuidReturnIdAsync(envId, consumerGuid, load);

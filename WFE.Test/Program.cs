@@ -20,6 +20,6 @@ var settings = new VendorRegistrationConsoleAppSettings {
 
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
-
-var app = new VendorRegistrationConsoleApp(settings);
+var agw = new AdapterGateway();
+var app = new VendorRegistrationConsoleApp(settings,agw);
 await app.RunAsync(cts.Token);

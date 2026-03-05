@@ -1,0 +1,49 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Haley.Enums;
+using Haley.Models;
+
+namespace Haley.Abstractions {
+    internal interface IAckDAL {
+        Task<DbRow?> GetByIdAsync(long ackId, DbExecutionLoad load = default);
+        Task<DbRow?> GetByGuidAsync(string guid, DbExecutionLoad load = default);
+        Task<long?> GetIdByGuidAsync(string guid, DbExecutionLoad load = default);
+
+        Task<DbRow?> InsertReturnRowAsync(DbExecutionLoad load = default);
+        Task<DbRow?> InsertWithGuidReturnRowAsync(string guid, DbExecutionLoad load = default);
+        Task<int> DeleteAsync(long ackId, DbExecutionLoad load = default);
+    }
+
+    internal interface IAckConsumerDAL {
+        Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default);
+        Task<DbRow?> GetByAckGuidAndConsumerAsync(string ackGuid, long consumer, DbExecutionLoad load = default);
+        Task<long> UpsertByAckIdAndConsumerReturnIdAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<int> MarkTriggerAsync(long ackId, long consumer, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<DbRows> ListDueByConsumerAndStatusPagedAsync(long consumer, int status, int skip, int take, DbExecutionLoad load = default);
+        Task<DbRows> ListDueByStatusPagedAsync(int status, int skip, int take, DbExecutionLoad load = default);
+        Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default);
+    }
+
+    internal interface IAckDispatchDAL {
+        Task<DbRows> ListDueLifecyclePagedAsync(long consumer, int status, int ttlSeconds, int skip, int take, DbExecutionLoad load = default);
+        Task<DbRows> ListDueHookPagedAsync(long consumer, int status, int ttlSeconds, int skip, int take, DbExecutionLoad load = default);
+        Task<int?> CountDueLifecycleAsync(int status, DbExecutionLoad load = default);
+        Task<int?> CountDueHookAsync(int status, DbExecutionLoad load = default);
+    }
+
+    internal interface IHookAckDAL {
+        Task<long?> GetAckIdByHookIdAsync(long hookId, DbExecutionLoad load = default);
+        Task<int> AttachAsync(long ackId, long hookId, DbExecutionLoad load = default);
+        Task<int> DeleteByHookIdAsync(long hookId, DbExecutionLoad load = default);
+    }
+
+    internal interface ILcAckDAL {
+        Task<long?> GetAckIdByLcIdAsync(long lcId, DbExecutionLoad load = default);
+        Task<int> AttachAsync(long ackId, long lcId, DbExecutionLoad load = default);
+        Task<int> DeleteByLcIdAsync(long lcId, DbExecutionLoad load = default);
+        Task<int> CountPendingForInstanceAsync(long instanceId, DbExecutionLoad load = default);
+    }
+}

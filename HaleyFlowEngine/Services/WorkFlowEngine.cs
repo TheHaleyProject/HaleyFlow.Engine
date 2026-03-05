@@ -13,38 +13,38 @@ using System.Threading.Tasks;
 
 namespace Haley.Services {
     public sealed class WorkFlowEngine : IWorkFlowEngine {
+        public IDALUtilBase Dal => _dal;
         private readonly IWorkFlowDAL _dal;
         private readonly WorkFlowEngineOptions _opt;
-        public IStateMachine StateMachine { get; }
-        public IBlueprintManager BlueprintManager { get; }
-        public IBlueprintImporter BlueprintImporter { get; }
-        public IPolicyEnforcer PolicyEnforcer { get; }
-        public IAckManager AckManager { get; }
-        public IRuntimeEngine Runtime { get; }
-        public ILifeCycleMonitor Monitor { get; }
-        public IWorkFlowDAL Dal { get { return _dal; } }
+        internal IStateMachine StateMachine { get; }
+        internal IBlueprintManager BlueprintManager { get; }
+        internal IBlueprintImporter BlueprintImporter { get; }
+        internal IPolicyEnforcer PolicyEnforcer { get; }
+        internal IAckManager AckManager { get; }
+        internal IRuntimeEngine Runtime { get; }
+        internal ILifeCycleMonitor Monitor { get; }
 
         public event Func<ILifeCycleEvent, Task>? EventRaised;
         public event Func<LifeCycleNotice, Task>? NoticeRaised;
         readonly ConcurrentDictionary<string, DateTimeOffset> _overDueLastAt = new(StringComparer.Ordinal);
 
-        public WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
+        internal WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _opt = options ?? new WorkFlowEngineOptions();
 
-            BlueprintManager = _opt.BlueprintManager ?? new BlueprintManager(_dal);
-            BlueprintImporter = _opt.BlueprintImporter ?? new BlueprintImporter(_dal);
-            StateMachine = _opt.StateMachine ?? new StateMachine(_dal, BlueprintManager);
-            PolicyEnforcer = _opt.PolicyEnforcer ?? new PolicyEnforcer(_dal);
-            var resolveConsumers = _opt.ResolveConsumers?? ((LifeCycleConsumerType ty, long? id /* DefVersionId */, CancellationToken ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+            BlueprintManager = new BlueprintManager(_dal);
+            BlueprintImporter = new BlueprintImporter(_dal);
+            StateMachine = new StateMachine(_dal, BlueprintManager);
+            PolicyEnforcer =  new PolicyEnforcer(_dal);
+            var resolveConsumers = _opt.ResolveConsumers ?? ((LifeCycleConsumerType ty, long? id /* DefVersionId */, CancellationToken ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
-            var resolveMonitors = (LifeCycleConsumerType ty,CancellationToken ct)=> resolveConsumers.Invoke(ty,null,ct);
+            var resolveMonitors = (LifeCycleConsumerType ty, CancellationToken ct) => resolveConsumers.Invoke(ty, null, ct);
 
-            AckManager = _opt.AckManager ?? new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter);
+            AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter);
 
-            Runtime = _opt.RuntimeEngine ?? new RuntimeEngine(_dal);
+            Runtime = new RuntimeEngine(_dal);
 
-            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceInternalAsync(resolveMonitors,ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
+            Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceInternalAsync(resolveMonitors, ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
         }
 
         public Task StartMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
@@ -543,5 +543,11 @@ namespace Haley.Services {
                 skip += take;
             }
         }
+
+        public Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default)=> BlueprintImporter.ImportDefinitionJsonAsync(envCode, envDisplayName, definitionJson, ct);
+
+        public Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default)=> BlueprintImporter.ImportPolicyJsonAsync(envCode , envDisplayName, policyJson, ct);
+
+        public Task<int> RegisterEnvironmentAsync(int envCode, string? envDisplayName, CancellationToken ct) => BlueprintManager.EnsureEnvironmentAsync(envCode, envDisplayName, new DbExecutionLoad(ct));
     }
 }
