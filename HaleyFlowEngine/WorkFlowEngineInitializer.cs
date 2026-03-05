@@ -16,7 +16,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Haley.Utils {
-    public static class LifeCycleInitializer {
+    public static class WorkFlowEngineInitializer {
         const string FALLBACK_DB_NAME = "hdb_lc_state";
         const string EMBEDDED_SQL_RESOURCE = "Haley.Scripts.lc_state.sql";
         const string REPLACE_DBNAME = "lcstate";
