@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Haley.Utils {
     public static class WFEngineExtensions {
-        const string FALLBACK_DB_NAME = "hdb_lc_state";
+        const string FALLBACK_DB_NAME = "wf_engine";
         const string EMBEDDED_SQL_RESOURCE = "Haley.Scripts.lc_state.sql";
         const string REPLACE_DBNAME = "lcstate";
         static async Task<IFeedback<string>> InitializeAsyncWithConString(IAdapterGateway agw,  string connectionstring) {
