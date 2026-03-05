@@ -7,10 +7,10 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Haley.Models {
-    public sealed class LCInitializerWrapper {
+    public sealed class WorkFlowEngineMaker {
         public string AdapterKey { get; set; } = string.Empty;
         public string ConnectionString { get; set; } = string.Empty;
         public WorkFlowEngineOptions? Options { get; set; }
-        public LCInitializerWrapper() { }   
+        public WorkFlowEngineMaker() { }   
     }
 }

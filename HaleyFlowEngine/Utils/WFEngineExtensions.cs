@@ -1,22 +1,14 @@
-﻿using Azure;
-using Haley.Abstractions;
+﻿using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Haley.Services;
 using Haley.Utils;
-using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Generic;
-using System.Data.Common;
-using System.Linq;
-using System.Reflection;
-using System.Runtime;
-using System.Security.AccessControl;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace Haley.Utils {
-    public static class WorkFlowEngineInitializer {
+    public static class WFEngineExtensions {
         const string FALLBACK_DB_NAME = "hdb_lc_state";
         const string EMBEDDED_SQL_RESOURCE = "Haley.Scripts.lc_state.sql";
         const string REPLACE_DBNAME = "lcstate";
@@ -45,29 +37,20 @@ namespace Haley.Utils {
         }
 
         #region Wrapper making 
-        public static LCInitializerWrapper WithOptions(WorkFlowEngineOptions options) {
-            return new LCInitializerWrapper() { Options = options };
-        }
-        public static LCInitializerWrapper WithOptions(this LCInitializerWrapper input, WorkFlowEngineOptions options) {
+        public static WorkFlowEngineMaker WithOptions(this WorkFlowEngineMaker input, WorkFlowEngineOptions options) {
             input.Options = options;
             return input;
         }
-        public static LCInitializerWrapper WithConnectionString(string con_string) {
-            return new LCInitializerWrapper() { ConnectionString = con_string };
-        }
-        public static LCInitializerWrapper WithConnectionString(this LCInitializerWrapper input,string con_string) {
+        public static WorkFlowEngineMaker WithConnectionString(this WorkFlowEngineMaker input,string con_string) {
             input.ConnectionString = con_string;
             return input;
         }
-        public static LCInitializerWrapper WithAdapterKey(string adapterKey) {
-            return new LCInitializerWrapper() { AdapterKey = adapterKey };
-        }
-        public static LCInitializerWrapper WithAdapterKey(this LCInitializerWrapper input, string adapterKey) {
+        public static WorkFlowEngineMaker WithAdapterKey(this WorkFlowEngineMaker input, string adapterKey) {
             input.AdapterKey = adapterKey;
             return input;
         }
         #endregion
-        public static async Task<IWorkFlowEngine> Build(this LCInitializerWrapper input, IAdapterGateway agw) {
+        public static async Task<IWorkFlowEngine> Build(this WorkFlowEngineMaker input, IAdapterGateway agw) {
           
             if (input == null) throw new ArgumentException(nameof(input));
             bool isInitialized = false;

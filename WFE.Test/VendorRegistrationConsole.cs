@@ -82,7 +82,7 @@ namespace WFE.Test {
                 }
             };
 
-            var engine = await WorkFlowEngineInitializer.WithConnectionString(_s.ConnectionString).Build(_agw);
+            var engine = await new WorkFlowEngineMaker().WithConnectionString(_s.ConnectionString).Build(_agw);
             // Ensure env + consumer BEFORE creating the engine (so ResolveConsumers can return a real id)
             var envId = await engine.RegisterEnvironmentAsync(_s.EnvCode, _s.EnvDisplayName, ct);
             consumerId = await engine.RegisterConsumerAsync(envId, _s.ConsumerGuid, ct);

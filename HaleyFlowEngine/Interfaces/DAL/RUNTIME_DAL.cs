@@ -37,4 +37,9 @@ namespace Haley.Abstractions {
         Task<DbRow?> GetByNameAsync(string name, DbExecutionLoad load = default);
         Task<long> InsertAsync(string displayName, DbExecutionLoad load = default);
     }
+
+    internal interface ILifeCycleTimeoutDAL {
+        Task<DbRows> ListDuePagedAsync(uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default);
+        Task<int> InsertIgnoreAsync(long entryLcId, DbExecutionLoad load = default);
+    }
 }
