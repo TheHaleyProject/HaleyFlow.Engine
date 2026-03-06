@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS `def_version` (
   UNIQUE KEY `unq_def_version` (`parent`,`version`),
   UNIQUE KEY `unq_def_version_0` (`guid`),
   UNIQUE KEY `unq_def_version_1` (`parent`,`hash`),
-  KEY `fk_def_version_definition` (`parent`),
+  UNIQUE KEY `fk_def_version_definition` (`parent`),
   CONSTRAINT `fk_def_version_definition` FOREIGN KEY (`parent`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `cns_def_version` CHECK (`version` > 0),
   CONSTRAINT `cns_def_version_0` CHECK (json_valid(`data`))
@@ -213,16 +213,17 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
 
 -- Dumping structure for table lcstate.hook_group
 CREATE TABLE IF NOT EXISTS `hook_group` (
-  `id` bigint(20) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `name` varchar(140) NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unq_hook_group` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook_route
 CREATE TABLE IF NOT EXISTS `hook_route` (
-  `id` bigint(20) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `name` varchar(240) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_route` (`name`)
@@ -236,21 +237,23 @@ CREATE TABLE IF NOT EXISTS `instance` (
   `last_event` int(11) DEFAULT NULL,
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `policy_id` int(11) DEFAULT 0,
-  `external_ref` char(36) DEFAULT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
+  `entity_id` varchar(36) NOT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'active =1,\nsuspended =2 ,\ncompleted = 4,\nfailed = 8, \narchive = 16',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `def_version` int(11) NOT NULL,
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `message` text DEFAULT NULL COMMENT 'any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..',
+  `def_id` int(11) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_instance` (`guid`),
-  UNIQUE KEY `unq_instance_0` (`def_version`,`external_ref`),
+  UNIQUE KEY `unq_instance_0` (`def_id`,`entity_id`),
   KEY `fk_instance_state` (`current_state`),
   KEY `fk_instance_events` (`last_event`),
   KEY `fk_instance_def_version` (`def_version`),
-  KEY `idx_instance` (`external_ref`),
-  CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  KEY `idx_instance` (`entity_id`),
+  CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_instance_def_version_0` FOREIGN KEY (`def_id`) REFERENCES `def_version` (`parent`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=1857 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance';
 
 -- Data exporting was unselected.
