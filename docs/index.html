@@ -505,7 +505,7 @@
         <tbody>
           <tr><td><code>EnvCode</code></td><td>✅</td><td>Environment identifier</td></tr>
           <tr><td><code>DefName</code></td><td>✅</td><td>Definition name — finds the target def_version</td></tr>
-          <tr><td><code>ExternalRef</code></td><td>✅</td><td>Application correlation key (stable GUID)</td></tr>
+          <tr><td><code>EntityId</code></td><td>✅</td><td>Application entity key (e.g. loan ID, order ID). Combined with <code>def_version_id</code> to uniquely identify an instance. Stored in <code>instance.entity_id</code>.</td></tr>
           <tr><td><code>Event</code></td><td>✅</td><td>Event name or code to trigger the transition</td></tr>
           <tr><td><code>RequestId</code></td><td>Recommended</td><td>Stable across retries — enables idempotency</td></tr>
           <tr><td><code>Actor</code></td><td>Optional</td><td>For timeline tracking</td></tr>
@@ -529,8 +529,8 @@
       <li><div class="step-num">5</div><div class="step-body"><strong>Apply transition</strong> (<code>IStateMachine.ApplyTransitionAsync</code>) — validates transition, CAS-updates instance state, inserts lifecycle row. If already moved → commits and returns early.</div></li>
       <li><div class="step-num">6</div><div class="step-body"><strong>Resolve rule context</strong> from policy JSON — extracts <code>params</code>, <code>on_success_event</code>, <code>on_failure_event</code> for the matched rule.</div></li>
       <li><div class="step-num">7</div><div class="step-body"><strong>Create lifecycle ACK</strong> (<code>IAckManager.CreateLifecycleAckAsync</code>) — one <code>ack_guid</code>, multiple consumer rows, linked via <code>lc_ack</code>.</div></li>
-      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hooks</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — upserts <code>hook</code> rows. Resolves route string → <code>hook_route.id</code> (FK). Resolves group name → <code>hook_group.id</code> (FK, nullable). Returns <code>LifeCycleHookEmission</code> list in memory — not dispatched yet.</div></li>
-      <li><div class="step-num">9</div><div class="step-body"><strong>Create hook ACKs</strong> (<code>IAckManager.CreateHookAckAsync</code>) — one <code>ack_guid</code> per hook, multiple consumer rows, linked via <code>hook_ack</code>.</div></li>
+      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hooks</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — upserts <code>hook</code> rows. Resolves route string → <code>hook_route.id</code> (FK). Resolves group name → <code>hook_group.id</code> (FK, nullable). Computes <code>minOrder</code> across all matched emit entries. Hooks at <code>order &gt; minOrder</code> are written with <code>dispatched=0</code> (invisible to the monitor; waiting for prior-order blocking hooks to complete). Only min-order hooks are returned in the <code>LifeCycleHookEmission</code> list for step 9. If <code>AckRequired=false</code>, all hooks dispatch immediately regardless of order.</div></li>
+      <li><div class="step-num">9</div><div class="step-body"><strong>Create hook ACKs</strong> (<code>IAckManager.CreateHookAckAsync</code>) — one <code>ack_guid</code> per dispatched hook, multiple consumer rows, linked via <code>hook_ack</code>. Higher-order hooks (<code>dispatched=0</code>) get no ACK rows here; rows are created later by <code>AdvanceNextHookOrderAsync</code> when prior blocking hooks complete.</div></li>
       <li><div class="step-num">10</div><div class="step-body"><strong>Commit first.</strong> Only after commit does the engine raise C# events via <code>FireEvent</code>. Dispatch failures become notices; monitor will re-send via pending ACK rows.</div></li>
     </ol>
   </section>
@@ -579,6 +579,8 @@
           <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td></tr>
           <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> All hooks in a named group are Processed for this instance</td></tr>
           <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Group completion DB check failed; ACK itself was still accepted</td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> Next-order hooks dispatched after all blocking hooks at the prior order completed</td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Exception during order advancement or ACK fan-out; originating ACK was still accepted</td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance stuck in state with no open ACKs and no policy timeout</td></tr>
           <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop</td></tr>
           <tr><td><code>EVENT_HANDLER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception in an <code>EventRaised</code> handler</td></tr>
@@ -685,7 +687,7 @@
     <h3 class="sub-title">4.4 StateMachine</h3>
     <p><strong>Role:</strong> Pure state transition executor (dumb by design).</p>
     <ul>
-      <li>Ensures instance exists for <code>(def_version_id, external_ref)</code></li>
+      <li>Ensures instance exists for <code>(def_version_id, entity_id)</code></li>
       <li>Resolves event by code or name</li>
       <li>Validates transition exists in the definition</li>
       <li>Updates <code>instance.current_state</code> using CAS to avoid race conflicts</li>
@@ -962,7 +964,7 @@
         <span class="kw">var</span> instanceGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
         <span class="cm">// all hooks in the group are done — trigger next step</span>
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-            ExternalRef = instanceGuid,
+            EntityId = instanceGuid,
             Event = <span class="st">"review_complete"</span>,
             <span class="cm">// ...</span>
         });
@@ -1082,7 +1084,7 @@
           <tr><td><code>state</code></td><td>States per def_version</td><td><code>id</code>, <code>def_version</code>, <code>name</code>, <code>flags</code></td></tr>
           <tr><td><code>events</code></td><td>Events per def_version</td><td><code>id</code>, <code>def_version</code>, <code>code</code>, <code>name</code></td></tr>
           <tr><td><code>transition</code></td><td>Valid state transitions</td><td><code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>def_version</code></td></tr>
-          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>external_ref</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code></td></tr>
+          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>entity_id</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code></td></tr>
           <tr><td><code>lifecycle</code></td><td>Transition audit log</td><td><code>id</code>, <code>instance_id</code>, <code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>created</code>, <code>occurred</code> <span class="badge new">NEW</span></td></tr>
           <tr><td><code>lc_data</code></td><td>Payload / actor per lifecycle entry</td><td><code>lc_id</code>, <code>actor</code>, <code>payload</code></td></tr>
           <tr><td><code>policy</code></td><td>Policy content (hashed)</td><td><code>id</code>, <code>hash</code>, <code>content</code></td></tr>
@@ -1220,7 +1222,7 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
 <span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
     EnvCode     = envCode,
     DefName     = <span class="st">"loan-approval"</span>,
-    ExternalRef = loanId.ToString(),
+    EntityId = loanId.ToString(),
     Event       = <span class="st">"submit"</span>,
     RequestId   = requestId,   <span class="cm">// stable for retries</span>
     Actor       = userId,
@@ -1253,7 +1255,7 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
             <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
             <span class="cm">// all hooks in group done — trigger next macro event</span>
             <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-                ExternalRef = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
+                EntityId = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
             });
             <span class="kw">break</span>;
         <span class="kw">case</span> <span class="st">"ACK_SUSPEND"</span>:
@@ -1331,7 +1333,7 @@ engine.NoticeRaised += HandleNoticeAsync;
 <span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
     EnvCode     = envCode,
     DefName     = <span class="st">"loan-approval"</span>,
-    ExternalRef = loanId.ToString(),
+    EntityId = loanId.ToString(),
     Event       = <span class="st">"submit"</span>,
     RequestId   = requestId,
     Actor       = applicantId,
@@ -1369,7 +1371,7 @@ engine.NoticeRaised += HandleNoticeAsync;
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
             EnvCode     = envCode,
             DefName     = <span class="st">"loan-approval"</span>,
-            ExternalRef = instGuid,
+            EntityId = instGuid,
             Event       = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>,
             RequestId   = $<span class="st">"review-done-{instGuid}"</span>,
             AckRequired = <span class="nb">true</span>
@@ -1405,7 +1407,7 @@ engine.NoticeRaised += <span class="kw">async</span> (n) => {
     <span class="kw">if</span> (group == <span class="st">"review_checks"</span>) {
         <span class="kw">var</span> approved = <span class="kw">await</span> _reviewDb.IsApprovedAsync(instGuid);
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-            ExternalRef = instGuid,
+            EntityId = instGuid,
             Event       = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>,
             RequestId   = $<span class="st">"grp-{instGuid}"</span>,
             EnvCode = envCode, DefName = <span class="st">"loan-approval"</span>, AckRequired = <span class="nb">true</span>
@@ -1427,12 +1429,12 @@ engine.NoticeRaised += <span class="kw">async</span> (n) => {
 
 <span class="cm">// Trigger submit — creates ACK row (Pending)</span>
 <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-    ExternalRef = loanId, Event = <span class="st">"submit"</span>, RequestId = req1, AckRequired = <span class="nb">true</span>, ...
+    EntityId = loanId, Event = <span class="st">"submit"</span>, RequestId = req1, AckRequired = <span class="nb">true</span>, ...
 });
 
 <span class="cm">// Before ACK'd — try to approve</span>
 <span class="kw">var</span> blocked = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-    ExternalRef = loanId, Event = <span class="st">"approve"</span>, RequestId = req2, AckRequired = <span class="nb">true</span>, ...
+    EntityId = loanId, Event = <span class="st">"approve"</span>, RequestId = req2, AckRequired = <span class="nb">true</span>, ...
 });
 Console.WriteLine(blocked.Applied); <span class="cm">// false</span>
 Console.WriteLine(blocked.Reason);  <span class="cm">// "BlockedByPendingAck"</span>
@@ -1442,13 +1444,13 @@ Console.WriteLine(blocked.Reason);  <span class="cm">// "BlockedByPendingAck"</s
 
 <span class="cm">// Now approve goes through</span>
 <span class="kw">var</span> ok = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-    ExternalRef = loanId, Event = <span class="st">"approve"</span>, RequestId = req2, AckRequired = <span class="nb">true</span>, ...
+    EntityId = loanId, Event = <span class="st">"approve"</span>, RequestId = req2, AckRequired = <span class="nb">true</span>, ...
 });
 Console.WriteLine(ok.Applied); <span class="cm">// true</span>
 
 <span class="cm">// One-time bypass (emergency override):</span>
 <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-    ExternalRef = loanId, Event = <span class="st">"approve"</span>, SkipAckGate = <span class="nb">true</span>, ...
+    EntityId = loanId, Event = <span class="st">"approve"</span>, SkipAckGate = <span class="nb">true</span>, ...
 });</code><span class="lang-label">C#</span></pre>
   </section>
 
@@ -1528,7 +1530,7 @@ engine.EventRaised += <span class="kw">async</span> (e) => {
 <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
     OccurredAt = DateTimeOffset.Parse(<span class="st">"2024-11-15T09:00:00Z"</span>),
     <span class="cm">// lifecycle.occurred stores this; lifecycle.created = engine capture time</span>
-    ExternalRef = loanId, Event = <span class="st">"submit"</span>, ...
+    EntityId = loanId, Event = <span class="st">"submit"</span>, ...
 });</code><span class="lang-label">C#</span></pre>
   </section>
 
