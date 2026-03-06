@@ -19,7 +19,7 @@ namespace Haley.Models {
         public string? OnSuccessEvent { get; set; }
         public string? OnFailureEvent { get; set; }
         public bool AckRequired { get; set; }
-        public IReadOnlyDictionary<string, object?>? Payload { get; set; }
+        public string? Metadata { get; set; }
         public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
         public LifeCycleEvent() { }
         public LifeCycleEvent(LifeCycleEvent source) {
@@ -30,7 +30,7 @@ namespace Haley.Models {
             DefinitionVersionId = source.DefinitionVersionId;
             EntityId = source.EntityId;
             AckGuid = source.AckGuid;
-            Payload = source.Payload;
+            Metadata = source.Metadata;
             Params = source.Params;
             OnSuccessEvent = source.OnSuccessEvent;
             OnFailureEvent = source.OnFailureEvent;

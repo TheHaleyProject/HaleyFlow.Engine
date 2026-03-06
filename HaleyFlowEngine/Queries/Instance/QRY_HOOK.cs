@@ -26,6 +26,7 @@ namespace Haley.Internal {
             $@"SELECT h.id, h.instance_id, h.state_id, h.via_event, h.on_entry,
                       h.blocking, h.ack_mode, h.order_seq, h.group_id, ha.ack_id,
                       i.guid AS instance_guid, i.def_version AS def_version_id,
+                      i.metadata AS metadata,
                       i.entity_id AS entity_id, i.policy_id,
                       dv.parent AS definition_id
                FROM ack a

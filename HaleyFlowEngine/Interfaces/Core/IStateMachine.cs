@@ -6,7 +6,7 @@ using Haley.Models;
 
 namespace Haley.Abstractions {
     internal interface IStateMachine {
-        Task<DbRow> EnsureInstanceAsync(long defVersionId, string entityId, long policyId, DbExecutionLoad load = default);
+        Task<DbRow> EnsureInstanceAsync(long defVersionId, string entityId, long policyId, string? metadata, DbExecutionLoad load = default);
         Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? actor, IReadOnlyDictionary<string, object?>? payload, DateTimeOffset? occurredAt = null, DbExecutionLoad load = default);
         Task<int> SetInstanceMessageAsync(long instanceId, string? message, DbExecutionLoad load = default);
         Task<int> ClearInstanceMessageAsync(long instanceId, DbExecutionLoad load = default);

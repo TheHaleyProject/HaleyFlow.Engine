@@ -24,6 +24,8 @@ namespace Haley.Internal {
         public const string DISPLAY_NAME = "@DISPLAY_NAME";
         public const string DESCRIPTION = "@DESCRIPTION";
         public const string CONTENT = "@CONTENT";
+        public const string METADATA = "@METADATA";
+        public const string CONTEXT = "@CONTEXT";
         public const string DATA = "@DATA";
         public const string PAYLOAD = "@PAYLOAD";
         public const string VERSION = "@VERSION";

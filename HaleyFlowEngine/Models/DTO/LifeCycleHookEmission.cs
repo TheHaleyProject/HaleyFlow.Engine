@@ -16,7 +16,6 @@ namespace Haley.Models {
         public string OnFailureEvent { get; set; }
         public DateTimeOffset? NotBefore { get; set; }
         public DateTimeOffset? Deadline { get; set; }
-        public IReadOnlyDictionary<string, object> Payload { get; set; }
         public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
         public bool IsBlocking { get; set; } = true;
         public string? GroupName { get; set; }

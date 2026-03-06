@@ -30,6 +30,9 @@ namespace Haley.Internal {
         public Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_DEFVERSION.GET_BY_ID, load, (ID, defVersionId));
 
+        public Task<DbRows> ListDefinitionsByNameAsync(string defName, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_DEFINITION.LIST_BY_NAME, load, (NAME, defName));
+
         public Task<DbRows> ListStatesAsync(long defVersionId, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_STATE.LIST_BY_PARENT, load, (PARENT_ID, defVersionId));
 

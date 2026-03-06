@@ -15,6 +15,7 @@ namespace Haley.Abstractions {
         Task<DbRow?> GetDefVersionByParentAndHashAsync(int definitionId, string hash, DbExecutionLoad load = default);
 
         Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default);
+        Task<DbRows> ListDefinitionsByNameAsync(string defName, DbExecutionLoad load = default);
 
         Task<DbRows> ListStatesAsync(long defVersionId, DbExecutionLoad load = default);
         Task<DbRows> ListEventsAsync(long defVersionId, DbExecutionLoad load = default);

@@ -12,6 +12,7 @@ namespace Haley.Internal {
         public const string GET_BY_PARENT_AND_NAME = $@"SELECT * FROM definition WHERE env = {PARENT_ID} AND name = lower(trim({NAME})) LIMIT 1;";
 
         public const string LIST_BY_PARENT = $@"SELECT * FROM definition WHERE env = {PARENT_ID} ORDER BY id;";
+        public const string LIST_BY_NAME = $@"SELECT * FROM definition WHERE name = lower(trim({NAME})) ORDER BY id DESC;";
 
         // NOTE: definition.name is GENERATED from display_name (do not set name)
         public const string INSERT = $@"INSERT INTO definition (env, display_name, description) VALUES ({PARENT_ID}, {DISPLAY_NAME}, {DESCRIPTION}); SELECT LAST_INSERT_ID() AS id;";

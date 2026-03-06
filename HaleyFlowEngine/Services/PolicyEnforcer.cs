@@ -83,7 +83,7 @@ namespace Haley.Services {
             var specs = new List<(string hookCode, bool emitBlocking, string? emitGroup, int orderSeq, int ackMode,
                                   string? onSuccess, string? onFailure,
                                   DateTimeOffset? notBefore, DateTimeOffset? deadline,
-                                  IReadOnlyDictionary<string, object?>? payload, IReadOnlyList<LifeCycleParamItem>? resolvedParams)>();
+                                  IReadOnlyList<LifeCycleParamItem>? resolvedParams)>();
 
             foreach (var rule in rules.EnumerateArray()) {
                 load.Ct.ThrowIfCancellationRequested();
@@ -133,7 +133,7 @@ namespace Haley.Services {
                     specs.Add((hookCode!, emitBlocking, emitGroup, orderSeq, ackMode,
                                onSuccess, onFailure,
                                e.GetDatetimeOffset("notBefore"), e.GetDatetimeOffset("deadline"),
-                               e.GetDictionary("payload"), resolvedParams));
+                               resolvedParams));
                 }
             }
 
@@ -163,7 +163,6 @@ namespace Haley.Services {
                     OnFailureEvent = s.onFailure,
                     NotBefore = s.notBefore,
                     Deadline = s.deadline,
-                    Payload = s.payload,
                     Params = s.resolvedParams,
                     IsBlocking = s.emitBlocking,
                     GroupName = s.emitGroup,

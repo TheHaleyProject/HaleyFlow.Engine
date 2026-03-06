@@ -27,10 +27,10 @@ namespace Haley.Internal {
         public const string LIST_WHERE_FLAGS_NONE = $@"SELECT * FROM instance WHERE (flags & {FLAGS}) = 0 ORDER BY created DESC, id DESC;";
 
         // INSERT returns guid — def_id derived from def_version to avoid caller mismatch
-        public const string INSERT = $@"INSERT INTO instance (def_version, def_id, entity_id, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, (SELECT parent FROM def_version WHERE id = {PARENT_ID} LIMIT 1), lower(trim({ENTITY_ID})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+        public const string INSERT = $@"INSERT INTO instance (def_version, def_id, entity_id, current_state, last_event, policy_id, flags, metadata) VALUES ({PARENT_ID}, (SELECT parent FROM def_version WHERE id = {PARENT_ID} LIMIT 1), lower(trim({ENTITY_ID})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}, {METADATA}); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
 
         // UPSERT conflict key is UNIQUE(def_id, entity_id) — def_id derived from def_version
-        public const string UPSERT_BY_DEF_ID_AND_ENTITY_ID_RETURN_GUID = $@"INSERT INTO instance (def_version, def_id, entity_id, current_state, last_event, policy_id, flags) VALUES ({PARENT_ID}, (SELECT parent FROM def_version WHERE id = {PARENT_ID} LIMIT 1), lower(trim({ENTITY_ID})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
+        public const string UPSERT_BY_DEF_ID_AND_ENTITY_ID_RETURN_GUID = $@"INSERT INTO instance (def_version, def_id, entity_id, current_state, last_event, policy_id, flags, metadata) VALUES ({PARENT_ID}, (SELECT parent FROM def_version WHERE id = {PARENT_ID} LIMIT 1), lower(trim({ENTITY_ID})), {STATE_ID}, {EVENT_ID}, {POLICY_ID}, {FLAGS}, {METADATA}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT guid FROM instance WHERE id = LAST_INSERT_ID() LIMIT 1;";
 
         public const string UPDATE_CURRENT_STATE = $@"UPDATE instance SET current_state = {STATE_ID}, last_event = {EVENT_ID} WHERE id = {ID};";
         public const string UPDATE_CURRENT_STATE_CAS = $@"UPDATE instance SET current_state = {TO_ID}, last_event = {EVENT_ID} WHERE id = {ID} AND current_state = {FROM_ID};";
@@ -41,6 +41,7 @@ namespace Haley.Internal {
 
         public const string SET_POLICY = $@"UPDATE instance SET policy_id = {POLICY_ID} WHERE id = {ID};";
         public const string SET_ENTITY_ID = $@"UPDATE instance SET entity_id = lower(trim({ENTITY_ID})) WHERE id = {ID};";
+        public const string SET_CONTEXT = $@"UPDATE instance SET context = {CONTEXT} WHERE id = {ID};";
 
         public const string DELETE = $@"DELETE FROM instance WHERE id = {ID};";
 

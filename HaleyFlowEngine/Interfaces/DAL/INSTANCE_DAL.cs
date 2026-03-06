@@ -11,7 +11,7 @@ namespace Haley.Abstractions {
 
         Task<DbRow?> GetByDefIdAndEntityIdAsync(long defId, string entityId, DbExecutionLoad load = default);
         Task<long?> GetIdByKeyAsync(long defVersionId, string entityId, DbExecutionLoad load = default);
-        Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string entityId, long currentStateId, long? lastEventId, long policyId, uint flags, DbExecutionLoad load = default);
+        Task<string?> UpsertByKeyReturnGuidAsync(long defVersionId, string entityId, long currentStateId, long? lastEventId, long policyId, uint flags, string? metadata, DbExecutionLoad load = default);
         Task<int> UpdateCurrentStateCasAsync(long instanceId, long expectedFromStateId, long newToStateId, long? lastEventId, DbExecutionLoad load = default);
 
         Task<int> SetPolicyAsync(long instanceId, long policyId, DbExecutionLoad load = default);
@@ -20,6 +20,7 @@ namespace Haley.Abstractions {
 
         Task<int> SetMessageAsync(long instanceId, string? message, DbExecutionLoad load = default);
         Task<int> ClearMessageAsync(long instanceId, DbExecutionLoad load = default);
+        Task<int> SetContextAsync(long instanceId, string? context, DbExecutionLoad load = default);
 
         Task<int> SuspendWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default);
         Task<int> FailWithMessageAsync(long instanceId, uint flags, string? message, DbExecutionLoad load = default);

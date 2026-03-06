@@ -16,14 +16,15 @@ namespace Haley.Services {
 
         public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
 
-        public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string entityId, long policyId, DbExecutionLoad load = default) {
+        public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string entityId, long policyId, string? metadata, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentNullException(nameof(entityId));
 
             var bp = await _bp.GetBlueprintByVersionIdAsync(defVersionId, load.Ct);
             var initStateId = bp.InitialStateId;
 
-            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, entityId, initStateId, null, policyId, (uint)LifeCycleInstanceFlag.Active, load);
+            var normalizedMetadata = string.IsNullOrWhiteSpace(metadata) ? null : metadata.Trim();
+            var guid = await _dal.Instance.UpsertByKeyReturnGuidAsync(defVersionId, entityId, initStateId, null, policyId, (uint)LifeCycleInstanceFlag.Active, normalizedMetadata, load);
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException("Instance upsert failed (guid null).");
 
             var row = await _dal.Instance.GetByGuidAsync(guid, load);
