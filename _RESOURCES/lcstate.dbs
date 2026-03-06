@@ -473,6 +473,12 @@ archive = 16]]></comment>
 			<column name="message" type="TEXT" >
 				<comment><![CDATA[any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..]]></comment>
 			</column>
+			<column name="metadata" type="LONGTEXT" >
+				<comment><![CDATA[Immutable.. Set during the initiation.. Doesn't change during runtime.. Contains information like environment tags, test flags, or opaque config, which is important for the consumer.. may be to avoid side effects.]]></comment>
+			</column>
+			<column name="context" type="LONGTEXT" >
+				<comment><![CDATA[Mutable information bag. Each event can add or stamp their result here.. ( if needed).. and other calls can make use of it if required.]]></comment>
+			</column>
 			<index name="pk_instance" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -527,7 +533,9 @@ archive = 16]]></comment>
 			<column name="lc_id" prior="lc_log" type="BIGINT" mandatory="y" />
 			<column name="actor" type="VARCHAR" length="60" />
 			<column name="payload" prior="metadata" type="LONGTEXT" >
-				<comment><![CDATA[Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)]]></comment>
+				<comment><![CDATA[Result of each transition is always stored in context of the instance.. one single place, where we can easily track all the even/hook/transition results which other events or transitions can refer to..
+
+Here,this is the input payload that was provided by the initiation.. Waht caused this specifc transition. We know the exact inputs that caused this.]]></comment>
 			</column>
 			<index name="pk_lc_data" unique="PRIMARY_KEY" >
 				<column name="lc_id" />

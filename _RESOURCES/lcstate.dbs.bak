@@ -473,6 +473,12 @@ archive = 16]]></comment>
 			<column name="message" type="TEXT" >
 				<comment><![CDATA[any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..]]></comment>
 			</column>
+			<column name="metadata" type="LONGTEXT" >
+				<comment><![CDATA[Immutable.. Set during the initiation.. Doesn't change during runtime.. Contains information like environment tags, test flags, or opaque config, which is important for the consumer.. may be to avoid side effects.]]></comment>
+			</column>
+			<column name="context" type="LONGTEXT" >
+				<comment><![CDATA[Mutable information bag. Each event can add or stamp their result here.. ( if needed).. and other calls can make use of it if required.]]></comment>
+			</column>
 			<index name="pk_instance" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -784,30 +790,30 @@ is_error = 8]]></comment>
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="133" y="95" />
 			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="475" y="95" />
-			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1064" />
-			<entity schema="lcstate" name="activity_status" color="00FF00" x="475" y="1121" />
-			<entity schema="lcstate" name="category" color="1A4D4D" x="950" y="323" />
-			<entity schema="lcstate" name="consumer" color="0000FF" x="931" y="1007" />
-			<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="874" />
-			<entity schema="lcstate" name="def_version" color="0000FF" x="703" y="627" />
-			<entity schema="lcstate" name="definition" color="0000FF" x="950" y="589" />
-			<entity schema="lcstate" name="environment" color="0000FF" x="950" y="817" />
-			<entity schema="lcstate" name="events" color="1A4D4D" x="684" y="285" />
-			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="589" />
+			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1102" />
+			<entity schema="lcstate" name="activity_status" color="00FF00" x="475" y="1159" />
+			<entity schema="lcstate" name="category" color="1A4D4D" x="969" y="342" />
+			<entity schema="lcstate" name="consumer" color="0000FF" x="950" y="1045" />
+			<entity schema="lcstate" name="def_policies" color="0000FF" x="722" y="912" />
+			<entity schema="lcstate" name="def_version" color="0000FF" x="722" y="646" />
+			<entity schema="lcstate" name="definition" color="0000FF" x="969" y="627" />
+			<entity schema="lcstate" name="environment" color="0000FF" x="969" y="855" />
+			<entity schema="lcstate" name="events" color="1A4D4D" x="703" y="342" />
+			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="570" />
 			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
 			<entity schema="lcstate" name="hook_group" color="FFFF00" x="57" y="456" />
-			<entity schema="lcstate" name="hook_route" color="FFFF00" x="57" y="836" />
-			<entity schema="lcstate" name="instance" color="FFFF00" x="475" y="627" />
+			<entity schema="lcstate" name="hook_route" color="FFFF00" x="57" y="874" />
+			<entity schema="lcstate" name="instance" color="FFFF00" x="475" y="646" />
 			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="209" y="247" />
 			<entity schema="lcstate" name="lc_data" color="FFFF00" x="475" y="494" />
 			<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="266" y="494" />
 			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="266" y="608" />
-			<entity schema="lcstate" name="policy" color="0000FF" x="836" y="1197" />
-			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="1045" />
-			<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1216" />
-			<entity schema="lcstate" name="state" color="1A4D4D" x="950" y="114" />
-			<entity schema="lcstate" name="timeouts" color="0000FF" x="703" y="1026" />
-			<entity schema="lcstate" name="transition" color="1A4D4D" x="684" y="95" />
+			<entity schema="lcstate" name="policy" color="0000FF" x="855" y="1235" />
+			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="1083" />
+			<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1254" />
+			<entity schema="lcstate" name="state" color="1A4D4D" x="931" y="114" />
+			<entity schema="lcstate" name="timeouts" color="0000FF" x="722" y="1064" />
+			<entity schema="lcstate" name="transition" color="1A4D4D" x="703" y="95" />
 			<group name="Blueprint - Definition" color="0000FF" >
 				<entity schema="lcstate" name="consumer" />
 				<entity schema="lcstate" name="def_policies" />

@@ -248,6 +248,8 @@ CREATE TABLE IF NOT EXISTS `instance` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `message` text DEFAULT NULL COMMENT 'any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..',
   `def_id` int(11) NOT NULL,
+  `metadata` longtext DEFAULT NULL COMMENT 'Immutable.. Set during the initiation.. Doesn''t change during runtime.. Contains information like environment tags, test flags, or opaque config, which is important for the consumer.. may be to avoid side effects.',
+  `context` longtext DEFAULT NULL COMMENT 'Mutable information bag. Each event can add or stamp their result here.. ( if needed).. and other calls can make use of it if required.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_instance` (`guid`),
   UNIQUE KEY `unq_instance_0` (`def_id`,`entity_id`),
@@ -277,7 +279,7 @@ CREATE TABLE IF NOT EXISTS `lc_ack` (
 CREATE TABLE IF NOT EXISTS `lc_data` (
   `lc_id` bigint(20) NOT NULL,
   `actor` varchar(60) DEFAULT NULL,
-  `payload` longtext DEFAULT NULL COMMENT 'Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)',
+  `payload` longtext DEFAULT NULL COMMENT 'Result of each transition is always stored in context of the instance.. one single place, where we can easily track all the even/hook/transition results which other events or transitions can refer to..\n\nHere,this is the input payload that was provided by the initiation.. Waht caused this specifc transition. We know the exact inputs that caused this.',
   PRIMARY KEY (`lc_id`),
   CONSTRAINT `fk_transition_data_transition_log` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
