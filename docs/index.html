@@ -362,6 +362,17 @@
       </div>
     </div>
 
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Examples <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="scrollTo('ex-loan')">1 — Loan Approval</button>
+        <button class="nav-item" onclick="scrollTo('ex-hookgroup')">2 — Hook Groups</button>
+        <button class="nav-item" onclick="scrollTo('ex-ackgate')">3 — ACK Gate</button>
+        <button class="nav-item" onclick="scrollTo('ex-timeout')">4 — Timeout Automation</button>
+        <button class="nav-item" onclick="scrollTo('ex-runtime')">5 — Runtime Tracking</button>
+      </div>
+    </div>
+
   </div>
 </nav>
 
@@ -466,7 +477,7 @@
     </ul>
     <div class="callout danger">
       <div class="callout-title">Avoid</div>
-      The pattern <code>id = LAST_INSERT_ID(id)</code> / mutating primary key semantics. Use <code>INSERT ... ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;</code> only for normalized lookup tables (<code>hook_route</code>, <code>hook_group</code>) where the pattern is intentional and the column is <code>AUTO_INCREMENT</code>.
+      The pattern <code>INSERT ... ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)</code> — this wastes one auto-increment gap per duplicate hit. Use the <strong>check-then-insert</strong> pattern for all registration-time tables: <code>SELECT id (check) → try INSERT → catch dup → re-read</code>. This applies to <em>all</em> lookup tables including <code>hook_route</code>, <code>hook_group</code>, <code>activity</code>, and <code>activity_status</code>.
     </div>
   </section>
 
@@ -1170,6 +1181,270 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
             <span class="kw">break</span>;
     }
 }</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <!-- ──────────────── EXAMPLES ──────────────── -->
+  <section class="doc-section" id="ex-loan">
+    <div class="section-label">Section 8 — Examples</div>
+    <h2 class="section-title">Code Examples</h2>
+    <h3 class="sub-title">Example 1 — Loan Approval (End-to-End)</h3>
+    <p>A three-state approval workflow with a parallel hook group that gates the <code>approve</code> transition until all review hooks are Processed.</p>
+
+    <h4 class="mini-title">Definition JSON</h4>
+    <pre><code>{
+  <span class="jk">"defName"</span>: <span class="jv">"loan-approval"</span>,
+  <span class="jk">"displayName"</span>: <span class="jv">"Loan Approval"</span>,
+  <span class="jk">"states"</span>: [
+    { <span class="jk">"name"</span>: <span class="jv">"Draft"</span>,       <span class="jk">"flags"</span>: <span class="jn">1</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"flags"</span>: <span class="jn">0</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"Approved"</span>,    <span class="jk">"flags"</span>: <span class="jn">2</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"Rejected"</span>,    <span class="jk">"flags"</span>: <span class="jn">2</span> }
+  ],
+  <span class="jk">"events"</span>: [
+    { <span class="jk">"name"</span>: <span class="jv">"submit"</span>,   <span class="jk">"code"</span>: <span class="jn">100</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"approve"</span>,  <span class="jk">"code"</span>: <span class="jn">200</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"reject"</span>,   <span class="jk">"code"</span>: <span class="jn">300</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"expire"</span>,   <span class="jk">"code"</span>: <span class="jn">900</span> }
+  ],
+  <span class="jk">"transitions"</span>: [
+    { <span class="jk">"from"</span>: <span class="jv">"Draft"</span>,       <span class="jk">"event"</span>: <span class="jv">"submit"</span>,  <span class="jk">"to"</span>: <span class="jv">"UnderReview"</span> },
+    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"approve"</span>, <span class="jk">"to"</span>: <span class="jv">"Approved"</span>    },
+    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"reject"</span>,  <span class="jk">"to"</span>: <span class="jv">"Rejected"</span>    },
+    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"expire"</span>,  <span class="jk">"to"</span>: <span class="jv">"Rejected"</span>    }
+  ]
+}</code><span class="lang-label">JSON</span></pre>
+
+    <h4 class="mini-title">Policy JSON</h4>
+    <pre><code>{
+  <span class="jk">"policy_name"</span>: <span class="jv">"loan-approval.policy"</span>,
+  <span class="jk">"for"</span>: { <span class="jk">"definition"</span>: <span class="jv">"loan-approval"</span> },
+  <span class="jk">"rules"</span>: [
+    {
+      <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>,
+      <span class="jk">"via"</span>: <span class="jn">100</span>,
+      <span class="jk">"complete"</span>: { <span class="jk">"success"</span>: <span class="jn">200</span>, <span class="jk">"failure"</span>: <span class="jn">300</span> },
+      <span class="jk">"emit"</span>: [
+        { <span class="jk">"event"</span>: <span class="jv">"app.loan.notify_reviewer"</span>,  <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+        { <span class="jk">"event"</span>: <span class="jv">"app.loan.run_credit_check"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+        { <span class="jk">"event"</span>: <span class="jv">"app.loan.audit_log"</span>,        <span class="jk">"blocking"</span>: <span class="nb">false</span> }
+      ]
+    }
+  ],
+  <span class="jk">"timeouts"</span>: [
+    { <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"timeout"</span>: <span class="jv">"P2D"</span>, <span class="jk">"timeout_event"</span>: <span class="jn">900</span> }
+  ]
+}</code><span class="lang-label">JSON</span></pre>
+
+    <h4 class="mini-title">Application code</h4>
+    <pre><code><span class="cm">// 1. Import on startup (idempotent — safe every restart)</span>
+<span class="kw">await</span> engine.BlueprintImporter.ImportDefinitionJsonAsync(defJson);
+<span class="kw">await</span> engine.BlueprintImporter.ImportPolicyJsonAsync(policyJson);
+
+<span class="cm">// 2. Subscribe to events and notices</span>
+engine.EventRaised  += HandleEventAsync;
+engine.NoticeRaised += HandleNoticeAsync;
+
+<span class="cm">// 3. Trigger: applicant submits loan</span>
+<span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    EnvCode     = envCode,
+    DefName     = <span class="st">"loan-approval"</span>,
+    ExternalRef = loanId.ToString(),
+    Event       = <span class="st">"submit"</span>,
+    RequestId   = requestId,
+    Actor       = applicantId,
+    AckRequired = <span class="nb">true</span>
+});
+<span class="cm">// → Draft → UnderReview</span>
+<span class="cm">// → engine emits: notify_reviewer + run_credit_check (group), audit_log (ungrouped)</span>
+
+<span class="cm">// 4. Event handler — ACK hooks after processing</span>
+<span class="kw">async</span> Task HandleEventAsync(<span class="ty">ILifeCycleEvent</span> e) {
+    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleHookEvent</span> hook) {
+        <span class="kw">switch</span> (hook.Route) {
+            <span class="kw">case</span> <span class="st">"app.loan.notify_reviewer"</span>:
+                <span class="kw">await</span> _notifier.SendReviewRequestAsync(hook.EntityId);
+                <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, <span class="ty">AckOutcome</span>.Processed);
+                <span class="kw">break</span>;
+            <span class="kw">case</span> <span class="st">"app.loan.run_credit_check"</span>:
+                <span class="kw">var</span> ok = <span class="kw">await</span> _credit.CheckAsync(hook.EntityId);
+                <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid,
+                    ok ? <span class="ty">AckOutcome</span>.Processed : <span class="ty">AckOutcome</span>.Retry);
+                <span class="kw">break</span>;
+            <span class="kw">case</span> <span class="st">"app.loan.audit_log"</span>:
+                _logger.LogInformation(<span class="st">"Loan {id} entered review"</span>, hook.EntityId);
+                <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, <span class="ty">AckOutcome</span>.Processed);
+                <span class="kw">break</span>;
+        }
+    }
+}
+
+<span class="cm">// 5. Notice handler — HOOK_GROUP_COMPLETE fires when all review_checks hooks are Processed</span>
+<span class="kw">async</span> Task HandleNoticeAsync(<span class="ty">LifeCycleNotice</span> n) {
+    <span class="kw">if</span> (n.Code == <span class="st">"HOOK_GROUP_COMPLETE"</span> &amp;&amp; (<span class="ty">string</span>)n.Data[<span class="st">"groupName"</span>] == <span class="st">"review_checks"</span>) {
+        <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
+        <span class="kw">var</span> approved = <span class="kw">await</span> _reviewDb.IsApprovedAsync(instGuid);
+        <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+            EnvCode     = envCode,
+            DefName     = <span class="st">"loan-approval"</span>,
+            ExternalRef = instGuid,
+            Event       = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>,
+            RequestId   = $<span class="st">"review-done-{instGuid}"</span>,
+            AckRequired = <span class="nb">true</span>
+        });
+    }
+}</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="ex-hookgroup">
+    <h3 class="sub-title">Example 2 — Hook Groups: Parallel Work Gate</h3>
+    <p>Any two emit entries sharing the same <code>"group"</code> value in one rule form a parallel gate. The engine fires <code>HOOK_GROUP_COMPLETE</code> only after <em>all</em> hooks in the group reach <code>Processed</code>.</p>
+    <div class="callout tip">
+      <div class="callout-title">Design pattern</div>
+      Put all blocking hooks that must finish together in one group. When the group completes, trigger the next macro event from the <code>HOOK_GROUP_COMPLETE</code> notice handler. Keep advisory/non-critical hooks ungrouped with <code>"blocking": false</code>.
+    </div>
+    <pre><code><span class="cm">// Policy: two parallel hooks in "review_checks" group</span>
+<span class="jk">"emit"</span>: [
+  { <span class="jk">"event"</span>: <span class="jv">"app.loan.notify_reviewer"</span>,  <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"event"</span>: <span class="jv">"app.loan.run_credit_check"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"event"</span>: <span class="jv">"app.loan.audit_log"</span>,        <span class="jk">"blocking"</span>: <span class="nb">false</span> }  <span class="cm">// not in group</span>
+]</code><span class="lang-label">JSON</span></pre>
+    <pre><code><span class="cm">// Sequence:</span>
+<span class="cm">// 1. Engine emits notify_reviewer + run_credit_check (both Pending)</span>
+<span class="cm">// 2. Consumer 1 ACKs notify_reviewer → Processed  (group check: 1/2 done — no notice)</span>
+<span class="cm">// 3. Consumer 2 ACKs run_credit_check → Processed  (group check: 2/2 done — FIRE!)</span>
+<span class="cm">// 4. HOOK_GROUP_COMPLETE notice arrives → trigger approve/reject</span>
+
+engine.NoticeRaised += <span class="kw">async</span> (n) => {
+    <span class="kw">if</span> (n.Code != <span class="st">"HOOK_GROUP_COMPLETE"</span>) <span class="kw">return</span>;
+    <span class="kw">var</span> group    = (<span class="ty">string</span>)n.Data[<span class="st">"groupName"</span>];
+    <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
+
+    <span class="kw">if</span> (group == <span class="st">"review_checks"</span>) {
+        <span class="kw">var</span> approved = <span class="kw">await</span> _reviewDb.IsApprovedAsync(instGuid);
+        <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+            ExternalRef = instGuid,
+            Event       = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>,
+            RequestId   = $<span class="st">"grp-{instGuid}"</span>,
+            EnvCode = envCode, DefName = <span class="st">"loan-approval"</span>, AckRequired = <span class="nb">true</span>
+        });
+    }
+};</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="ex-ackgate">
+    <h3 class="sub-title">Example 3 — ACK Gate: Strict Sequential Ordering</h3>
+    <p>When <code>AckGateEnabled = true</code>, a new transition is rejected if the previous lifecycle entry still has unresolved consumers. Useful when strict ordering is required.</p>
+    <pre><code><span class="cm">// Enable gate at engine construction</span>
+<span class="kw">var</span> engine = <span class="kw">new</span> <span class="ty">WorkFlowEngine</span>(dal, <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
+    AckGateEnabled = <span class="nb">true</span>,
+    MaxRetryCount  = <span class="jn">5</span>
+});
+
+<span class="cm">// Trigger submit — creates ACK row (Pending)</span>
+<span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    ExternalRef = loanId, Event = <span class="st">"submit"</span>, RequestId = req1, AckRequired = <span class="nb">true</span>, ...
+});
+
+<span class="cm">// Before ACK'd — try to approve</span>
+<span class="kw">var</span> blocked = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    ExternalRef = loanId, Event = <span class="st">"approve"</span>, RequestId = req2, AckRequired = <span class="nb">true</span>, ...
+});
+Console.WriteLine(blocked.Applied); <span class="cm">// false</span>
+Console.WriteLine(blocked.Reason);  <span class="cm">// "BlockedByPendingAck"</span>
+
+<span class="cm">// Consumer processes and ACKs the submit transition</span>
+<span class="kw">await</span> engine.AckAsync(envCode, myGuid, ackGuid, <span class="ty">AckOutcome</span>.Processed);
+
+<span class="cm">// Now approve goes through</span>
+<span class="kw">var</span> ok = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    ExternalRef = loanId, Event = <span class="st">"approve"</span>, RequestId = req2, AckRequired = <span class="nb">true</span>, ...
+});
+Console.WriteLine(ok.Applied); <span class="cm">// true</span>
+
+<span class="cm">// One-time bypass (emergency override):</span>
+<span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    ExternalRef = loanId, Event = <span class="st">"approve"</span>, SkipAckGate = <span class="nb">true</span>, ...
+});</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="ex-timeout">
+    <h3 class="sub-title">Example 4 — Timeout Automation</h3>
+    <p>Define a timeout in the policy JSON. The monitor automatically triggers the event when the instance has been in that state past the configured duration — no application code needed to schedule it.</p>
+    <h4 class="mini-title">Policy JSON</h4>
+    <pre><code>{
+  <span class="jk">"timeouts"</span>: [
+    {
+      <span class="jk">"state"</span>:         <span class="jv">"UnderReview"</span>,
+      <span class="jk">"timeout"</span>:       <span class="jv">"P2D"</span>,        <span class="cm">// ISO 8601: 2 days</span>
+      <span class="jk">"timeout_mode"</span>:  <span class="jv">"once"</span>,       <span class="cm">// default — fires once then stops</span>
+      <span class="jk">"timeout_event"</span>: <span class="jn">900</span>           <span class="cm">// event code 900 = "expire"</span>
+    }
+  ]
+}
+
+<span class="cm">// For recurring reminders, use "repeat":</span>
+{ <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"timeout"</span>: <span class="jv">"PT6H"</span>, <span class="jk">"timeout_mode"</span>: <span class="jv">"repeat"</span>, <span class="jk">"timeout_event"</span>: <span class="jn">901</span> }</code><span class="lang-label">JSON</span></pre>
+    <pre><code><span class="cm">// Monitor fires TriggerAsync(event=900) automatically after 2 days.
+// Handle the resulting transition event in your consumer:</span>
+engine.EventRaised += <span class="kw">async</span> (e) => {
+    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleTransitionEvent</span> t &amp;&amp; t.EventCode == <span class="jn">900</span>) {
+        <span class="cm">// Loan was force-moved to Rejected by timeout</span>
+        <span class="kw">await</span> _notifier.SendExpiredAsync(t.EntityId);
+        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, t.AckGuid, <span class="ty">AckOutcome</span>.Processed);
+    }
+};
+
+<span class="cm">// Stale warning (no policy timeout configured for a state):</span>
+engine.NoticeRaised += (n) => {
+    <span class="kw">if</span> (n.Code == <span class="st">"STATE_STALE"</span>) {
+        <span class="kw">var</span> staleSeconds = (<span class="ty">long</span>)n.Data[<span class="st">"staleSeconds"</span>];
+        _logger.LogWarning(<span class="st">"Instance {guid} stuck for {s}s in {state}"</span>,
+            n.Data[<span class="st">"instanceGuid"</span>], staleSeconds, n.Data[<span class="st">"stateName"</span>]);
+    }
+    <span class="kw">return</span> Task.CompletedTask;
+};</code><span class="lang-label">C#</span></pre>
+  </section>
+
+  <section class="doc-section" id="ex-runtime">
+    <h3 class="sub-title">Example 5 — Runtime Activity Tracking</h3>
+    <p>Use the runtime engine to log fine-grained activity progress within a state. This is application-owned bookkeeping — not part of the state machine. Useful for detailed timeline views and dashboards.</p>
+    <pre><code><span class="cm">// Inside your transition event handler:</span>
+engine.EventRaised += <span class="kw">async</span> (e) => {
+    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleTransitionEvent</span> t &amp;&amp; t.EventCode == <span class="jn">100</span>) { <span class="cm">// submit</span>
+
+        <span class="cm">// Log "credit_check" activity as Pending (status=1)</span>
+        <span class="kw">var</span> runtimeId = <span class="kw">await</span> engine.UpsertRuntimeAsync(<span class="kw">new</span> <span class="ty">RuntimeLogByNameRequest</span> {
+            InstanceId   = t.InstanceId,
+            LcId         = t.LifeCycleId,
+            StateId      = t.ToStateId,
+            ActivityName = <span class="st">"credit_check"</span>,
+            ActorId      = t.Actor,
+            Status       = <span class="jn">1</span>  <span class="cm">// Pending</span>
+        });
+
+        <span class="cm">// ... perform credit check ...</span>
+        <span class="kw">var</span> passed = <span class="kw">await</span> _credit.CheckAsync(t.EntityId);
+
+        <span class="cm">// Update to Completed (2) or Failed (3)</span>
+        <span class="kw">await</span> engine.SetRuntimeStatusAsync(runtimeId, passed ? <span class="jn">2</span> : <span class="jn">3</span>);
+
+        <span class="cm">// Optionally freeze to prevent future overwrites</span>
+        <span class="kw">await</span> engine.FreezeRuntimeAsync(runtimeId);
+
+        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, t.AckGuid, <span class="ty">AckOutcome</span>.Processed);
+    }
+};
+
+<span class="cm">// Retrieve full timeline (includes runtime rows):</span>
+<span class="kw">var</span> timelineJson = <span class="kw">await</span> engine.GetTimelineJsonAsync(instanceId);
+<span class="cm">// Returns ordered JSON array: states, transitions, actors, timestamps, activity rows</span>
+
+<span class="cm">// For backdated/replay triggers, set OccurredAt:</span>
+<span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    OccurredAt = DateTimeOffset.Parse(<span class="st">"2024-11-15T09:00:00Z"</span>),
+    <span class="cm">// lifecycle.occurred stores this; lifecycle.created = engine capture time</span>
+    ExternalRef = loanId, Event = <span class="st">"submit"</span>, ...
+});</code><span class="lang-label">C#</span></pre>
   </section>
 
   <hr class="divider">
