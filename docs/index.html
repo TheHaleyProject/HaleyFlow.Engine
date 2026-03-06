@@ -351,7 +351,16 @@
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('schema-core')">Core Tables</button>
         <button class="nav-item" onclick="gotoSection('schema-hook')">Hook Tables <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('schema-instance-data')">Instance Data Columns <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
         <button class="nav-item" onclick="gotoSection('schema-ack')">ACK Tables</button>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Instance Data <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="gotoSection('instance-data-model')">Three-Layer Model <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('instance-data-api')">Instance Data API <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
       </div>
     </div>
 
@@ -509,7 +518,8 @@
           <tr><td><code>Event</code></td><td>✅</td><td>Event name or code to trigger the transition</td></tr>
           <tr><td><code>RequestId</code></td><td>Recommended</td><td>Stable across retries — enables idempotency</td></tr>
           <tr><td><code>Actor</code></td><td>Optional</td><td>For timeline tracking</td></tr>
-          <tr><td><code>Payload</code></td><td>Optional</td><td>Carried forward to next stage</td></tr>
+          <tr><td><code>Payload</code></td><td>Optional</td><td>Audit data for this specific transition. Stored in <code>lc_data.payload</code>. <strong>Not forwarded to consumers in events</strong> — audit-only.</td></tr>
+          <tr><td><code>Metadata</code></td><td>Optional <span class="badge new">NEW</span></td><td>Immutable instance tag set once at creation. Opaque string (consumer-defined structure). Stored in <code>instance.metadata</code>. Forwarded on every <code>ILifeCycleEvent</code> as <code>Metadata</code>. Ignored on subsequent triggers for the same instance.</td></tr>
           <tr><td><code>AckRequired</code></td><td>Optional</td><td>Default <code>true</code> — creates ACK rows</td></tr>
           <tr><td><code>OccurredAt</code></td><td>Optional <span class="badge new">NEW</span></td><td>Real-world event time for replay/backdating. <code>null</code> = engine uses UTC now. Stored in <code>lifecycle.occurred</code>; never overwrites <code>lifecycle.created</code>.</td></tr>
           <tr><td><code>SkipAckGate</code></td><td>Optional <span class="badge new">NEW</span></td><td>Bypass the ACK gate for this specific call. Default <code>false</code>.</td></tr>
@@ -568,6 +578,30 @@
       <dt><code>NoticeRaised(LifeCycleNotice)</code> — informational</dt>
       <dd>Retries, failures, stale warnings, suspensions, group completions, etc. Notice handler errors are swallowed to prevent infinite loops.</dd>
     </dl>
+
+    <h4 class="mini-title">ILifeCycleEvent — Common Properties</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>EventCode</code></td><td>int</td><td>The event code that fired this transition or hook</td></tr>
+          <tr><td><code>EntityId</code></td><td>string</td><td>Stable business key for the workflow instance</td></tr>
+          <tr><td><code>InstanceGuid</code></td><td>string?</td><td>Stable instance GUID</td></tr>
+          <tr><td><code>DefinitionId</code></td><td>long</td><td>Engine definition ID</td></tr>
+          <tr><td><code>DefinitionVersionId</code></td><td>long</td><td>Engine def_version ID</td></tr>
+          <tr><td><code>AckGuid</code></td><td>string?</td><td>ACK GUID for this event — passed back via <code>AckAsync</code></td></tr>
+          <tr><td><code>Metadata</code></td><td>string?</td><td><span class="badge new">NEW</span> Immutable instance metadata tag set once at creation via <code>LifeCycleTriggerRequest.Metadata</code>. Stored in <code>instance.metadata</code>. Forwarded on every event. Not interpreted by the engine.</td></tr>
+          <tr><td><code>Params</code></td><td>object?</td><td>Params from the matched policy rule</td></tr>
+          <tr><td><code>OnSuccessEvent</code></td><td>string?</td><td>Event code to trigger on success (from policy <code>complete.success</code>)</td></tr>
+          <tr><td><code>OnFailureEvent</code></td><td>string?</td><td>Event code to trigger on failure (from policy <code>complete.failure</code>)</td></tr>
+          <tr><td><code>OccurredAt</code></td><td>DateTimeOffset</td><td>Real-world event time (set by trigger caller; may be backdated)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">Payload is NOT forwarded in events</div>
+      <code>LifeCycleTriggerRequest.Payload</code> is stored in <code>lc_data.payload</code> as an audit trail for that specific transition. It is <strong>never sent</strong> to consumers via <code>ILifeCycleEvent</code>. Use <code>Metadata</code> for immutable instance-level tagging, or query instance context via <code>GetInstanceContextAsync</code> for mutable consumer-stamped data.
+    </div>
 
     <h4 class="mini-title">Notice Codes</h4>
     <div class="table-wrap">
@@ -1084,7 +1118,7 @@
           <tr><td><code>state</code></td><td>States per def_version</td><td><code>id</code>, <code>def_version</code>, <code>name</code>, <code>flags</code></td></tr>
           <tr><td><code>events</code></td><td>Events per def_version</td><td><code>id</code>, <code>def_version</code>, <code>code</code>, <code>name</code></td></tr>
           <tr><td><code>transition</code></td><td>Valid state transitions</td><td><code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>def_version</code></td></tr>
-          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>entity_id</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code></td></tr>
+          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>entity_id</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code>, <code>metadata</code> <span class="badge new">NEW</span>, <code>context</code> <span class="badge new">NEW</span></td></tr>
           <tr><td><code>lifecycle</code></td><td>Transition audit log</td><td><code>id</code>, <code>instance_id</code>, <code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>created</code>, <code>occurred</code> <span class="badge new">NEW</span></td></tr>
           <tr><td><code>lc_data</code></td><td>Payload / actor per lifecycle entry</td><td><code>lc_id</code>, <code>actor</code>, <code>payload</code></td></tr>
           <tr><td><code>policy</code></td><td>Policy content (hashed)</td><td><code>id</code>, <code>hash</code>, <code>content</code></td></tr>
@@ -1132,6 +1166,22 @@
   <span class="sql-kw">ADD CONSTRAINT</span> <span class="sql-id">fk_hook_group</span>  <span class="sql-kw">FOREIGN KEY</span> (<span class="sql-id">group_id</span>) <span class="sql-kw">REFERENCES</span> <span class="sql-id">hook_group</span>(<span class="sql-id">id</span>);</code><span class="lang-label">SQL</span></pre>
   </section>
 
+  <section class="doc-section" id="schema-instance-data">
+    <h3 class="sub-title">Instance Data Columns <span class="badge new">NEW</span></h3>
+    <p>Two new columns were added to the <code>instance</code> table to support immutable metadata tagging and mutable consumer-controlled context:</p>
+    <pre><code><span class="sql-kw">ALTER TABLE</span> <span class="sql-id">instance</span> <span class="sql-kw">ADD COLUMN</span> <span class="sql-id">metadata</span> TEXT <span class="sql-kw">NULL</span>;
+<span class="sql-kw">ALTER TABLE</span> <span class="sql-id">instance</span> <span class="sql-kw">ADD COLUMN</span> <span class="sql-id">context</span>  JSON <span class="sql-kw">NULL</span>;</code><span class="lang-label">SQL</span></pre>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>metadata</code></td><td>TEXT NULL</td><td>Immutable opaque string set once at instance creation (via <code>LifeCycleTriggerRequest.Metadata</code>). Not interpreted by the engine. Forwarded on every <code>ILifeCycleEvent</code> as <code>Metadata</code>. Consumer-defined structure — plain string, CSV, JSON, etc.</td></tr>
+          <tr><td><code>context</code></td><td>JSON NULL</td><td>Mutable JSON bag. Consumers read and write it via <code>GetInstanceContextAsync</code> / <code>SetInstanceContextAsync</code>. Not forwarded in events — must be queried explicitly. Engine stores it but does not interpret it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="doc-section" id="schema-ack">
     <h3 class="sub-title">ACK Tables</h3>
     <div class="table-wrap">
@@ -1146,6 +1196,96 @@
       </table>
     </div>
     <p>ACK status values: <code>Pending=1</code>, <code>Delivered=2</code>, <code>Processed=3</code>, <code>Failed=4</code>. Terminal = 3 or 4 (no more re-dispatch).</p>
+  </section>
+
+  <!-- ──────────────── INSTANCE DATA MODEL ──────────────── -->
+  <section class="doc-section" id="instance-data-model">
+    <div class="section-label">Section 7</div>
+    <h2 class="section-title">Instance Data Model <span class="badge new">NEW</span></h2>
+    <p>Every workflow instance carries three distinct data layers. Understanding which layer to use is critical for correct consumer design.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>Storage</th><th>Mutability</th><th>Forwarded in Events?</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>lc_data.payload</code></td>
+            <td>Engine DB — per lifecycle row</td>
+            <td>Immutable per transition</td>
+            <td>No — audit only</td>
+            <td>What data caused this specific transition. Sent via <code>LifeCycleTriggerRequest.Payload</code>. Stored for audit; never forwarded to consumers.</td>
+          </tr>
+          <tr>
+            <td><code>instance.metadata</code></td>
+            <td>Engine DB — per instance</td>
+            <td>Immutable (set at first trigger)</td>
+            <td>Yes — on every <code>ILifeCycleEvent</code> as <code>Metadata</code></td>
+            <td>Opaque string tag set by the initiator at creation. Consumer-defined structure (plain string, CSV, env flags, test markers, etc.). Engine does not interpret it.</td>
+          </tr>
+          <tr>
+            <td><code>instance.context</code></td>
+            <td>Engine DB — per instance</td>
+            <td>Mutable — consumers read/write</td>
+            <td>No — must query explicitly</td>
+            <td>Mutable JSON bag. Consumers stamp results, enrichment, or decisions here. Engine stores it but does not interpret it. Read/write via <code>GetInstanceContextAsync</code> / <code>SetInstanceContextAsync</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">Decision guide</div>
+      Use <strong>payload</strong> when you need to know what triggered a specific transition (audit). Use <strong>metadata</strong> when you want a stable, read-only tag visible on every event without an extra query (e.g. environment=prod, test=true, customer-tier=gold). Use <strong>context</strong> when consumers need to share mutable state across transitions (e.g. stamping an approval decision that a later consumer reads).
+    </div>
+  </section>
+
+  <!-- ──────────────── INSTANCE DATA API ──────────────── -->
+  <section class="doc-section" id="instance-data-api">
+    <h2 class="section-title">Instance Data API <span class="badge new">NEW</span></h2>
+    <p>New public methods on <code>ILifeCycleRuntimeBus</code> (implemented by <code>WorkFlowEngine</code>) allow consumers and application code to query and update instance state.</p>
+
+    <h4 class="mini-title">GetInstanceDataAsync</h4>
+    <p>Returns a <code>LifeCycleInstanceData?</code> snapshot of an instance including its current state, metadata, and context.</p>
+    <pre><code><span class="cm">// by instance GUID</span>
+<span class="ty">LifeCycleInstanceData</span>? data = <span class="kw">await</span> engine.GetInstanceDataAsync(instanceGuid);
+
+<span class="cm">// by definition name + entity ID</span>
+<span class="ty">LifeCycleInstanceData</span>? data = <span class="kw">await</span> engine.GetInstanceDataAsync(defName, entityId);</code><span class="lang-label">C#</span></pre>
+
+    <h4 class="mini-title">GetInstanceContextAsync</h4>
+    <p>Returns the raw <code>instance.context</code> JSON string (or <code>null</code> if not set).</p>
+    <pre><code><span class="cm">// by instance GUID</span>
+<span class="ty">string</span>? ctx = <span class="kw">await</span> engine.GetInstanceContextAsync(instanceGuid);
+
+<span class="cm">// by definition name + entity ID</span>
+<span class="ty">string</span>? ctx = <span class="kw">await</span> engine.GetInstanceContextAsync(defName, entityId);</code><span class="lang-label">C#</span></pre>
+
+    <h4 class="mini-title">SetInstanceContextAsync</h4>
+    <p>Overwrites <code>instance.context</code> with the provided JSON string. Pass <code>null</code> to clear. Returns the number of rows updated.</p>
+    <pre><code><span class="cm">// by instance GUID</span>
+<span class="ty">int</span> rows = <span class="kw">await</span> engine.SetInstanceContextAsync(instanceGuid, contextJson);
+
+<span class="cm">// by definition name + entity ID</span>
+<span class="ty">int</span> rows = <span class="kw">await</span> engine.SetInstanceContextAsync(defName, entityId, contextJson);</code><span class="lang-label">C#</span></pre>
+
+    <h4 class="mini-title">LifeCycleInstanceData — Model Properties</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>InstanceId</code></td><td>long</td><td>Engine-internal numeric instance ID</td></tr>
+          <tr><td><code>InstanceGuid</code></td><td>string</td><td>Stable GUID for the instance</td></tr>
+          <tr><td><code>DefinitionId</code></td><td>long</td><td>Engine definition ID</td></tr>
+          <tr><td><code>DefinitionVersionId</code></td><td>long</td><td>Engine def_version ID</td></tr>
+          <tr><td><code>EntityId</code></td><td>string</td><td>Application entity key</td></tr>
+          <tr><td><code>CurrentStateId</code></td><td>long</td><td>ID of the current state</td></tr>
+          <tr><td><code>Metadata</code></td><td>string?</td><td>Immutable opaque string set at instance creation</td></tr>
+          <tr><td><code>Context</code></td><td>string?</td><td>Mutable JSON string — consumer-controlled bag</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">Context is not forwarded in events</div>
+      <code>instance.context</code> is intentionally <strong>not</strong> forwarded in <code>ILifeCycleEvent</code> to keep event payloads lean and avoid stale-read issues. Always call <code>GetInstanceContextAsync</code> when you need the latest context value.
+    </div>
   </section>
 
   <!-- ──────────────── REFERENCE ──────────────── -->
