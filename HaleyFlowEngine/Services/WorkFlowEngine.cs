@@ -331,6 +331,14 @@ namespace Haley.Services {
             return BlueprintManager.BeatConsumerAsync(envCode, consumerGuid, ct);
         }
 
+        public async Task<long?> GetDefinitionIdAsync(int envCode, string definitionName, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(definitionName)) throw new ArgumentNullException(nameof(definitionName));
+            var row = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(envCode, definitionName, new DbExecutionLoad(ct));
+            var id = row?.GetLong("parent");
+            return id > 0 ? id : null;
+        }
+
         // client-friendly ACK (guid)
         public async Task AckAsync(int envCode, string consumerGuid, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
