@@ -274,102 +274,102 @@
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Overview <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('overview')">Introduction</button>
-        <button class="nav-item" onclick="scrollTo('objective')">Objective &amp; Non-goals</button>
+        <button class="nav-item" onclick="gotoSection('overview')">Introduction</button>
+        <button class="nav-item" onclick="gotoSection('objective')">Objective &amp; Non-goals</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Coding Rules <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('rules-sql')">SQL + DAL Discipline</button>
-        <button class="nav-item" onclick="scrollTo('rules-format')">Formatting Rules</button>
-        <button class="nav-item" onclick="scrollTo('rules-txn')">Transactions &amp; DbExecutionLoad</button>
-        <button class="nav-item" onclick="scrollTo('rules-ensure')">Ensure / Exists Rule</button>
-        <button class="nav-item" onclick="scrollTo('rules-naming')">Naming Conventions</button>
+        <button class="nav-item" onclick="gotoSection('rules-sql')">SQL + DAL Discipline</button>
+        <button class="nav-item" onclick="gotoSection('rules-format')">Formatting Rules</button>
+        <button class="nav-item" onclick="gotoSection('rules-txn')">Transactions &amp; DbExecutionLoad</button>
+        <button class="nav-item" onclick="gotoSection('rules-ensure')">Ensure / Exists Rule</button>
+        <button class="nav-item" onclick="gotoSection('rules-naming')">Naming Conventions</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Core Runtime Flow <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('flow-trigger')">Trigger (App → Engine)</button>
-        <button class="nav-item" onclick="scrollTo('flow-persist')">Engine Evaluates + Persists</button>
-        <button class="nav-item" onclick="scrollTo('flow-ackgate')">ACK Gate <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="scrollTo('flow-emit')">Emit Outbound Events</button>
-        <button class="nav-item" onclick="scrollTo('flow-ack')">ACK Updates</button>
-        <button class="nav-item" onclick="scrollTo('flow-monitor')">Monitor (Reliability)</button>
+        <button class="nav-item" onclick="gotoSection('flow-trigger')">Trigger (App → Engine)</button>
+        <button class="nav-item" onclick="gotoSection('flow-persist')">Engine Evaluates + Persists</button>
+        <button class="nav-item" onclick="gotoSection('flow-ackgate')">ACK Gate <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('flow-emit')">Emit Outbound Events</button>
+        <button class="nav-item" onclick="gotoSection('flow-ack')">ACK Updates</button>
+        <button class="nav-item" onclick="gotoSection('flow-monitor')">Monitor (Reliability)</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Components <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('comp-dal')">WorkFlowDAL</button>
-        <button class="nav-item" onclick="scrollTo('comp-importer')">BlueprintImporter</button>
-        <button class="nav-item" onclick="scrollTo('comp-manager')">BlueprintManager</button>
-        <button class="nav-item" onclick="scrollTo('comp-sm')">StateMachine</button>
-        <button class="nav-item" onclick="scrollTo('comp-pe')">PolicyEnforcer</button>
-        <button class="nav-item" onclick="scrollTo('comp-ack')">AckManager</button>
-        <button class="nav-item" onclick="scrollTo('comp-monitor')">LifeCycleMonitor</button>
-        <button class="nav-item" onclick="scrollTo('comp-engine')">WorkFlowEngine</button>
-        <button class="nav-item" onclick="scrollTo('comp-runtime')">RuntimeEngine</button>
-        <button class="nav-item" onclick="scrollTo('comp-timeline')">Timeline</button>
+        <button class="nav-item" onclick="gotoSection('comp-dal')">WorkFlowDAL</button>
+        <button class="nav-item" onclick="gotoSection('comp-importer')">BlueprintImporter</button>
+        <button class="nav-item" onclick="gotoSection('comp-manager')">BlueprintManager</button>
+        <button class="nav-item" onclick="gotoSection('comp-sm')">StateMachine</button>
+        <button class="nav-item" onclick="gotoSection('comp-pe')">PolicyEnforcer</button>
+        <button class="nav-item" onclick="gotoSection('comp-ack')">AckManager</button>
+        <button class="nav-item" onclick="gotoSection('comp-monitor')">LifeCycleMonitor</button>
+        <button class="nav-item" onclick="gotoSection('comp-engine')">WorkFlowEngine</button>
+        <button class="nav-item" onclick="gotoSection('comp-runtime')">RuntimeEngine</button>
+        <button class="nav-item" onclick="gotoSection('comp-timeline')">Timeline</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Consumer Choreography <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('chore-saga')">Saga Choreography</button>
-        <button class="nav-item" onclick="scrollTo('chore-owner')">No Instance Owner</button>
-        <button class="nav-item" onclick="scrollTo('chore-fact')">Transition = Fact</button>
-        <button class="nav-item" onclick="scrollTo('chore-dup')">Duplicate Prevention</button>
-        <button class="nav-item" onclick="scrollTo('chore-hb')">Consumer Heartbeat</button>
-        <button class="nav-item" onclick="scrollTo('chore-retry')">Retry Not Burned</button>
-        <button class="nav-item" onclick="scrollTo('chore-order')">Ordering Rule</button>
-        <button class="nav-item" onclick="scrollTo('chore-atleast')">At-Least-Once</button>
+        <button class="nav-item" onclick="gotoSection('chore-saga')">Saga Choreography</button>
+        <button class="nav-item" onclick="gotoSection('chore-owner')">No Instance Owner</button>
+        <button class="nav-item" onclick="gotoSection('chore-fact')">Transition = Fact</button>
+        <button class="nav-item" onclick="gotoSection('chore-dup')">Duplicate Prevention</button>
+        <button class="nav-item" onclick="gotoSection('chore-hb')">Consumer Heartbeat</button>
+        <button class="nav-item" onclick="gotoSection('chore-retry')">Retry Not Burned</button>
+        <button class="nav-item" onclick="gotoSection('chore-order')">Ordering Rule</button>
+        <button class="nav-item" onclick="gotoSection('chore-atleast')">At-Least-Once</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">JSON Policy Reference <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('pol-structure')">Policy Structure</button>
-        <button class="nav-item" onclick="scrollTo('pol-emit')">Emit Fields</button>
-        <button class="nav-item" onclick="scrollTo('pol-blocking')">Blocking Flag <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="scrollTo('pol-groups')">Hook Groups <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="scrollTo('pol-timeouts')">Timeouts</button>
-        <button class="nav-item" onclick="scrollTo('pol-lifecycle')">Policy Attachment Lifecycle</button>
+        <button class="nav-item" onclick="gotoSection('pol-structure')">Policy Structure</button>
+        <button class="nav-item" onclick="gotoSection('pol-emit')">Emit Fields</button>
+        <button class="nav-item" onclick="gotoSection('pol-blocking')">Blocking Flag <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('pol-groups')">Hook Groups <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('pol-timeouts')">Timeouts</button>
+        <button class="nav-item" onclick="gotoSection('pol-lifecycle')">Policy Attachment Lifecycle</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Schema Reference <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('schema-core')">Core Tables</button>
-        <button class="nav-item" onclick="scrollTo('schema-hook')">Hook Tables <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="scrollTo('schema-ack')">ACK Tables</button>
+        <button class="nav-item" onclick="gotoSection('schema-core')">Core Tables</button>
+        <button class="nav-item" onclick="gotoSection('schema-hook')">Hook Tables <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('schema-ack')">ACK Tables</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Reference <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('ref-notices')">Notice Codes</button>
-        <button class="nav-item" onclick="scrollTo('ref-options')">Engine Options</button>
-        <button class="nav-item" onclick="scrollTo('ref-quickstart')">Quick Start</button>
+        <button class="nav-item" onclick="gotoSection('ref-notices')">Notice Codes</button>
+        <button class="nav-item" onclick="gotoSection('ref-options')">Engine Options</button>
+        <button class="nav-item" onclick="gotoSection('ref-quickstart')">Quick Start</button>
       </div>
     </div>
 
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Examples <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="scrollTo('ex-loan')">1 — Loan Approval</button>
-        <button class="nav-item" onclick="scrollTo('ex-hookgroup')">2 — Hook Groups</button>
-        <button class="nav-item" onclick="scrollTo('ex-ackgate')">3 — ACK Gate</button>
-        <button class="nav-item" onclick="scrollTo('ex-timeout')">4 — Timeout Automation</button>
-        <button class="nav-item" onclick="scrollTo('ex-runtime')">5 — Runtime Tracking</button>
+        <button class="nav-item" onclick="gotoSection('ex-loan')">1 — Loan Approval</button>
+        <button class="nav-item" onclick="gotoSection('ex-hookgroup')">2 — Hook Groups</button>
+        <button class="nav-item" onclick="gotoSection('ex-ackgate')">3 — ACK Gate</button>
+        <button class="nav-item" onclick="gotoSection('ex-timeout')">4 — Timeout Automation</button>
+        <button class="nav-item" onclick="gotoSection('ex-runtime')">5 — Runtime Tracking</button>
       </div>
     </div>
 
@@ -1111,12 +1111,14 @@
 
   <section class="doc-section" id="ref-quickstart">
     <h3 class="sub-title">Quick Start</h3>
-    <pre><code><span class="cm">// 1. Build engine</span>
-<span class="kw">var</span> engine = <span class="kw">new</span> <span class="ty">WorkFlowEngine</span>(dal, <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
-    AckGateEnabled           = <span class="nb">true</span>,
-    DefaultStateStaleDuration = TimeSpan.FromHours(<span class="jn">24</span>),
-    MaxRetryCount             = <span class="jn">5</span>
-});
+    <pre><code><span class="cm">// 1. Build engine — auto-creates/migrates DB schema on first run</span>
+<span class="kw">var</span> engine = <span class="kw">await new</span> <span class="ty">WorkFlowEngineMaker</span> {
+    Options = <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
+        AckGateEnabled           = <span class="nb">true</span>,
+        DefaultStateStaleDuration = TimeSpan.FromHours(<span class="jn">24</span>),
+        MaxRetryCount             = <span class="jn">5</span>
+    }
+}.WithConnectionString(connectionString).Build(adapterGateway);
 
 <span class="cm">// 2. Subscribe to events and notices</span>
 engine.EventRaised  += HandleEventAsync;
@@ -1335,10 +1337,12 @@ engine.NoticeRaised += <span class="kw">async</span> (n) => {
     <h3 class="sub-title">Example 3 — ACK Gate: Strict Sequential Ordering</h3>
     <p>When <code>AckGateEnabled = true</code>, a new transition is rejected if the previous lifecycle entry still has unresolved consumers. Useful when strict ordering is required.</p>
     <pre><code><span class="cm">// Enable gate at engine construction</span>
-<span class="kw">var</span> engine = <span class="kw">new</span> <span class="ty">WorkFlowEngine</span>(dal, <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
-    AckGateEnabled = <span class="nb">true</span>,
-    MaxRetryCount  = <span class="jn">5</span>
-});
+<span class="kw">var</span> engine = <span class="kw">await new</span> <span class="ty">WorkFlowEngineMaker</span> {
+    Options = <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
+        AckGateEnabled = <span class="nb">true</span>,
+        MaxRetryCount  = <span class="jn">5</span>
+    }
+}.WithConnectionString(connectionString).Build(adapterGateway);
 
 <span class="cm">// Trigger submit — creates ACK row (Pending)</span>
 <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
@@ -1472,10 +1476,11 @@ engine.EventRaised += <span class="kw">async</span> (e) => {
   });
 
   // ── Scroll to section ──
-  function scrollTo(id) {
+  function gotoSection(id) {
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const top = el.getBoundingClientRect().top - content.getBoundingClientRect().top + content.scrollTop;
+      content.scrollTo({ top, behavior: 'smooth' });
       setActive(id);
     }
   }
