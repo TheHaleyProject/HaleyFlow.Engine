@@ -20,5 +20,7 @@ namespace Haley.Models {
         public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
         public bool IsBlocking { get; set; } = true;
         public string? GroupName { get; set; }
+        public int OrderSeq { get; set; } = 1;
+        public int AckMode  { get; set; } = 0;
     }
 }

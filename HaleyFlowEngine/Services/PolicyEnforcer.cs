@@ -46,7 +46,7 @@ namespace Haley.Services {
             return pr;
         }
 
-        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, string? resolvedPolicyJson = null) {
+        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, string? resolvedPolicyJson = null, bool ackRequired = true) {
             load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
 
@@ -61,10 +61,8 @@ namespace Haley.Services {
             bp.EventsById.TryGetValue(applied.EventId, out var viaEvent);
 
             var instanceId = instance.GetLong("id");
-            var emissions = new List<ILifeCycleHookEmission>();
 
             using var doc = JsonDocument.Parse(policyJson);
-            //If there are no rules, then nothing to emit..
             if (!doc.RootElement.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
                 return Array.Empty<ILifeCycleHookEmission>();
 
@@ -74,14 +72,18 @@ namespace Haley.Services {
                 foreach (var p in paramsEl.EnumerateArray()) {
                     var code = p.GetString("code");
                     if (string.IsNullOrWhiteSpace(code)) continue;
-
                     IReadOnlyDictionary<string, object?>? data = null;
-                    if (p.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object) {
+                    if (p.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object)
                         data = p.GetDictionary("data");
-                    }
                     paramCatalog[code!] = data;
                 }
             }
+
+            // Collect all emit specs first so we can compute minOrder across all matched rules.
+            var specs = new List<(string hookCode, bool emitBlocking, string? emitGroup, int orderSeq, int ackMode,
+                                  string? onSuccess, string? onFailure,
+                                  DateTimeOffset? notBefore, DateTimeOffset? deadline,
+                                  IReadOnlyDictionary<string, object?>? payload, IReadOnlyList<LifeCycleParamItem>? resolvedParams)>();
 
             foreach (var rule in rules.EnumerateArray()) {
                 load.Ct.ThrowIfCancellationRequested();
@@ -90,14 +92,12 @@ namespace Haley.Services {
                 if (string.IsNullOrWhiteSpace(ruleState)) continue;
                 if (!IsStateMatch(ruleState!, toState)) continue;
 
-                // via matching (same logic)
                 if (rule.TryGetProperty("via", out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined) {
                     if (viaEvent == null) continue;
                     var viaCode = viaEl.GetInt();
                     if (!viaCode.HasValue || viaCode.Value != viaEvent.Code) continue;
                 }
 
-                // rule-level param codes and blocking default
                 var ruleParamCodes = ReadParamCodes(rule, "params");
                 var ruleBlocking = ReadOptionalBool(rule, "blocking") ?? true;
 
@@ -111,44 +111,65 @@ namespace Haley.Services {
                     var hookCode = e.GetString("route");
                     if (string.IsNullOrWhiteSpace(hookCode)) continue;
 
-                    // emit.blocking inherits from rule.blocking, defaults to true
                     var emitBlocking = ReadOptionalBool(e, "blocking") ?? ruleBlocking;
 
-                    // group: optional string field on emit entry; null means ungrouped
                     var emitGroup = e.GetString("group");
                     if (string.IsNullOrWhiteSpace(emitGroup)) emitGroup = null;
 
-                    var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(instanceId, applied.ToStateId, applied.EventId, true, hookCode!, emitBlocking, emitGroup, load);
+                    // order: positive integer, default 1
+                    var orderSeq = e.TryGetProperty("order", out var orderEl) && orderEl.TryGetInt32(out var oVal) && oVal > 0 ? oVal : 1;
+                    // ack_mode: "any" → 1, default 0 (all)
+                    var ackModeStr = e.GetString("ack_mode");
+                    var ackMode = string.Equals(ackModeStr, "any", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 
                     var (emitSuccess, emitFailure) = ReadCompletionEvents(e);
-
                     var onSuccess = !string.IsNullOrWhiteSpace(emitSuccess) ? emitSuccess : ruleSuccess;
                     var onFailure = !string.IsNullOrWhiteSpace(emitFailure) ? emitFailure : ruleFailure;
 
-                    var notBefore = e.GetDatetimeOffset("notBefore");
-                    var deadline = e.GetDatetimeOffset("deadline");
-                    var payload = e.GetDictionary("payload");
-
-                    // emit params override rule params (no merge)
                     var emitParamCodes = ReadParamCodes(e, "params");
                     var effectiveParamCodes = emitParamCodes.Count > 0 ? emitParamCodes : ruleParamCodes;
                     var resolvedParams = ResolveParams(paramCatalog, effectiveParamCodes);
 
-                    emissions.Add(new LifeCycleHookEmission {
-                        HookId = hookId,
-                        StateId = applied.ToStateId,
-                        OnEntry = true,
-                        Route = hookCode!,
-                        OnSuccessEvent = onSuccess,
-                        OnFailureEvent = onFailure,
-                        NotBefore = notBefore,
-                        Deadline = deadline,
-                        Payload = payload,
-                        Params = resolvedParams,
-                        IsBlocking = emitBlocking,
-                        GroupName = emitGroup
-                    });
+                    specs.Add((hookCode!, emitBlocking, emitGroup, orderSeq, ackMode,
+                               onSuccess, onFailure,
+                               e.GetDatetimeOffset("notBefore"), e.GetDatetimeOffset("deadline"),
+                               e.GetDictionary("payload"), resolvedParams));
                 }
+            }
+
+            if (specs.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
+
+            // Determine minOrder. If AckRequired=false, ordering is bypassed (all hooks dispatch immediately).
+            var minOrder = ackRequired ? specs.Min(s => s.orderSeq) : 1;
+
+            var emissions = new List<ILifeCycleHookEmission>(specs.Count);
+            foreach (var s in specs) {
+                load.Ct.ThrowIfCancellationRequested();
+                // Higher-order hooks get dispatched=false; they wait for prior-order blocking hooks to complete.
+                var dispatched = !ackRequired || s.orderSeq == minOrder;
+                var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
+                    instanceId, applied.ToStateId, applied.EventId, true,
+                    s.hookCode, s.emitBlocking, s.emitGroup,
+                    s.orderSeq, s.ackMode, dispatched, load);
+
+                if (!dispatched) continue;  // Higher-order hooks: row created, not returned for ACK/dispatch yet.
+
+                emissions.Add(new LifeCycleHookEmission {
+                    HookId = hookId,
+                    StateId = applied.ToStateId,
+                    OnEntry = true,
+                    Route = s.hookCode,
+                    OnSuccessEvent = s.onSuccess,
+                    OnFailureEvent = s.onFailure,
+                    NotBefore = s.notBefore,
+                    Deadline = s.deadline,
+                    Payload = s.payload,
+                    Params = s.resolvedParams,
+                    IsBlocking = s.emitBlocking,
+                    GroupName = s.emitGroup,
+                    OrderSeq = s.orderSeq,
+                    AckMode = s.ackMode
+                });
             }
 
             return emissions;

@@ -73,6 +73,10 @@ namespace Haley.Internal {
         public const string ACTIVITY_ID = "@ACTIVITY_ID";
         public const string STATUS_ID = "@STATUS_ID";
 
+        public const string ORDER_SEQ = "@ORDER_SEQ";
+        public const string DISPATCHED = "@DISPATCHED";
+        public const string ACK_MODE = "@ACK_MODE";
+
         public const string TAKE = "@TAKE";
         public const string SKIP = "@SKIP";
     }

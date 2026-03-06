@@ -17,7 +17,7 @@ namespace Haley.Internal {
             return await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId), (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
         }
 
-        public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, DbExecutionLoad load = default) {
+        public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, int orderSeq = 1, int ackMode = 0, bool dispatched = true, DbExecutionLoad load = default) {
             // Ensure hook_route (check-then-insert)
             var routeId = await Db.ScalarAsync<long?>(QRY_HOOK_ROUTE.GET_ID_BY_NAME, load, (ROUTE, route));
             if (!routeId.HasValue || routeId.Value <= 0) {
@@ -43,14 +43,15 @@ namespace Haley.Internal {
                 }
             }
 
-            // Check if hook exists — if so, update blocking/group_id and return existing id
+            // Check if hook exists — if so, update blocking/group_id/order_seq/ack_mode (not dispatched) and return.
             var existing = await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load,
                 (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                 (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
             if (existing != null) {
                 var existingId = existing.GetLong("id");
                 await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
-                    (ID, existingId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+                    (ID, existingId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
+                    (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
                 return existingId;
             }
 
@@ -59,7 +60,8 @@ namespace Haley.Internal {
                 return await Db.ScalarAsync<long>(QRY_HOOK.INSERT, load,
                     (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                     (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value),
-                    (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+                    (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
+                    (ORDER_SEQ, orderSeq), (DISPATCHED, dispatched ? 1 : 0), (ACK_MODE, ackMode));
             } catch {
                 // Race condition: re-read and update
                 var row = await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load,
@@ -68,7 +70,8 @@ namespace Haley.Internal {
                 if (row == null) throw;
                 var rowId = row.GetLong("id");
                 await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
-                    (ID, rowId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+                    (ID, rowId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
+                    (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
                 return rowId;
             }
         }
@@ -84,5 +87,34 @@ namespace Haley.Internal {
 
         public Task<int> DeleteByInstanceAsync(long instanceId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_HOOK.DELETE_BY_INSTANCE, load, (INSTANCE_ID, instanceId));
+
+        // ── Ordered emission support ──────────────────────────────────────
+
+        public Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_HOOK.GET_CONTEXT_BY_ACK_GUID, load, (GUID, ackGuid));
+
+        public async Task<int> CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, int orderSeq, DbExecutionLoad load = default) {
+            var row = await Db.RowAsync(QRY_HOOK.COUNT_INCOMPLETE_BLOCKING_IN_ORDER, load,
+                (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                (ON_ENTRY, onEntry ? 1 : 0), (ORDER_SEQ, orderSeq));
+            return row?.GetInt("cnt") ?? 0;
+        }
+
+        public async Task<int?> GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, DbExecutionLoad load = default) {
+            var row = await Db.RowAsync(QRY_HOOK.GET_MIN_UNDISPATCHED_ORDER, load,
+                (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                (ON_ENTRY, onEntry ? 1 : 0));
+            if (row == null) return null;
+            var val = row.GetInt("next_order");
+            return val > 0 ? val : (int?)null;
+        }
+
+        public Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, int orderSeq, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_HOOK.LIST_UNDISPATCHED_BY_ORDER, load,
+                (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                (ON_ENTRY, onEntry ? 1 : 0), (ORDER_SEQ, orderSeq));
+
+        public Task MarkDispatchedAsync(long hookId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_HOOK.MARK_DISPATCHED, load, (ID, hookId));
     }
 }

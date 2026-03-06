@@ -37,5 +37,8 @@ namespace Haley.Internal {
             => Db.RowsAsync(QRY_ACK_CONSUMER.LIST_BY_CONSUMER_AND_STATUS_PAGED, load, (CONSUMER_ID, consumer), (ACK_STATUS, status), (SKIP, skip), (TAKE, take));
 
         public Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default) => Db.ExecAsync(QRY_ACK_CONSUMER.PUSH_NEXT_DUE_FOR_DOWN_BY_CONSUMER_AND_STATUS, load, (CONSUMER_ID, consumerId), (ACK_STATUS, ackStatus), (TTL_SECONDS, ttlSeconds), (RECHECK_SECONDS, recheckSeconds));
+
+        public Task<int> MarkAllProcessedByAckIdAsync(long ackId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_ACK_CONSUMER.MARK_ALL_PROCESSED_BY_ACK_ID, load, (ACK_ID, ackId));
     }
 }

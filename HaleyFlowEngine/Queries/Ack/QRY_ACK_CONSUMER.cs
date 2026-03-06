@@ -31,6 +31,9 @@ namespace Haley.Internal {
 
 
 
+        // Mark all sibling ack_consumer rows for an ack as Processed (used for ack_mode=Any).
+        public const string MARK_ALL_PROCESSED_BY_ACK_ID = $@"UPDATE ack_consumer SET status = 3, next_due = NULL, modified = CURRENT_TIMESTAMP WHERE ack_id = {ACK_ID} AND status NOT IN (3, 4);";
+
         public const string DELETE = $@"DELETE FROM ack_consumer WHERE id = {ID};";
         public const string DELETE_BY_ACK_ID = $@"DELETE FROM ack_consumer WHERE ack_id = {ACK_ID};";
     }

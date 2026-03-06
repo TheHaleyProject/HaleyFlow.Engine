@@ -351,6 +351,18 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<column name="route_id" prior="route" type="BIGINT" mandatory="y" >
 				<comment><![CDATA[event or the route name that needs to be triggered or hooked.]]></comment>
 			</column>
+			<column name="order_seq" type="SMALLINT" length="6" mandatory="y" >
+				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[emission order; lower fires first; same order = parallel dispatch]]></comment>
+			</column>
+			<column name="dispatched" type="BIT" length="1" mandatory="y" >
+				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[0 = hook row created but ACK rows not yet emitted (waiting for prior order to complete); 1 = dispatched]]></comment>
+			</column>
+			<column name="ack_mode" type="TINYINT" length="4" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[0=All consumers must ACK Processed; 1=Any one consumer ACK Processed satisfies the hook]]></comment>
+			</column>
 			<index name="pk_hook" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -433,7 +445,7 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
 			</column>
-			<column name="entity_ref" prior="external_ref" type="VARCHAR" length="36" mandatory="y" >
+			<column name="entity_id" prior="entity_ref" type="VARCHAR" length="36" mandatory="y" >
 				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
 			</column>
 			<column name="def_id" type="INT" mandatory="y" />
@@ -477,12 +489,12 @@ archive = 16]]></comment>
 				<column name="def_version" />
 			</index>
 			<index name="idx_instance" unique="NORMAL" >
-				<column name="entity_ref" />
+				<column name="entity_id" />
 			</index>
 			<index name="unq_instance_0" unique="UNIQUE_KEY" >
 				<comment><![CDATA[this uniqueness helps dedupe the request..  one entity can only go through a single version of a definition.. for example, if definition (onboarding), then an entity can only be onboaded only once (across all versions... it cannot be onboarded for different versions of same defintion).]]></comment>
 				<column name="def_id" />
-				<column name="entity_ref" />
+				<column name="entity_id" />
 			</index>
 			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />

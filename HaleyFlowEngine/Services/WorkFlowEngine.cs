@@ -190,7 +190,7 @@ namespace Haley.Services {
                 }
 
                 // Hooks (create hook rows in txn; dispatch after commit)
-                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr?.PolicyJson);
+                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr?.PolicyJson, req.AckRequired);
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                    if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
@@ -216,7 +216,9 @@ namespace Haley.Services {
                             NotBefore = he.NotBefore,
                             Deadline = he.Deadline,
                             IsBlocking = he.IsBlocking,
-                            GroupName = he.GroupName
+                            GroupName = he.GroupName,
+                            OrderSeq = he.OrderSeq,
+                            AckMode = he.AckMode
                         };
                         toDispatch.Add(hookEvent);
                     }
@@ -248,8 +250,28 @@ namespace Haley.Services {
             var load = new DbExecutionLoad(ct);
             await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, load);
 
-            // Group completion check: only when a hook is being marked Processed.
             if (outcome == AckOutcome.Processed) {
+                // Fetch hook context once — used for fan-out, group check, and order advancement.
+                DbRow? hookCtx = null;
+                try {
+                    hookCtx = await _dal.Hook.GetContextByAckGuidAsync(ackGuid, load);
+                } catch (Exception ex) {
+                    FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
+                        $"Hook context lookup failed for ack={ackGuid}: {ex.Message}"));
+                }
+
+                // 1. AckMode=Any fan-out: mark all sibling ack_consumer rows Processed BEFORE group check
+                //    so CountUnresolvedInGroup sees them as terminal.
+                if (hookCtx != null && hookCtx.GetInt("ack_mode") == 1) {
+                    try {
+                        await _dal.AckConsumer.MarkAllProcessedByAckIdAsync(hookCtx.GetLong("ack_id"), load);
+                    } catch (Exception ex) {
+                        FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
+                            $"AckMode=Any fan-out failed for ack={ackGuid}: {ex.Message}"));
+                    }
+                }
+
+                // 2. Group completion check
                 try {
                     var ctx = await _dal.HookGroup.GetContextByAckGuidAsync(ackGuid, load);
                     if (ctx != null) {
@@ -267,6 +289,21 @@ namespace Haley.Services {
                 } catch (Exception ex) {
                     FireNotice(LifeCycleNotice.Warn("HOOK_GROUP_CHECK_ERROR", "HOOK_GROUP_CHECK_ERROR",
                         $"Group completion check failed for ack={ackGuid}: {ex.Message}"));
+                }
+
+                // 3. Order advancement (only when the ACKed hook is blocking)
+                if (hookCtx != null && hookCtx.GetBool("blocking")) {
+                    try {
+                        var incomplete = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
+                            hookCtx.GetLong("instance_id"), hookCtx.GetLong("state_id"),
+                            hookCtx.GetLong("via_event"), hookCtx.GetBool("on_entry"),
+                            hookCtx.GetInt("order_seq"), load);
+                        if (incomplete == 0)
+                            await AdvanceNextHookOrderAsync(hookCtx, ct);
+                    } catch (Exception ex) {
+                        FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
+                            $"Order advancement failed for ack={ackGuid}: {ex.Message}"));
+                    }
                 }
             }
         }
@@ -355,6 +392,95 @@ namespace Haley.Services {
 
         public Task<int> UnfreezeRuntimeAsync(long runtimeId, CancellationToken ct = default) => Runtime.SetFrozenAsync(runtimeId, false, ct);
 
+
+        async Task AdvanceNextHookOrderAsync(DbRow hookCtx, CancellationToken ct) {
+            var instanceId   = hookCtx.GetLong("instance_id");
+            var stateId      = hookCtx.GetLong("state_id");
+            var viaEvent     = hookCtx.GetLong("via_event");
+            var onEntry      = hookCtx.GetBool("on_entry");
+            var defVersionId = hookCtx.GetLong("def_version_id");
+            var instanceGuid = hookCtx.GetString("instance_guid") ?? string.Empty;
+            var entityId     = hookCtx.GetString("entity_id") ?? string.Empty;
+            var definitionId = hookCtx.GetLong("definition_id");
+
+            var hookConsumers = await AckManager.GetHookConsumersAsync(defVersionId, ct);
+            var normConsumers = NormalizeConsumers(hookConsumers);
+
+            var baseLcEvent = new LifeCycleEvent {
+                InstanceGuid       = instanceGuid,
+                DefinitionId       = definitionId,
+                DefinitionVersionId = defVersionId,
+                EntityId           = entityId,
+                OccurredAt         = DateTimeOffset.UtcNow,
+                AckRequired        = true
+            };
+
+            while (!ct.IsCancellationRequested) {
+                var scanLoad = new DbExecutionLoad(ct);
+
+                var nextOrderRaw = await _dal.Hook.GetMinUndispatchedOrderAsync(instanceId, stateId, viaEvent, onEntry, scanLoad);
+                if (nextOrderRaw == null) return;
+                var nextOrder = nextOrderRaw.Value;
+
+                var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, nextOrder, scanLoad);
+                if (nextHooks.Count == 0) return;
+
+                // Create ACK rows + mark dispatched atomically, then fire events after commit.
+                var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * (normConsumers.Count > 0 ? normConsumers.Count : 1));
+                var transaction = _dal.CreateNewTransaction();
+                using var tx = transaction.Begin(false);
+                var txLoad = new DbExecutionLoad(ct, transaction);
+                var committed = false;
+
+                try {
+                    for (var j = 0; j < nextHooks.Count; j++) {
+                        var hookRow   = nextHooks[j];
+                        var hookId    = hookRow.GetLong("id");
+                        var isBlocking = hookRow.GetBool("blocking");
+                        var ackMode   = hookRow.GetInt("ack_mode");
+                        var route     = hookRow.GetString("route") ?? string.Empty;
+                        var groupName = hookRow.GetString("group_name");
+                        var hookOnEntry = hookRow.GetBool("on_entry");
+
+                        var hookAck     = await AckManager.CreateHookAckAsync(hookId, normConsumers, (int)AckStatus.Pending, txLoad);
+                        var hookAckGuid = hookAck.AckGuid ?? string.Empty;
+                        await _dal.Hook.MarkDispatchedAsync(hookId, txLoad);
+
+                        for (var i = 0; i < normConsumers.Count; i++) {
+                            toDispatch.Add(new LifeCycleHookEvent(baseLcEvent) {
+                                ConsumerId = normConsumers[i],
+                                AckGuid    = hookAckGuid,
+                                OnEntry    = hookOnEntry,
+                                Route      = route,
+                                IsBlocking = isBlocking,
+                                GroupName  = groupName,
+                                OrderSeq   = nextOrder,
+                                AckMode    = ackMode,
+                                AckRequired = true
+                            });
+                        }
+                    }
+                    transaction.Commit();
+                    committed = true;
+                } catch {
+                    if (!committed) { try { transaction.Rollback(); } catch { } }
+                    throw;
+                }
+
+                await DispatchEventsSafeAsync(toDispatch, ct);
+                FireNotice(LifeCycleNotice.Info("HOOK_ORDER_ADVANCED", "HOOK_ORDER_ADVANCED",
+                    $"Next-order hooks dispatched. order={nextOrder} instance={instanceGuid}",
+                    new Dictionary<string, object?> { ["orderSeq"] = nextOrder, ["instanceGuid"] = instanceGuid }));
+
+                // If no blocking hooks in this order no one will call AckAsync to trigger further
+                // advancement, so loop immediately to dispatch the next order too.
+                var anyBlocking = false;
+                for (var j = 0; j < nextHooks.Count; j++) {
+                    if (nextHooks[j].GetBool("blocking")) { anyBlocking = true; break; }
+                }
+                if (anyBlocking) break;  // wait for consumer ACKs before advancing further
+            }
+        }
 
         async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();

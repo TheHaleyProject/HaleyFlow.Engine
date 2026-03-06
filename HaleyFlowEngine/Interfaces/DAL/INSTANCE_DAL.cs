@@ -45,11 +45,18 @@ namespace Haley.Abstractions {
     internal interface IHookDAL {
         Task<DbRow?> GetByIdAsync(long hookId, DbExecutionLoad load = default);
         Task<DbRow?> GetByKeyAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, DbExecutionLoad load = default);
-        Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, DbExecutionLoad load = default);
+        Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, int orderSeq = 1, int ackMode = 0, bool dispatched = true, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAndStateAsync(long instanceId, long stateId, DbExecutionLoad load = default);
         Task<int> DeleteAsync(long hookId, DbExecutionLoad load = default);
         Task<int> DeleteByInstanceAsync(long instanceId, DbExecutionLoad load = default);
+
+        // Ordered emission support
+        Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
+        Task<int>    CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, int orderSeq, DbExecutionLoad load = default);
+        Task<int?>   GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, DbExecutionLoad load = default);
+        Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, int orderSeq, DbExecutionLoad load = default);
+        Task         MarkDispatchedAsync(long hookId, DbExecutionLoad load = default);
     }
 
     internal interface ILifeCycleDAL {

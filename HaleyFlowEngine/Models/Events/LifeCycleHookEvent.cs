@@ -15,6 +15,8 @@ namespace Haley.Models {
         public DateTimeOffset? Deadline { get; set; }
         public bool IsBlocking { get; set; } = true;
         public string? GroupName { get; set; }
+        public int OrderSeq { get; set; } = 1;
+        public int AckMode  { get; set; } = 0;
         public LifeCycleHookEvent() { }
         public LifeCycleHookEvent(LifeCycleEvent evt) : base(evt) { }
     }
