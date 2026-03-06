@@ -4,7 +4,7 @@ namespace Haley.Internal {
     internal class QRY_LC_TIMEOUT {
 
         public const string EXISTS_BY_LC_ID = $@"SELECT 1 FROM lc_timeout WHERE lc_id = {LC_ID} LIMIT 1;";
-        public const string INSERT_IGNORE = $@"INSERT IGNORE INTO lc_timeout (lc_id) VALUES ({LC_ID});";
+        public const string INSERT_IGNORE = $@"INSERT INTO lc_timeout (lc_id) VALUES ({LC_ID}) ON DUPLICATE KEY UPDATE lc_id = lc_id;";
         public const string DELETE_BY_LC_ID = $@"DELETE FROM lc_timeout WHERE lc_id = {LC_ID};";
 
         // Due timeouts (no record yet) based on latest lifecycle entry == current state

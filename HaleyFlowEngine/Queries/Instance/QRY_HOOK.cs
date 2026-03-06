@@ -14,8 +14,8 @@ namespace Haley.Internal {
 
         public const string INSERT = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route_id, blocking, group_id) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE_ID}, {BLOCKING}, {GROUP_ID}); SELECT LAST_INSERT_ID() AS id;";
 
-        // group_id is updated on duplicate so that policy changes (new group assignment) are reflected on re-emit.
-        public const string UPSERT_BY_KEY_RETURN_ID = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route_id, blocking, group_id) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE_ID}, {BLOCKING}, {GROUP_ID}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), blocking = VALUES(blocking), group_id = VALUES(group_id); SELECT LAST_INSERT_ID() AS id;";
+        // group_id and blocking are updated on re-emit so that policy changes are reflected.
+        public const string UPDATE_BLOCKING_AND_GROUP = $@"UPDATE hook SET blocking = {BLOCKING}, group_id = {GROUP_ID} WHERE id = {ID};";
 
         public const string DELETE = $@"DELETE FROM hook WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM hook WHERE instance_id = {INSTANCE_ID};";

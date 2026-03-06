@@ -8,7 +8,7 @@ namespace Haley.Internal {
 
         public const string GET_ID_BY_NAME = $@"SELECT id FROM hook_group WHERE name = {GROUP_NAME} LIMIT 1;";
 
-        public const string UPSERT_BY_NAME_RETURN_ID = $@"INSERT INTO hook_group (name) VALUES ({GROUP_NAME}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;";
+        public const string INSERT = $@"INSERT INTO hook_group (name) VALUES ({GROUP_NAME}); SELECT LAST_INSERT_ID() AS id;";
 
         // Returns hook + group context for a given ack guid.
         // Used in AckAsync (post-Processed) to determine whether a group completion notice should fire.

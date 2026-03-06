@@ -9,8 +9,17 @@ namespace Haley.Internal {
         public Task<long?> GetIdByNameAsync(string name, DbExecutionLoad load = default)
             => Db.ScalarAsync<long?>(QRY_HOOK_GROUP.GET_ID_BY_NAME, load, (GROUP_NAME, name));
 
-        public Task<long> UpsertByNameReturnIdAsync(string name, DbExecutionLoad load = default)
-            => Db.ScalarAsync<long>(QRY_HOOK_GROUP.UPSERT_BY_NAME_RETURN_ID, load, (GROUP_NAME, name));
+        public async Task<long> UpsertByNameReturnIdAsync(string name, DbExecutionLoad load = default) {
+            var id = await GetIdByNameAsync(name, load);
+            if (id.HasValue && id.Value > 0) return id.Value;
+            try {
+                return await Db.ScalarAsync<long>(QRY_HOOK_GROUP.INSERT, load, (GROUP_NAME, name));
+            } catch {
+                var id2 = await GetIdByNameAsync(name, load);
+                if (id2.HasValue && id2.Value > 0) return id2.Value;
+                throw;
+            }
+        }
 
         public Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_HOOK_GROUP.GET_CONTEXT_BY_ACK_GUID, load, (GUID, ackGuid));

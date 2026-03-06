@@ -17,13 +17,59 @@ namespace Haley.Internal {
         }
 
         public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, DbExecutionLoad load = default) {
-            // Ensure hook_route row exists (idempotent) and get its id.
-            var routeId = await Db.ScalarAsync<long>(QRY_HOOK_ROUTE.UPSERT_BY_NAME_RETURN_ID, load, (ROUTE, route));
-            // Resolve group_id: upsert group row if a name is provided, else pass SQL NULL.
+            // Ensure hook_route (check-then-insert)
+            var routeId = await Db.ScalarAsync<long?>(QRY_HOOK_ROUTE.GET_ID_BY_NAME, load, (ROUTE, route));
+            if (!routeId.HasValue || routeId.Value <= 0) {
+                try {
+                    routeId = await Db.ScalarAsync<long>(QRY_HOOK_ROUTE.INSERT, load, (ROUTE, route));
+                } catch {
+                    routeId = await Db.ScalarAsync<long?>(QRY_HOOK_ROUTE.GET_ID_BY_NAME, load, (ROUTE, route));
+                    if (!routeId.HasValue) throw;
+                }
+            }
+
+            // Ensure hook_group (check-then-insert)
             long? groupId = null;
-            if (!string.IsNullOrWhiteSpace(groupName))
-                groupId = await Db.ScalarAsync<long>(QRY_HOOK_GROUP.UPSERT_BY_NAME_RETURN_ID, load, (GROUP_NAME, groupName));
-            return await Db.ScalarAsync<long>(QRY_HOOK.UPSERT_BY_KEY_RETURN_ID, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId), (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+            if (!string.IsNullOrWhiteSpace(groupName)) {
+                groupId = await Db.ScalarAsync<long?>(QRY_HOOK_GROUP.GET_ID_BY_NAME, load, (GROUP_NAME, groupName));
+                if (!groupId.HasValue || groupId.Value <= 0) {
+                    try {
+                        groupId = await Db.ScalarAsync<long>(QRY_HOOK_GROUP.INSERT, load, (GROUP_NAME, groupName));
+                    } catch {
+                        groupId = await Db.ScalarAsync<long?>(QRY_HOOK_GROUP.GET_ID_BY_NAME, load, (GROUP_NAME, groupName));
+                        if (!groupId.HasValue) throw;
+                    }
+                }
+            }
+
+            // Check if hook exists — if so, update blocking/group_id and return existing id
+            var existing = await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load,
+                (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
+            if (existing != null) {
+                var existingId = existing.GetLong("id");
+                await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
+                    (ID, existingId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+                return existingId;
+            }
+
+            // Try plain insert
+            try {
+                return await Db.ScalarAsync<long>(QRY_HOOK.INSERT, load,
+                    (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                    (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value),
+                    (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+            } catch {
+                // Race condition: re-read and update
+                var row = await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load,
+                    (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                    (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
+                if (row == null) throw;
+                var rowId = row.GetLong("id");
+                await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
+                    (ID, rowId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value));
+                return rowId;
+            }
         }
 
         public Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default)

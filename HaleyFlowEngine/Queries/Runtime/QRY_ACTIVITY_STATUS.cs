@@ -12,7 +12,7 @@ namespace Haley.Internal {
         public const string LIST_ALL = $@"SELECT * FROM activity_status ORDER BY id;";
 
         // NOTE: activity_status.name is GENERATED from display_name (do not set name)
-        public const string INSERT = $@"INSERT INTO activity_status (display_name) VALUES ({DISPLAY_NAME}) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id); SELECT LAST_INSERT_ID() AS id;";
+        public const string INSERT = $@"INSERT INTO activity_status (display_name) VALUES ({DISPLAY_NAME}); SELECT LAST_INSERT_ID() AS id;";
         public const string UPDATE = $@"UPDATE activity_status SET display_name = {DISPLAY_NAME} WHERE id = {ID};";
         public const string DELETE = $@"DELETE FROM activity_status WHERE id = {ID};";
     }
