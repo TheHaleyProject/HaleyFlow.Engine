@@ -1,3 +1,3 @@
 using WFE.Test.UseCases;
 
-await UseCaseRunner.RunAsync(args);
+await UseCaseRunner.RunAsync("change-request");

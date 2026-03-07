@@ -18,13 +18,10 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         public async Task RunAsync(CancellationToken ct) {
             var settings = new PaperlessReviewUseCaseSettings();
-            var dbName = $"wfe_test_paperless_review_{DateTime.UtcNow:yyyyMMddHHmmss}";
-            settings.EngineConString = settings.EngineConString.Replace("wfe_test_case_paperless_review", dbName, StringComparison.OrdinalIgnoreCase);
-            Console.WriteLine($"Using database: {dbName}");
             var agw = new AdapterGateway();
             long resolvedConsumerId = 0;
 
-            var engineMaker = new WorkFlowEngineMaker().WithConnectionString(settings.EngineConString);
+            var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(agw.GetDefaultKey());
             engineMaker.Options = new WorkFlowEngineOptions {
                 MonitorInterval = settings.MonitorInterval,
                 AckPendingResendAfter = settings.AckPendingResendAfter,
@@ -55,7 +52,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
                 var serviceProvider = serviceCollection.BuildServiceProvider();
 
                 var consumerMaker = new WorkFlowConsumerMaker()
-                    .WithConnectionString(settings.EngineConString)
+                    .WithAdapterKey(agw.GetDefaultKey())
                     .WithProvider(serviceProvider);
 
                 consumerMaker.EventFeed = feed;

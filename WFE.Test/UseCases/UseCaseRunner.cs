@@ -17,7 +17,7 @@ namespace WFE.Test.UseCases {
             ["change-request"] = static () => new ChangeRequestUseCase()
         };
 
-        public static async Task RunAsync(string[] args) {
+        public static async Task RunAsync(params string[] args) {
             var useCaseName = args.Length > 0
                 ? (args[0] ?? string.Empty).Trim()
                 : "vendor-registration";

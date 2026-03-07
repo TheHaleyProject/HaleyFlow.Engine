@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Haley.Models {
     internal sealed class LifeCycleHookEvent : LifeCycleEvent, ILifeCycleHookEvent {
-        public LifeCycleEventKind Kind { get { return LifeCycleEventKind.Hook; } }
+        public override LifeCycleEventKind Kind => LifeCycleEventKind.Hook;
         public bool OnEntry { get; set; }
         public string Route { get; set; }
         public DateTimeOffset? NotBefore { get; set; }

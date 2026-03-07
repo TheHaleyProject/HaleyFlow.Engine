@@ -1,15 +1,8 @@
-using Haley;
 using Haley.Abstractions;
-using Haley.Enums;
 using Haley.Models;
 using Haley.Services;
 using Haley.Utils;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace WFE.Test.UseCases.ChangeRequest {
     internal sealed class ChangeRequestUseCase : IWorkflowUseCase {
@@ -21,7 +14,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             var agw = new AdapterGateway();
             long resolvedConsumerId = 0;
 
-            var engineMaker = new WorkFlowEngineMaker().WithConnectionString(settings.EngineConString);
+            var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(agw.GetDefaultKey());
             engineMaker.Options = new WorkFlowEngineOptions {
                 MonitorInterval = settings.MonitorInterval,
                 AckPendingResendAfter = settings.AckPendingResendAfter,
@@ -52,7 +45,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 var serviceProvider = serviceCollection.BuildServiceProvider();
 
                 var consumerMaker = new WorkFlowConsumerMaker()
-                    .WithConnectionString(settings.ConsumerConString)
+                    .WithAdapterKey(agw.GetDefaultKey())
                     .WithProvider(serviceProvider);
 
                 consumerMaker.EventFeed = feed;
@@ -88,42 +81,42 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 await engine.StartMonitorAsync(ct);
                 await consumer.StartAsync(ct);
 
-                var entityId = Guid.NewGuid().ToString("N");
-                var trigger = await engine.TriggerAsync(new LifeCycleTriggerRequest {
-                    EnvCode = settings.EnvCode,
-                    DefName = settings.DefName,
-                    EntityId = entityId,
-                    Event = "4000",
-                    Actor = "wfe.test.runner",
-                    AckRequired = true,
-                    Payload = new Dictionary<string, object> {
-                        ["source"] = "WFE.Test",
-                        ["useCase"] = Name
+                var wrapperDriver = serviceProvider.GetRequiredService<ChangeRequestWrapper>();
+                var createdEntities = new List<string>();
+
+                if (settings.RandomEntityCount > 0) {
+                    Console.WriteLine(
+                        $"[DRIVER] Random entity mode enabled. count={settings.RandomEntityCount}, interval={settings.RandomEntityInterval.TotalSeconds:0}s");
+
+                    for (var i = 1; i <= settings.RandomEntityCount; i++) {
+                        ct.ThrowIfCancellationRequested();
+                        Console.WriteLine($"\n[DRIVER] Attempt {i}/{settings.RandomEntityCount}");
+
+                        var createdEntityId = await wrapperDriver.TryStartRandomEntityAsync(Name, ct);
+                        if (!string.IsNullOrWhiteSpace(createdEntityId)) {
+                            createdEntities.Add(createdEntityId);
+                        }
+
+                        if (i < settings.RandomEntityCount && settings.RandomEntityInterval > TimeSpan.Zero) {
+                            await Task.Delay(settings.RandomEntityInterval, ct);
+                        }
                     }
-                }, ct);
-
-                Console.WriteLine($"Initial trigger applied={trigger.Applied} instanceId={trigger.InstanceId} reason={trigger.Reason}");
-
-                await Task.Delay(settings.WaitAfterTrigger, ct);
-
-                var key = new LifeCycleInstanceKey {
-                    EnvCode = settings.EnvCode,
-                    DefName = settings.DefName,
-                    EntityId = entityId
-                };
-
-                var data = await engine.GetInstanceDataAsync(key, ct);
-                if (data != null) {
-                    Console.WriteLine($"Instance={data.InstanceGuid} currentStateId={data.CurrentStateId}");
-
-                    var timeline = await engine.GetTimelineJsonAsync(new LifeCycleInstanceKey {
-                        InstanceGuid = data.InstanceGuid
-                    }, ct);
-
-                    Console.WriteLine("\n=== TIMELINE JSON ===");
-                    Console.WriteLine(timeline ?? "(null)");
                 } else {
-                    Console.WriteLine("Instance data not found.");
+                    Console.WriteLine("[DRIVER] RandomEntityCount is 0. Skipping entity creation.");
+                }
+
+                if (settings.WaitAfterTrigger > TimeSpan.Zero) {
+                    Console.WriteLine($"[DRIVER] Waiting {settings.WaitAfterTrigger.TotalSeconds:0}s before timeline snapshot...");
+                    await Task.Delay(settings.WaitAfterTrigger, ct);
+                }
+
+                Console.WriteLine($"\n[DRIVER] Created entity count: {createdEntities.Count}");
+                foreach (var entityId in createdEntities) {
+                    await PrintEntityTimelineAsync(engine, settings, entityId, ct);
+                }
+
+                if (settings.KeepAliveAfterRun) {
+                    await WaitForExitAsync(settings, ct);
                 }
             } finally {
                 if (consumer != null) {
@@ -135,6 +128,49 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 if (engine is IAsyncDisposable disposableEngine) {
                     try { await disposableEngine.DisposeAsync(); } catch { }
                 }
+            }
+        }
+
+        private static async Task PrintEntityTimelineAsync(
+            IWorkFlowEngine engine,
+            ChangeRequestUseCaseSettings settings,
+            string entityId,
+            CancellationToken ct) {
+            var key = new LifeCycleInstanceKey {
+                EnvCode = settings.EnvCode,
+                DefName = settings.DefName,
+                EntityId = entityId
+            };
+
+            var data = await engine.GetInstanceDataAsync(key, ct);
+            if (data == null) {
+                Console.WriteLine($"[SNAPSHOT] entity={entityId} instance data not found.");
+                return;
+            }
+
+            Console.WriteLine($"\n[SNAPSHOT] entity={entityId} instance={data.InstanceGuid} currentStateId={data.CurrentStateId}");
+            var timeline = await engine.GetTimelineJsonAsync(new LifeCycleInstanceKey { InstanceGuid = data.InstanceGuid }, ct);
+            Console.WriteLine(timeline ?? "(null)");
+        }
+
+        private static async Task WaitForExitAsync(ChangeRequestUseCaseSettings settings, CancellationToken ct) {
+            var exitCommand = string.IsNullOrWhiteSpace(settings.ExitCommand) ? "exit" : settings.ExitCommand.Trim();
+            Console.WriteLine($"\n[DRIVER] Use-case is still running. Type '{exitCommand}' (or press Enter) to stop.");
+
+            while (!ct.IsCancellationRequested) {
+                var line = Console.ReadLine();
+                if (line == null) {
+                    await Task.Delay(200, ct);
+                    continue;
+                }
+
+                var input = line.Trim();
+                if (input.Length == 0 || string.Equals(input, exitCommand, StringComparison.OrdinalIgnoreCase)) {
+                    Console.WriteLine("[DRIVER] Exit command received. Stopping services...");
+                    return;
+                }
+
+                Console.WriteLine($"[DRIVER] Unknown input '{input}'. Type '{exitCommand}' or press Enter.");
             }
         }
     }

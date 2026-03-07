@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Haley.Models {
     internal sealed class LifeCycleTransitionEvent : LifeCycleEvent, ILifeCycleTransitionEvent {
-        public LifeCycleEventKind Kind { get { return LifeCycleEventKind.Transition; } }
+        public override LifeCycleEventKind Kind => LifeCycleEventKind.Transition;
         public long LifeCycleId { get; set; }
         public long FromStateId { get; set; }
         public long ToStateId { get; set; }
