@@ -533,7 +533,9 @@ archive = 16]]></comment>
 			<column name="lc_id" prior="lc_log" type="BIGINT" mandatory="y" />
 			<column name="actor" type="VARCHAR" length="60" />
 			<column name="payload" prior="metadata" type="LONGTEXT" >
-				<comment><![CDATA[Could be any data that was the result of this transition (which could be later used as a reference or  input for other items)]]></comment>
+				<comment><![CDATA[Result of each transition is always stored in context of the instance.. one single place, where we can easily track all the even/hook/transition results which other events or transitions can refer to..
+
+Here,this is the input payload that was provided by the initiation.. Waht caused this specifc transition. We know the exact inputs that caused this.]]></comment>
 			</column>
 			<index name="pk_lc_data" unique="PRIMARY_KEY" >
 				<column name="lc_id" />

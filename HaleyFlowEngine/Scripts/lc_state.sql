@@ -139,7 +139,6 @@ CREATE TABLE IF NOT EXISTS `def_version` (
   UNIQUE KEY `unq_def_version` (`parent`,`version`),
   UNIQUE KEY `unq_def_version_0` (`guid`),
   UNIQUE KEY `unq_def_version_1` (`parent`,`hash`),
-  UNIQUE KEY `fk_def_version_definition` (`parent`),
   CONSTRAINT `fk_def_version_definition` FOREIGN KEY (`parent`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `cns_def_version` CHECK (`version` > 0),
   CONSTRAINT `cns_def_version_0` CHECK (json_valid(`data`))
@@ -258,7 +257,7 @@ CREATE TABLE IF NOT EXISTS `instance` (
   KEY `fk_instance_def_version` (`def_version`),
   KEY `idx_instance` (`entity_id`),
   CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fk_instance_def_version_0` FOREIGN KEY (`def_id`) REFERENCES `def_version` (`parent`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `fk_instance_definition` FOREIGN KEY (`def_id`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=1857 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance';
 
 -- Data exporting was unselected.
