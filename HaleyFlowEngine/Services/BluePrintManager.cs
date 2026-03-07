@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services {
     // BlueprintManager is the read cache for the entire structural/routing part of the engine.
@@ -63,7 +64,7 @@ namespace Haley.Services {
         public async Task<LifeCycleBlueprint> GetBlueprintLatestAsync(int envCode, string defName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var dv = await GetLatestDefVersionAsync(envCode, defName, ct);
-            return await GetBlueprintByVersionIdAsync(dv.GetLong("id"), ct);
+            return await GetBlueprintByVersionIdAsync(dv.GetLong(KEY_ID), ct);
         }
 
         // Returns the fully-hydrated blueprint for a specific def_version_id, from cache.
@@ -104,7 +105,7 @@ namespace Haley.Services {
             var dv = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, DbExecutionLoad.None);
             if (dv == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
 
-            var bp = new LifeCycleBlueprint { DefVersionId = defVersionId, DefinitionId = dv.GetLong("parent"), EnvCode = dv.GetInt("env_code"), DefName = dv.GetString("def_name") ?? dv.GetString("name") ?? "unknown" };
+            var bp = new LifeCycleBlueprint { DefVersionId = defVersionId, DefinitionId = dv.GetLong(KEY_PARENT), EnvCode = dv.GetInt(KEY_ENV_CODE), DefName = dv.GetString(KEY_DEF_NAME) ?? dv.GetString(KEY_NAME) ?? "unknown" };
 
             var stateRows = await _dal.Blueprint.ListStatesAsync(defVersionId, DbExecutionLoad.None);
             var eventRows = await _dal.Blueprint.ListEventsAsync(defVersionId, DbExecutionLoad.None);
@@ -114,9 +115,9 @@ namespace Haley.Services {
             long initialStateId = 0;
 
             foreach (var r in stateRows) {
-                var flags = r.Get<uint>("flags");
+                var flags = r.Get<uint>(KEY_FLAGS);
                 var isInitial = (flags & (uint)LifeCycleStateFlag.IsInitial) != 0;
-                var st = new StateDef { Id = r.GetInt("id"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "", Flags = flags, IsInitial = isInitial };
+                var st = new StateDef { Id = r.GetInt(KEY_ID), Name = r.GetString(KEY_NAME) ?? "", DisplayName = r.GetString(KEY_DISPLAY_NAME) ?? r.GetString(KEY_NAME) ?? "", Flags = flags, IsInitial = isInitial };
                 if (statesById.ContainsKey(st.Id)) throw new InvalidOperationException($"Duplicate state id in DB rows. id={st.Id}");
                 statesById[st.Id] = st;
                 if (isInitial) { if (initialStateId != 0) throw new InvalidOperationException($"Multiple initial states detected. defVersionId={defVersionId}"); initialStateId = st.Id; }
@@ -129,7 +130,7 @@ namespace Haley.Services {
             var eventsByCode = new Dictionary<int, EventDef>();
 
             foreach (var r in eventRows) {
-                var ev = new EventDef { Id = r.GetInt("id"), Code = r.GetInt("code"), Name = r.GetString("name") ?? "", DisplayName = r.GetString("display_name") ?? r.GetString("name") ?? "" };
+                var ev = new EventDef { Id = r.GetInt(KEY_ID), Code = r.GetInt(KEY_CODE), Name = r.GetString(KEY_NAME) ?? "", DisplayName = r.GetString(KEY_DISPLAY_NAME) ?? r.GetString(KEY_NAME) ?? "" };
                 if (eventsById.ContainsKey(ev.Id)) throw new InvalidOperationException($"Duplicate event id in DB rows. id={ev.Id}");
                 eventsById[ev.Id] = ev;
                 if (!string.IsNullOrWhiteSpace(ev.Name)) eventsByName[ev.Name.Trim().ToLowerInvariant()] = ev;
@@ -139,12 +140,12 @@ namespace Haley.Services {
 
             var transitions = new Dictionary<(long fromStateId, int eventId), TransitionDef>();
             foreach (var r in transRows) {
-                var fromId = r.GetLong("from_state");
-                var toId = r.GetLong("to_state");
-                var evId = r.GetInt("event");
+                var fromId = r.GetLong(KEY_FROM_STATE);
+                var toId = r.GetLong(KEY_TO_STATE);
+                var evId = r.GetInt(KEY_EVENT);
                 var key = (fromId, evId);
                 if (transitions.ContainsKey(key)) throw new InvalidOperationException($"Duplicate transition detected. defVersionId={defVersionId}, from={fromId}, event={evId}");
-                transitions[key] = new TransitionDef { FromStateId = fromId, ToStateId = toId, EventId = evId, Flags = r.Get<uint>("flags") };
+                transitions[key] = new TransitionDef { FromStateId = fromId, ToStateId = toId, EventId = evId, Flags = r.Get<uint>(KEY_FLAGS) };
             }
 
             bp.StatesById = statesById;
@@ -231,3 +232,5 @@ namespace Haley.Services {
         }
     }
 }
+
+

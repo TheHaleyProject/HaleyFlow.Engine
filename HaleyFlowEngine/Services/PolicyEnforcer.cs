@@ -1,6 +1,7 @@
 using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Internal;
+using static Haley.Internal.KeyConstants;
 using Haley.Models;
 using Haley.Utils;
 using System;
@@ -56,9 +57,9 @@ namespace Haley.Services {
             var pr = new PolicyResolution();
             if (pol == null) return pr;
 
-            pr.PolicyId = pol.GetNullableLong("id");
-            pr.PolicyHash = pol.GetString("hash");
-            pr.PolicyJson = pol.GetString("content");
+            pr.PolicyId = pol.GetNullableLong(KEY_ID);
+            pr.PolicyHash = pol.GetString(KEY_HASH);
+            pr.PolicyJson = pol.GetString(KEY_CONTENT);
             return pr;
         }
 
@@ -80,14 +81,14 @@ namespace Haley.Services {
             string? policyJson = resolvedPolicyJson;
             if (string.IsNullOrWhiteSpace(policyJson)) {
                 var pol = await _dal.Blueprint.GetPolicyForDefinition(bp.DefinitionId, load);
-                policyJson = pol?.GetString("content");
+                policyJson = pol?.GetString(KEY_CONTENT);
             }
             if (string.IsNullOrWhiteSpace(policyJson)) return Array.Empty<ILifeCycleHookEmission>();
 
             if (!bp.StatesById.TryGetValue(applied.ToStateId, out var toState)) return Array.Empty<ILifeCycleHookEmission>();
             bp.EventsById.TryGetValue(applied.EventId, out var viaEvent);
 
-            var instanceId = instance.GetLong("id");
+            var instanceId = instance.GetLong(KEY_ID);
 
             using var doc = JsonDocument.Parse(policyJson);
             if (!doc.RootElement.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
@@ -391,3 +392,5 @@ namespace Haley.Services {
 
     }
 }
+
+

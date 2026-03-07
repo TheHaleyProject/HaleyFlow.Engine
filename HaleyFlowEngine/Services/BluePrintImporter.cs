@@ -1,6 +1,7 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Internal;
+using static Haley.Internal.KeyConstants;
 using Haley.Models;
 using Haley.Utils;
 using System;
@@ -63,7 +64,7 @@ namespace Haley.Services {
                 if (existing != null) {
                     tx.Commit();
                     committed = true;
-                    return existing.GetLong("id"); //Definition version already exists with the same hash. Return existing version id.
+                    return existing.GetLong(KEY_ID); //Definition version already exists with the same hash. Return existing version id.
                 }
 
                 // If the JSON specifies a version number, honour it — but reject it if it's lower than what
@@ -285,3 +286,5 @@ namespace Haley.Services {
 
     }
 }
+
+

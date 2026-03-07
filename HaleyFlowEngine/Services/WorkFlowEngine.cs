@@ -1,4 +1,4 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services {
     // WorkFlowEngine is the central brain of the lifecycle system.
@@ -160,7 +161,7 @@ namespace Haley.Services {
                 // If the definition was later updated (new states added, transitions changed), existing instances
                 // continue using their original version. We reload the blueprint for that locked version here
                 // so all subsequent state/event lookups are consistent with what this instance was created under.
-                var instanceDefVersion = instance.GetLong("def_version");
+                var instanceDefVersion = instance.GetLong(KEY_DEF_VERSION);
                 if (instanceDefVersion != bp.DefVersionId) {
                     bp = await BlueprintManager.GetBlueprintByVersionIdAsync(instanceDefVersion, ct);
                 }
@@ -170,14 +171,14 @@ namespace Haley.Services {
                 // machine if the current event hasn't been fully processed yet.
                 // The caller can bypass this with SkipAckGate=true (e.g. for administrative corrections).
                 if (_opt.AckGateEnabled && !req.SkipAckGate) {
-                    var gateInstanceId = instance.GetLong("id");
+                    var gateInstanceId = instance.GetLong(KEY_ID);
                     var pendingAckCount = await _dal.LcAck.CountPendingForInstanceAsync(gateInstanceId, load);
                     if (pendingAckCount > 0) {
                         transaction.Commit();
                         committed = true;
                         return new LifeCycleTriggerResult {
                             Applied = false,
-                            InstanceGuid = instance.GetString("guid") ?? string.Empty,
+                            InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
                             InstanceId = gateInstanceId,
                             Reason = "BlockedByPendingAck",
                             LifecycleAckGuids = Array.Empty<string>(),
@@ -190,8 +191,8 @@ namespace Haley.Services {
 
                 var result = new LifeCycleTriggerResult {
                     Applied = transition.Applied,
-                    InstanceGuid = instance.GetString("guid") ?? string.Empty,
-                    InstanceId = instance.GetLong("id"),
+                    InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
+                    InstanceId = instance.GetLong(KEY_ID),
                     LifeCycleId = transition.LifeCycleId,
                     FromState = bp.StatesById.TryGetValue(transition.FromStateId, out var fs) ? (fs.Name ?? string.Empty) : string.Empty,
                     ToState = bp.StatesById.TryGetValue(transition.ToStateId, out var ts) ? (ts.Name ?? string.Empty) : string.Empty,
@@ -217,7 +218,7 @@ namespace Haley.Services {
                 // Now reload the policy that is ACTUALLY attached to this instance, not the latest one.
                 // The instance might have been created months ago when a different policy was active.
                 // We need the right policy to evaluate hooks and resolve params for the target state.
-                var pid = instance.GetLong("policy_id");
+                var pid = instance.GetLong(KEY_POLICY_ID);
                 if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
 
                 // Create the lifecycle ACK entry. One ack_guid is shared across all consumers — but each
@@ -250,7 +251,7 @@ namespace Haley.Services {
                     OccurredAt = req.OccurredAt ?? DateTimeOffset.UtcNow,
                     AckGuid = lcAckGuid,
                     AckRequired = req.AckRequired,
-                    Metadata = instance.GetString("metadata"),
+                    Metadata = instance.GetString(KEY_METADATA),
                     Params = ctx.Params,            
                     OnSuccessEvent = ctx.OnSuccessEvent, 
                     OnFailureEvent = ctx.OnFailureEvent 
@@ -371,9 +372,9 @@ namespace Haley.Services {
                 //    so CountUnresolvedInGroup sees them as terminal.
                 //    Scenario: hook has 3 consumers, ack_mode=Any. Consumer-A ACKs Processed →
                 //    Consumer-B and Consumer-C rows are auto-marked Processed. Monitor won't retry them.
-                if (hookCtx != null && hookCtx.GetInt("ack_mode") == 1) {
+                if (hookCtx != null && hookCtx.GetInt(KEY_ACK_MODE) == 1) {
                     try {
-                        await _dal.AckConsumer.MarkAllProcessedByAckIdAsync(hookCtx.GetLong("ack_id"), load);
+                        await _dal.AckConsumer.MarkAllProcessedByAckIdAsync(hookCtx.GetLong(KEY_ACK_ID), load);
                     } catch (Exception ex) {
                         FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                             $"AckMode=Any fan-out failed for ack={ackGuid}: {ex.Message}"));
@@ -385,11 +386,11 @@ namespace Haley.Services {
                     var ctx = await _dal.HookGroup.GetContextByAckGuidAsync(ackGuid, load);
                     if (ctx != null) {
                         var pending = await _dal.HookGroup.CountUnresolvedInGroupAsync(
-                            ctx.GetLong("instance_id"), ctx.GetLong("state_id"), ctx.GetLong("via_event"),
-                            ctx.GetBool("on_entry"), ctx.GetLong("group_id"), load);
+                            ctx.GetLong(KEY_INSTANCE_ID), ctx.GetLong(KEY_STATE_ID), ctx.GetLong(KEY_VIA_EVENT),
+                            ctx.GetBool(KEY_ON_ENTRY), ctx.GetLong(KEY_GROUP_ID), load);
                         if (pending == 0) {
-                            var groupName = ctx.GetString("group_name") ?? string.Empty;
-                            var instanceGuid = ctx.GetString("instance_guid") ?? string.Empty;
+                            var groupName = ctx.GetString(KEY_GROUP_NAME) ?? string.Empty;
+                            var instanceGuid = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
                             FireNotice(LifeCycleNotice.Info("HOOK_GROUP_COMPLETE", "HOOK_GROUP_COMPLETE",
                                 $"All hooks in group '{groupName}' are processed. instance={instanceGuid}",
                                 new Dictionary<string, object?> { ["groupName"] = groupName, ["instanceGuid"] = instanceGuid }));
@@ -401,12 +402,12 @@ namespace Haley.Services {
                 }
 
                 // 3. Order advancement (only when the ACKed hook is blocking)
-                if (hookCtx != null && hookCtx.GetBool("blocking")) {
+                if (hookCtx != null && hookCtx.GetBool(KEY_BLOCKING)) {
                     try {
                         var incomplete = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
-                            hookCtx.GetLong("instance_id"), hookCtx.GetLong("state_id"),
-                            hookCtx.GetLong("via_event"), hookCtx.GetBool("on_entry"),
-                            hookCtx.GetInt("order_seq"), load);
+                            hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
+                            hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
+                            hookCtx.GetInt(KEY_ORDER_SEQ), load);
                         if (incomplete == 0)
                             await AdvanceNextHookOrderAsync(hookCtx, ct);
                     } catch (Exception ex) {
@@ -422,21 +423,21 @@ namespace Haley.Services {
             var row = await ResolveInstanceRowByKeyAsync(key, new DbExecutionLoad(ct));
             if (row == null) return null;
             return new LifeCycleInstanceData {
-                InstanceId = row.GetLong("id"),
-                InstanceGuid = row.GetString("guid") ?? string.Empty,
-                DefinitionId = row.GetLong("def_id"),
-                DefinitionVersionId = row.GetLong("def_version"),
-                EntityId = row.GetString("entity_id") ?? string.Empty,
-                CurrentStateId = row.GetLong("current_state"),
-                Metadata = row.GetString("metadata"),
-                Context = row.GetString("context")
+                InstanceId = row.GetLong(KEY_ID),
+                InstanceGuid = row.GetString(KEY_GUID) ?? string.Empty,
+                DefinitionId = row.GetLong(KEY_DEF_ID),
+                DefinitionVersionId = row.GetLong(KEY_DEF_VERSION),
+                EntityId = row.GetString(KEY_ENTITY_ID) ?? string.Empty,
+                CurrentStateId = row.GetLong(KEY_CURRENT_STATE),
+                Metadata = row.GetString(KEY_METADATA),
+                Context = row.GetString(KEY_CONTEXT)
             };
         }
 
         public async Task<string?> GetInstanceContextAsync(LifeCycleInstanceKey key, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var row = await ResolveInstanceRowByKeyAsync(key, new DbExecutionLoad(ct));
-            return row?.GetString("context");
+            return row?.GetString(KEY_CONTEXT);
         }
 
         public async Task<int> SetInstanceContextAsync(LifeCycleInstanceKey key, string? context, CancellationToken ct = default) {
@@ -444,7 +445,7 @@ namespace Haley.Services {
             var load = new DbExecutionLoad(ct);
             var row = await ResolveInstanceRowByKeyAsync(key, load);
             if (row == null) return 0;
-            var instanceId = row.GetLong("id");
+            var instanceId = row.GetLong(KEY_ID);
             if (instanceId <= 0) return 0;
             return await _dal.Instance.SetContextAsync(instanceId, context, load);
         }
@@ -454,7 +455,7 @@ namespace Haley.Services {
             var load = new DbExecutionLoad(ct);
             var row = await ResolveInstanceRowByKeyAsync(key, load);
             if (row == null) return null;
-            return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(row.GetLong("id"), load);
+            return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(row.GetLong(KEY_ID), load);
         }
 
         public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(int envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, CancellationToken ct = default) {
@@ -465,9 +466,9 @@ namespace Haley.Services {
             for (var i = 0; i < rows.Count; i++) {
                 var r = rows[i];
                 result.Add(new InstanceRefItem {
-                    EntityId = r.GetString("entity_id") ?? string.Empty,
-                    InstanceGuid = r.GetString("instance_guid") ?? string.Empty,
-                    Created = r.GetDateTime("created")
+                    EntityId = r.GetString(KEY_ENTITY_ID) ?? string.Empty,
+                    InstanceGuid = r.GetString(KEY_INSTANCE_GUID) ?? string.Empty,
+                    Created = r.GetDateTime(KEY_CREATED)
                 });
             }
             return result;
@@ -533,7 +534,7 @@ namespace Haley.Services {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(definitionName)) throw new ArgumentNullException(nameof(definitionName));
             var row = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(envCode, definitionName, new DbExecutionLoad(ct));
-            var id = row?.GetLong("parent");
+            var id = row?.GetLong(KEY_PARENT);
             return id > 0 ? id : null;
         }
 
@@ -561,7 +562,7 @@ namespace Haley.Services {
             var statusId   = await Runtime.EnsureActivityStatusAsync(req.Status, ct);
 
             return await Runtime.UpsertAsync(new RuntimeLogByIdRequest {
-                InstanceGuid = instanceRow.GetString("guid") ?? string.Empty,
+                InstanceGuid = instanceRow.GetString(KEY_GUID) ?? string.Empty,
                 ActivityId   = activityId,
                 StateId      = req.StateId,
                 ActorId      = req.ActorId,
@@ -605,7 +606,7 @@ namespace Haley.Services {
             // Use envCode + defName — the only unambiguous combination.
             var defVersionRow = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(key.EnvCode, key.DefName, load);
             if (defVersionRow == null) return null;
-            var defId = defVersionRow.GetLong("parent");
+            var defId = defVersionRow.GetLong(KEY_PARENT);
             if (defId <= 0) return null;
 
             return await _dal.Instance.GetByDefIdAndEntityIdAsync(defId, key.EntityId, load);
@@ -623,16 +624,16 @@ namespace Haley.Services {
 
             var instanceRow = await ResolveInstanceRowByKeyAsync(runtimeRef.Instance, load);
             if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleRuntimeRef.");
-            var instanceId = instanceRow.GetLong("id");
+            var instanceId = instanceRow.GetLong(KEY_ID);
 
             var activityRow = await _dal.Activity.GetByNameAsync(runtimeRef.Activity, load);
             if (activityRow == null) throw new InvalidOperationException($"Activity '{runtimeRef.Activity}' not found.");
-            var activityId = activityRow.GetLong("id");
+            var activityId = activityRow.GetLong(KEY_ID);
 
             var runtimeRow = await _dal.Runtime.GetByKeyAsync(instanceId, activityId, runtimeRef.StateId, runtimeRef.ActorId, load);
             if (runtimeRow == null) throw new InvalidOperationException($"Runtime entry not found for activity='{runtimeRef.Activity}' actor='{runtimeRef.ActorId}' state={runtimeRef.StateId}.");
 
-            return runtimeRow.GetLong("id");
+            return runtimeRow.GetLong(KEY_ID);
         }
 
 
@@ -641,15 +642,15 @@ namespace Haley.Services {
         // then fires the events. Loops if the new order has no blocking hooks (non-blocking-only orders
         // need no ACK to advance further, so we immediately move to the next order in the same call).
         async Task AdvanceNextHookOrderAsync(DbRow hookCtx, CancellationToken ct) {
-            var instanceId   = hookCtx.GetLong("instance_id");
-            var stateId      = hookCtx.GetLong("state_id");
-            var viaEvent     = hookCtx.GetLong("via_event");
-            var onEntry      = hookCtx.GetBool("on_entry");
-            var defVersionId = hookCtx.GetLong("def_version_id");
-            var instanceGuid = hookCtx.GetString("instance_guid") ?? string.Empty;
-            var entityId     = hookCtx.GetString("entity_id") ?? string.Empty;
-            var definitionId = hookCtx.GetLong("definition_id");
-            var metadata     = hookCtx.GetString("metadata");
+            var instanceId   = hookCtx.GetLong(KEY_INSTANCE_ID);
+            var stateId      = hookCtx.GetLong(KEY_STATE_ID);
+            var viaEvent     = hookCtx.GetLong(KEY_VIA_EVENT);
+            var onEntry      = hookCtx.GetBool(KEY_ON_ENTRY);
+            var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
+            var instanceGuid = hookCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
+            var entityId     = hookCtx.GetString(KEY_ENTITY_ID) ?? string.Empty;
+            var definitionId = hookCtx.GetLong(KEY_DEFINITION_ID);
+            var metadata     = hookCtx.GetString(KEY_METADATA);
 
             var hookConsumers = await AckManager.GetHookConsumersAsync(defVersionId, ct);
             var normConsumers = NormalizeConsumers(hookConsumers);
@@ -685,12 +686,12 @@ namespace Haley.Services {
                 try {
                     for (var j = 0; j < nextHooks.Count; j++) {
                         var hookRow   = nextHooks[j];
-                        var hookId    = hookRow.GetLong("id");
-                        var isBlocking = hookRow.GetBool("blocking");
-                        var ackMode   = hookRow.GetInt("ack_mode");
-                        var route     = hookRow.GetString("route") ?? string.Empty;
-                        var groupName = hookRow.GetString("group_name");
-                        var hookOnEntry = hookRow.GetBool("on_entry");
+                        var hookId    = hookRow.GetLong(KEY_ID);
+                        var isBlocking = hookRow.GetBool(KEY_BLOCKING);
+                        var ackMode   = hookRow.GetInt(KEY_ACK_MODE);
+                        var route     = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
+                        var groupName = hookRow.GetString(KEY_GROUP_NAME);
+                        var hookOnEntry = hookRow.GetBool(KEY_ON_ENTRY);
 
                         var hookAck     = await AckManager.CreateHookAckAsync(hookId, normConsumers, (int)AckStatus.Pending, txLoad);
                         var hookAckGuid = hookAck.AckGuid ?? string.Empty;
@@ -726,7 +727,7 @@ namespace Haley.Services {
                 // advancement, so loop immediately to dispatch the next order too.
                 var anyBlocking = false;
                 for (var j = 0; j < nextHooks.Count; j++) {
-                    if (nextHooks[j].GetBool("blocking")) { anyBlocking = true; break; }
+                    if (nextHooks[j].GetBool(KEY_BLOCKING)) { anyBlocking = true; break; }
                 }
                 if (anyBlocking) break;  // wait for consumer ACKs before advancing further
             }
@@ -897,14 +898,14 @@ namespace Haley.Services {
                     ct.ThrowIfCancellationRequested();
 
                     var r = rows[i];
-                    var instanceId = Convert.ToInt64(r["instance_id"]);
-                    var instanceGuid = (string)r["instance_guid"];
-                    var entityId = r["entity_id"] as string ?? string.Empty;
-                    var defVersionId = Convert.ToInt64(r["def_version_id"]);
-                    var stateId = Convert.ToInt64(r["current_state_id"]);
-                    var stateName = r["state_name"] as string ?? string.Empty;
-                    var lcId = Convert.ToInt64(r["lc_id"]);
-                    var staleSec = Convert.ToInt64(r["stale_seconds"]);
+                    var instanceId = Convert.ToInt64(r[KEY_INSTANCE_ID]);
+                    var instanceGuid = (string)r[KEY_INSTANCE_GUID];
+                    var entityId = r[KEY_ENTITY_ID] as string ?? string.Empty;
+                    var defVersionId = Convert.ToInt64(r[KEY_DEF_VERSION_ID]);
+                    var stateId = Convert.ToInt64(r[KEY_CURRENT_STATE_ID]);
+                    var stateName = r[KEY_STATE_NAME] as string ?? string.Empty;
+                    var lcId = Convert.ToInt64(r[KEY_LC_ID]);
+                    var staleSec = Convert.ToInt64(r[KEY_STALE_SECONDS]);
 
                     IReadOnlyList<long> consumers;
                     if (resolver == null) {
@@ -970,3 +971,5 @@ namespace Haley.Services {
         public Task<int> RegisterEnvironmentAsync(int envCode, string? envDisplayName, CancellationToken ct) => BlueprintManager.EnsureEnvironmentAsync(envCode, envDisplayName, new DbExecutionLoad(ct));
     }
 }
+
+

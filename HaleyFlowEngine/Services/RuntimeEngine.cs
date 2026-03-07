@@ -1,4 +1,4 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services {
     internal sealed class RuntimeEngine : IRuntimeEngine {
@@ -68,14 +69,15 @@ namespace Haley.Services {
             ct.ThrowIfCancellationRequested();
             var load = new DbExecutionLoad(ct);
             var row = await _dal.Activity.GetByNameAsync(displayName, load);
-            return row != null ? row.GetLong("id") : await _dal.Activity.InsertAsync(displayName, load);
+            return row != null ? row.GetLong(KEY_ID) : await _dal.Activity.InsertAsync(displayName, load);
         }
 
         public async Task<long> EnsureActivityStatusAsync(string displayName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var load = new DbExecutionLoad(ct);
             var row = await _dal.ActivityStatus.GetByNameAsync(displayName, load);
-            return row != null ? row.GetLong("id") : await _dal.ActivityStatus.InsertAsync(displayName, load);
+            return row != null ? row.GetLong(KEY_ID) : await _dal.ActivityStatus.InsertAsync(displayName, load);
         }
     }
 }
+

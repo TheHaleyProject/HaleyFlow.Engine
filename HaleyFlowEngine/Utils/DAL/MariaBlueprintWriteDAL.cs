@@ -1,7 +1,8 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Models;
 using Haley.Utils;
 using static Haley.Internal.QueryFields;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Internal {
     // MariaBlueprintWriteDAL.cs
@@ -13,7 +14,7 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_ENVIRONMENT.GET_BY_CODE, load, (CODE, envCode));
                 if (row == null) throw new InvalidOperationException($"environment not found after EXISTS. code={envCode}");
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
 
             try {
@@ -21,7 +22,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_ENVIRONMENT.GET_BY_CODE, load, (CODE, envCode));
                 if (row == null) throw;
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
         }
 
@@ -30,7 +31,7 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_DEFINITION.GET_BY_PARENT_AND_NAME, load, (PARENT_ID, envId), (NAME, defDisplayName));
                 if (row == null) throw new InvalidOperationException($"definition not found after EXISTS. env={envId}, def={defDisplayName}");
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
 
             try {
@@ -38,7 +39,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_DEFINITION.GET_BY_PARENT_AND_NAME, load, (PARENT_ID, envId), (NAME, defDisplayName));
                 if (row == null) throw;
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
         }
 
@@ -46,7 +47,7 @@ namespace Haley.Internal {
             var exists = await Db.ScalarAsync<int?>(QRY_DEFVERSION.EXISTS_BY_PARENT_AND_VERSION, load, (PARENT_ID, definitionId), (VERSION, version));
             if (exists.HasValue) {
                 var rows = await Db.RowsAsync(QRY_DEFVERSION.LIST_BY_PARENT, load, (PARENT_ID, definitionId));
-                foreach (var r in rows) if (r.GetInt("version") == version) return r.GetLong("id");
+                foreach (var r in rows) if (r.GetInt(KEY_VERSION) == version) return r.GetLong(KEY_ID);
                 throw new InvalidOperationException($"def_version exists but id not resolvable. def={definitionId}, ver={version}");
             }
 
@@ -54,7 +55,7 @@ namespace Haley.Internal {
                 return await Db.ScalarAsync<long>(QRY_DEFVERSION.INSERT, load, (PARENT_ID, definitionId), (VERSION, version), (DATA, data),(HASH,hash));
             } catch {
                 var rows = await Db.RowsAsync(QRY_DEFVERSION.LIST_BY_PARENT, load, (PARENT_ID, definitionId));
-                foreach (var r in rows) if (r.GetInt("version") == version) return r.GetLong("id");
+                foreach (var r in rows) if (r.GetInt(KEY_VERSION) == version) return r.GetLong(KEY_ID);
                 throw;
             }
         }
@@ -64,7 +65,7 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_CATEGORY.GET_BY_NAME, load, (NAME, displayName));
                 if (row == null) throw new InvalidOperationException($"category not found after EXISTS. name={displayName}");
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
 
             try {
@@ -72,7 +73,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_CATEGORY.GET_BY_NAME, load, (NAME, displayName));
                 if (row == null) throw;
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
         }
 
@@ -81,7 +82,7 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_EVENTS.GET_BY_PARENT_AND_CODE, load, (PARENT_ID, defVersionId), (CODE, code));
                 if (row == null) throw new InvalidOperationException($"event not found after EXISTS. dv={defVersionId}, code={code}");
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
 
             try {
@@ -89,7 +90,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_EVENTS.GET_BY_PARENT_AND_CODE, load, (PARENT_ID, defVersionId), (CODE, code));
                 if (row == null) throw;
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
         }
 
@@ -98,7 +99,7 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_STATE.GET_BY_PARENT_AND_NAME, load, (PARENT_ID, defVersionId), (NAME, displayName));
                 if (row == null) throw new InvalidOperationException($"State not found after EXISTS. dv={defVersionId}, name={displayName}");
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
 
             try {
@@ -106,7 +107,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_STATE.GET_BY_PARENT_AND_NAME, load, (PARENT_ID, defVersionId), (NAME, displayName));
                 if (row == null) throw;
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
         }
 
@@ -115,7 +116,7 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_TRANSITION.GET_BY_KEY, load, (PARENT_ID, defVersionId), (FROM_ID, fromStateId), (TO_ID, toStateId), (EVENT_ID, eventId));
                 if (row == null) throw new InvalidOperationException($"transition not found after EXISTS. dv={defVersionId}, from={fromStateId}, to={toStateId}, ev={eventId}");
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
 
             try {
@@ -123,7 +124,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_TRANSITION.GET_BY_KEY, load, (PARENT_ID, defVersionId), (FROM_ID, fromStateId), (TO_ID, toStateId), (EVENT_ID, eventId));
                 if (row == null) throw;
-                return row.GetInt("id");
+                return row.GetInt(KEY_ID);
             }
         }
 
@@ -132,9 +133,9 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_POLICY.GET_BY_HASH, load, (HASH, hash));
                 if (row == null) throw new InvalidOperationException($"policy not found after EXISTS. hash={hash}");
-                var id = row.GetLong("id");
+                var id = row.GetLong(KEY_ID);
                 //At this point, it is more than enough to return the id.. But, we are also comparing if the content is same.. if not, we update it. todo: check if we really need to do this or not..
-                var old = row.GetString("content");
+                var old = row.GetString(KEY_CONTENT);
                 if (!string.Equals(old, content, StringComparison.Ordinal)) await Db.ExecAsync(QRY_POLICY.UPDATE_CONTENT, load, (ID, id), (CONTENT, content));
                 return id;
             }
@@ -144,7 +145,7 @@ namespace Haley.Internal {
             } catch {
                 var row = await Db.RowAsync(QRY_POLICY.GET_BY_HASH, load, (HASH, hash));
                 if (row == null) throw;
-                return row.GetLong("id");
+                return row.GetLong(KEY_ID);
             }
         }
 
@@ -159,3 +160,5 @@ namespace Haley.Internal {
     }
 
 }
+
+

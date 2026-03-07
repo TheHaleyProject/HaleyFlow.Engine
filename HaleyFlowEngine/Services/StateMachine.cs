@@ -1,6 +1,7 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Internal;
+using static Haley.Internal.KeyConstants;
 using Haley.Models;
 using Haley.Utils;
 using System;
@@ -63,8 +64,8 @@ namespace Haley.Services {
 
             var res = new ApplyTransitionResult { Applied = false, EventName = string.Empty, Reason = string.Empty };
 
-            var instanceId = instance.GetLong("id");
-            var fromStateId = instance.GetLong("current_state");
+            var instanceId = instance.GetLong(KEY_ID);
+            var fromStateId = instance.GetLong(KEY_CURRENT_STATE);
             var ev = ResolveEvent(bp, eventName);
 
             res.FromStateId = fromStateId;
@@ -134,3 +135,5 @@ namespace Haley.Services {
     }
 
 }
+
+

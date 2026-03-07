@@ -1,6 +1,7 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Models;
 using static Haley.Internal.QueryFields;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Internal {
     internal sealed class MariaConsumerDAL : MariaDALBase, IConsumerDAL {
@@ -20,7 +21,7 @@ namespace Haley.Internal {
 
         public async Task<IReadOnlyList<int>> ListAliveIdsByEnvIdAsync(int envId, int ttlSeconds, DbExecutionLoad load = default) {
             var rows = await Db.RowsAsync(QRY_CONSUMER.LIST_ALIVE_IDS_BY_ENV_ID, load, (ENV_ID, envId), (TTL_SECONDS, ttlSeconds));
-            return rows.Select(r => (int)r["id"]).ToArray();
+            return rows.Select(r => (int)r[KEY_ID]).ToArray();
         }
 
         public Task<int> IsAliveByIdAsync(int consumerId, int ttlSeconds, DbExecutionLoad load = default)
@@ -49,3 +50,5 @@ namespace Haley.Internal {
 
     }
 }
+
+

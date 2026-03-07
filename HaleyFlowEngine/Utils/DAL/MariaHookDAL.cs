@@ -2,6 +2,7 @@ using Haley.Abstractions;
 using Haley.Models;
 using Haley.Utils;
 using static Haley.Internal.QueryFields;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Internal {
     internal sealed class MariaHookDAL : MariaDALBase, IHookDAL {
@@ -48,7 +49,7 @@ namespace Haley.Internal {
                 (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                 (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
             if (existing != null) {
-                var existingId = existing.GetLong("id");
+                var existingId = existing.GetLong(KEY_ID);
                 await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
                     (ID, existingId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
                     (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
@@ -68,7 +69,7 @@ namespace Haley.Internal {
                     (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                     (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
                 if (row == null) throw;
-                var rowId = row.GetLong("id");
+                var rowId = row.GetLong(KEY_ID);
                 await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
                     (ID, rowId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
                     (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
@@ -97,7 +98,7 @@ namespace Haley.Internal {
             var row = await Db.RowAsync(QRY_HOOK.COUNT_INCOMPLETE_BLOCKING_IN_ORDER, load,
                 (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                 (ON_ENTRY, onEntry ? 1 : 0), (ORDER_SEQ, orderSeq));
-            return row?.GetInt("cnt") ?? 0;
+            return row?.GetInt(KEY_CNT) ?? 0;
         }
 
         public async Task<int?> GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, DbExecutionLoad load = default) {
@@ -105,7 +106,7 @@ namespace Haley.Internal {
                 (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                 (ON_ENTRY, onEntry ? 1 : 0));
             if (row == null) return null;
-            var val = row.GetInt("next_order");
+            var val = row.GetInt(KEY_NEXT_ORDER);
             return val > 0 ? val : (int?)null;
         }
 
@@ -118,3 +119,5 @@ namespace Haley.Internal {
             => Db.ExecAsync(QRY_HOOK.MARK_DISPATCHED, load, (ID, hookId));
     }
 }
+
+

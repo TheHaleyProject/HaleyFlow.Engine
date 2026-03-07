@@ -1,5 +1,6 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Models;
+using static Haley.Internal.KeyConstants;
 using Haley.Utils;  
 using static Haley.Internal.QueryFields;
 
@@ -21,15 +22,17 @@ namespace Haley.Internal {
             if (exists.HasValue) {
                 var row = await Db.RowAsync(QRY_ACTIVITY_STATUS.GET_BY_NAME, load, (NAME, displayName));
                 if (row == null) throw new InvalidOperationException($"activity_status not found after EXISTS. name={displayName}");
-                return row.GetLong("id");
+                return row.GetLong(KEY_ID);
             }
             try {
                 return await Db.ScalarAsync<long>(QRY_ACTIVITY_STATUS.INSERT, load, (DISPLAY_NAME, displayName));
             } catch {
                 var row = await Db.RowAsync(QRY_ACTIVITY_STATUS.GET_BY_NAME, load, (NAME, displayName));
                 if (row == null) throw;
-                return row.GetLong("id");
+                return row.GetLong(KEY_ID);
             }
         }
     }
 }
+
+

@@ -1,6 +1,7 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Internal;
+using static Haley.Internal.KeyConstants;
 using Haley.Models;
 using Haley.Utils;
 using System;
@@ -71,8 +72,8 @@ namespace Haley.Services {
             var ack = await _dal.Ack.InsertReturnRowAsync(load);
             if (ack == null) throw new InvalidOperationException("Ack insert failed.");
 
-            var ackId = ack.GetLong("id");
-            var ackGuid = ack.GetString("guid");
+            var ackId = ack.GetLong(KEY_ID);
+            var ackGuid = ack.GetString(KEY_GUID);
             if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
 
             await _dal.LcAck.AttachAsync(ackId, lifecycleId, load);
@@ -99,8 +100,8 @@ namespace Haley.Services {
             var ack = await _dal.Ack.InsertReturnRowAsync(load);
             if (ack == null) throw new InvalidOperationException("Ack insert failed.");
 
-            var ackId = ack.GetLong("id");
-            var ackGuid = ack.GetString("guid");
+            var ackId = ack.GetLong(KEY_ID);
+            var ackGuid = ack.GetString(KEY_GUID);
             if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
 
             await _dal.HookAck.AttachAsync(ackId, hookId, load);
@@ -168,29 +169,29 @@ namespace Haley.Services {
             foreach (var r in rows) {
                 load.Ct.ThrowIfCancellationRequested();
                 var evt = new LifeCycleTransitionEvent {
-                    DefinitionId = r.GetLong("def_id"),
-                    DefinitionVersionId = r.GetLong("def_version_id"),
-                    ConsumerId = r.GetLong("consumer"),
-                    InstanceGuid = r.GetString("instance_guid"),
-                    EntityId = r.GetString("entity_id") ?? string.Empty,
-                    OccurredAt = r.GetDateTimeOffset("lc_created") ?? DateTimeOffset.UtcNow,
-                    AckGuid = r.GetString("ack_guid") ?? string.Empty,
+                    DefinitionId = r.GetLong(KEY_DEF_ID),
+                    DefinitionVersionId = r.GetLong(KEY_DEF_VERSION_ID),
+                    ConsumerId = r.GetLong(KEY_CONSUMER),
+                    InstanceGuid = r.GetString(KEY_INSTANCE_GUID),
+                    EntityId = r.GetString(KEY_ENTITY_ID) ?? string.Empty,
+                    OccurredAt = r.GetDateTimeOffset(KEY_LC_CREATED) ?? DateTimeOffset.UtcNow,
+                    AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
                     AckRequired = true,
-                    Metadata = r.GetString("metadata"),
-                    LifeCycleId = r.GetLong("lc_id"),
-                    FromStateId = r.GetLong("from_state"),
-                    ToStateId = r.GetLong("to_state"),
-                    EventCode = r.GetNullableInt("event_code") ?? 0,
-                    EventName = r.GetString("event_name") ?? string.Empty,
+                    Metadata = r.GetString(KEY_METADATA),
+                    LifeCycleId = r.GetLong(KEY_LC_ID),
+                    FromStateId = r.GetLong(KEY_FROM_STATE),
+                    ToStateId = r.GetLong(KEY_TO_STATE),
+                    EventCode = r.GetNullableInt(KEY_EVENT_CODE) ?? 0,
+                    EventName = r.GetString(KEY_EVENT_NAME) ?? string.Empty,
                     PrevStateMeta = null
                 };
 
-                var policyJson = r.GetString("policy_json");
+                var policyJson = r.GetString(KEY_POLICY_JSON);
                 if (!string.IsNullOrWhiteSpace(policyJson) && evt.DefinitionVersionId > 0) {
                     var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
 
                     // todo: best: use event_id (already in query) so no ambiguity
-                    var eventId = r.GetLong("event_id");
+                    var eventId = r.GetLong(KEY_EVENT_ID);
                     bp.EventsById.TryGetValue(eventId, out var viaEvent);
 
                     if (bp.StatesById.TryGetValue(evt.ToStateId, out var toState)) {
@@ -203,13 +204,13 @@ namespace Haley.Services {
 
                 list.Add(new LifeCycleDispatchItem {
                     Kind = LifeCycleEventKind.Transition,
-                    AckId = r.GetLong("ack_id"),
-                    AckGuid = r.GetString("ack_guid") ?? string.Empty,
-                    ConsumerId = r.GetLong("consumer"),
-                    AckStatus = r.GetInt("status"),
-                    TriggerCount = r.GetInt("trigger_count"),
-                    LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
-                    NextDue = r.GetDateTime("next_due"),
+                    AckId = r.GetLong(KEY_ACK_ID),
+                    AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
+                    ConsumerId = r.GetLong(KEY_CONSUMER),
+                    AckStatus = r.GetInt(KEY_STATUS),
+                    TriggerCount = r.GetInt(KEY_TRIGGER_COUNT),
+                    LastTrigger = r.GetDateTime(KEY_LAST_TRIGGER) ?? DateTime.UtcNow,
+                    NextDue = r.GetDateTime(KEY_NEXT_DUE),
                     Event = evt
                 });
             }
@@ -226,30 +227,30 @@ namespace Haley.Services {
             foreach (var r in rows) {
                 load.Ct.ThrowIfCancellationRequested();
                 var evt = new LifeCycleHookEvent {
-                    ConsumerId = r.GetLong("consumer"),
-                    InstanceGuid = r.GetString("instance_guid"),
-                    DefinitionId = r.GetNullableLong("def_id") ?? 0,
-                    DefinitionVersionId = r.GetNullableLong("def_version_id") ?? 0,
-                    EntityId = r.GetString("entity_id") ?? string.Empty,
-                    OccurredAt = r.GetDateTimeOffset("hook_created") ?? DateTimeOffset.UtcNow,
-                    AckGuid = r.GetString("ack_guid") ?? string.Empty,
+                    ConsumerId = r.GetLong(KEY_CONSUMER),
+                    InstanceGuid = r.GetString(KEY_INSTANCE_GUID),
+                    DefinitionId = r.GetNullableLong(KEY_DEF_ID) ?? 0,
+                    DefinitionVersionId = r.GetNullableLong(KEY_DEF_VERSION_ID) ?? 0,
+                    EntityId = r.GetString(KEY_ENTITY_ID) ?? string.Empty,
+                    OccurredAt = r.GetDateTimeOffset(KEY_HOOK_CREATED) ?? DateTimeOffset.UtcNow,
+                    AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
                     AckRequired = true,
-                    Metadata = r.GetString("metadata"),
-                    OnEntry = r.GetBool("on_entry"),
-                    Route = r.GetString("route") ?? string.Empty,
-                    IsBlocking = r.GetBool("blocking"),
-                    GroupName = r.GetString("group_name"),
+                    Metadata = r.GetString(KEY_METADATA),
+                    OnEntry = r.GetBool(KEY_ON_ENTRY),
+                    Route = r.GetString(KEY_ROUTE) ?? string.Empty,
+                    IsBlocking = r.GetBool(KEY_BLOCKING),
+                    GroupName = r.GetString(KEY_GROUP_NAME),
                     OnSuccessEvent = null,
                     OnFailureEvent = null,
                     NotBefore = null,
                     Deadline = null
                 };
 
-                var policyJson = r.GetString("policy_json");
+                var policyJson = r.GetString(KEY_POLICY_JSON);
                 if (!string.IsNullOrWhiteSpace(policyJson) && evt.DefinitionVersionId > 0) {
                     var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
-                    var stateId = r.GetLong("state_id");
-                    var viaEventId = r.GetLong("via_event");
+                    var stateId = r.GetLong(KEY_STATE_ID);
+                    var viaEventId = r.GetLong(KEY_VIA_EVENT);
                     var hookRoute = evt.Route;
 
                     if (bp.StatesById.TryGetValue(stateId, out var toState) && bp.EventsById.TryGetValue(viaEventId, out var viaEvent)) {
@@ -265,13 +266,13 @@ namespace Haley.Services {
 
                 list.Add(new LifeCycleDispatchItem {
                     Kind = LifeCycleEventKind.Hook,
-                    AckId = r.GetLong("ack_id"),
-                    AckGuid = r.GetString("ack_guid") ?? string.Empty,
-                    ConsumerId = r.GetLong("consumer"),
-                    AckStatus = r.GetInt("status"),
-                    TriggerCount = r.GetInt("trigger_count"),
-                    LastTrigger = r.GetDateTime("last_trigger") ?? DateTime.UtcNow,
-                    NextDue = r.GetDateTime("next_due"),
+                    AckId = r.GetLong(KEY_ACK_ID),
+                    AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
+                    ConsumerId = r.GetLong(KEY_CONSUMER),
+                    AckStatus = r.GetInt(KEY_STATUS),
+                    TriggerCount = r.GetInt(KEY_TRIGGER_COUNT),
+                    LastTrigger = r.GetDateTime(KEY_LAST_TRIGGER) ?? DateTime.UtcNow,
+                    NextDue = r.GetDateTime(KEY_NEXT_DUE),
                     Event = evt
                 });
             }
@@ -336,7 +337,7 @@ namespace Haley.Services {
             var row = await _dal.Ack.GetByIdAsync(ackId, load);
             if (row == null) throw new InvalidOperationException($"Ack not found. id={ackId}");
 
-            var guid = row.GetString("guid");
+            var guid = row.GetString(KEY_GUID);
             if (string.IsNullOrWhiteSpace(guid)) throw new InvalidOperationException($"Ack guid missing. id={ackId}");
 
             return new WorkFlowAckRef { AckId = ackId, AckGuid = guid! };
@@ -353,3 +354,5 @@ namespace Haley.Services {
         }
     }
 }
+
+

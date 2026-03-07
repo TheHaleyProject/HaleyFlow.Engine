@@ -1,7 +1,8 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Models;
 using Haley.Utils;
 using static Haley.Internal.QueryFields;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Internal {
     internal sealed class MariaBlueprintReadDAL : MariaDALBase, IBlueprintReadDAL {
@@ -24,7 +25,7 @@ namespace Haley.Internal {
 
         public async Task<int?> GetNextDefVersionNumberByEnvCodeAndDefNameAsync(int envCode, string defName, DbExecutionLoad load = default) {
             var row = await Db.RowAsync(QRY_DEFVERSION.GET_NEXT_VERSION_BY_ENV_CODE_AND_DEF_NAME, load, (CODE, envCode), (NAME, defName));
-            return row.GetInt("next_version");
+            return row.GetInt(KEY_NEXT_VERSION);
         }
 
         public Task<DbRow?> GetDefVersionByIdAsync(long defVersionId, DbExecutionLoad load = default)
@@ -57,3 +58,5 @@ namespace Haley.Internal {
         public Task<DbRow?> GetDefVersionByParentAndHashAsync(int definitionId, string hash, DbExecutionLoad load = default) => Db.RowAsync(QRY_DEFVERSION.GET_BY_PARENT_AND_HASH, load, (PARENT_ID,definitionId),(HASH,hash));
     }
 }
+
+
