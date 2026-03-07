@@ -276,6 +276,7 @@
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('overview')">Introduction</button>
         <button class="nav-item" onclick="gotoSection('objective')">Objective &amp; Non-goals</button>
+        <button class="nav-item" onclick="gotoSection('why-wfe')">Why a Workflow Engine?</button>
       </div>
     </div>
 
@@ -441,6 +442,83 @@
     <div class="callout tip">
       <div class="callout-title">Lifecycle vs. Hook</div>
       Lifecycle events tell consumers <em>"the state changed"</em> — the consumer decides what to do. Hook events directly instruct <em>"call this route"</em> — configured via policy JSON, no hard-coding in the application.
+    </div>
+  </section>
+
+  <!-- ──────────────── WHY A WORKFLOW ENGINE ──────────────── -->
+  <section class="doc-section" id="why-wfe">
+    <div class="section-label">Why Workflow?</div>
+    <h2 class="section-title">Why a Workflow Engine?</h2>
+
+    <p>Every significant business entity has a lifecycle — a user isn't just a row in a database, they're a thing that was created, onboarded, activated, maybe churned, maybe reactivated. The moment your process spans multiple steps, multiple systems, and any amount of time, you need something more than an API call and a background job.</p>
+
+    <div class="callout warn">
+      <div class="callout-title">The Common Problem</div>
+      You try to cover a few steps in the API call and defer the rest to background jobs. This works until your system crashes mid-process. Now you don't know what ran and what didn't. Your background jobs eventually catch up, but the window of uncertainty causes side effects, duplicate work, and support tickets. A workflow engine eliminates that window.
+    </div>
+
+    <h3 class="sub-title">The Core Pattern</h3>
+    <p>A workflow engine is the right tool whenever a process has <em>all</em> of these characteristics:</p>
+    <ul>
+      <li><strong>Multiple steps</strong> that must happen in sequence or in parallel</li>
+      <li><strong>Steps span time</strong> — from seconds to months</li>
+      <li><strong>Steps involve external systems</strong> that can fail independently</li>
+      <li><strong>Partial completion is a real problem</strong> — you can't roll back a sent email or a created account</li>
+      <li><strong>Business visibility is required</strong> — someone needs to ask "where is this entity right now?"</li>
+    </ul>
+
+    <h3 class="sub-title">What You Get That You Cannot Easily Build Yourself</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Problem</th><th>Ad-hoc approach</th><th>Workflow engine</th></tr></thead>
+        <tbody>
+          <tr><td>Crash mid-process</td><td>Data in unknown state; manual investigation</td><td>Resume from last committed step automatically</td></tr>
+          <tr><td>"Did step X run?"</td><td>Check multiple tables, logs, and queues</td><td>Lifecycle table — one query, immutable audit row</td></tr>
+          <tr><td>Retry a failed step</td><td>Wait for cron, hope background job fixes it</td><td>Monitor retries automatically with backoff</td></tr>
+          <tr><td>Timeout enforcement</td><td>Cron jobs with race conditions and drift</td><td>Policy-defined timeouts, atomically enforced</td></tr>
+          <tr><td>Audit trail</td><td>Scattered application logs</td><td>Immutable lifecycle rows per transition</td></tr>
+          <tr><td>SLA visibility</td><td>Custom reporting queries across many tables</td><td>Query <code>current_state + entered_at</code></td></tr>
+          <tr><td>Parallel steps</td><td>Complex async orchestration code</td><td>Native fork / hook groups</td></tr>
+          <tr><td>Compensating actions on failure</td><td>Manual cleanup scripts</td><td>Defined failure transitions in policy</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub-title">Use Cases by Domain</h3>
+
+    <h4 class="mini-title">&#x1f464; Onboarding &amp; Registration</h4>
+    <p>User signs up → create account → provision resources → send welcome email → wait for first login → if no login in 3 days → send nudge → assign account manager → escalate. Every step is tracked. Crash mid-way? Resume from where it stopped. Business can see exactly which step each user is in.</p>
+
+    <h4 class="mini-title">&#x2705; Approval Workflows</h4>
+    <p>Expense reports, document reviews, legal sign-offs. If a manager hasn't approved in 48 hours, auto-escalate. No "did this get approved?" mystery. Full audit trail for compliance.</p>
+
+    <h4 class="mini-title">&#x1f4e6; Order Fulfillment &amp; E-Commerce</h4>
+    <p>Order placed → payment captured → inventory reserved → warehouse picks → shipped → delivered → return window tracked. If payment fails, the order does not proceed to fulfillment. If shipping fails, retry or notify. You know exactly which orders are stuck at which step.</p>
+
+    <h4 class="mini-title">&#x1f3e6; Loan / Insurance / Credit Applications</h4>
+    <p>Application submitted → document collection → verification → underwriting → decision → offer sent → customer acceptance → disbursement. Steps can take days or weeks across multiple external systems. Enforce "don't proceed to underwriting until all documents are verified." Timeout rules: "if customer hasn't accepted the offer in 7 days, expire it."</p>
+
+    <h4 class="mini-title">&#x1f6e1;&#xfe0f; KYC &amp; Compliance</h4>
+    <p>Identity submitted → ID verification (3rd party) → AML/sanctions check → risk scoring → manual review if flagged → approved or rejected. Mandatory steps cannot be skipped. If a third-party API is down, the process parks and retries. The compliance audit trail is automatic.</p>
+
+    <h4 class="mini-title">&#x1f504; SaaS Subscription Lifecycle</h4>
+    <p>Trial starts → usage tracked → trial-expiring notice (D-3) → trial expires → convert or cancel → if converted: billing setup → if cancelled: offboarding → data retention window → purge. Time-based transitions are automatic. No cron jobs to pray over. State is always known.</p>
+
+    <h4 class="mini-title">&#x2699;&#xfe0f; DevOps &amp; Infrastructure Provisioning</h4>
+    <p>Tenant signs up → provision database → provision storage → configure DNS → run smoke tests → enable access → send credentials. If any step fails you have a half-provisioned tenant. A workflow engine gives you compensating actions on failure and a clean retry or rollback path.</p>
+
+    <h4 class="mini-title">&#x1f3ab; Support Ticket &amp; Incident Management</h4>
+    <p>Ticket created → auto-categorised → assigned to tier-1 → if unresolved in 2 hrs → escalate to tier-2 → if unresolved in 4 hrs → page on-call → resolved → post-mortem scheduled. SLA timers are first-class. Escalation is automatic, not "someone forgot to check."</p>
+
+    <h4 class="mini-title">&#x1f3e5; Healthcare &amp; Patient Journeys</h4>
+    <p>Patient referred → appointment scheduled → pre-appointment forms → appointment → follow-up → prescription issued → pharmacy notified → refill reminder. Auditable trail, mandatory step enforcement, and timeouts for follow-ups.</p>
+
+    <h4 class="mini-title">&#x1f4f0; Content Publishing Pipelines</h4>
+    <p>Content created → editorial review → legal review → SEO check → scheduled for publish → published → performance tracked → archive after N months. Nothing goes live without passing all gates. Rollback is a defined state, not a manual operation.</p>
+
+    <div class="callout tip">
+      <div class="callout-title">The Litmus Test</div>
+      The moment you find yourself writing <em>"a background job that checks if X happened and does Y if it didn't"</em> — that is a workflow engine use case waiting to happen. The background job is your retry logic; the engine makes that retry logic crash-safe, auditable, and observable without any extra code.
     </div>
   </section>
 
