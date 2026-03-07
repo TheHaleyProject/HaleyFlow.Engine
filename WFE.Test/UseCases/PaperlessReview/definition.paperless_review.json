@@ -1,0 +1,49 @@
+{
+  "definition": {
+    "name": "PaperlessReview",
+    "version": 1,
+    "description": "Paperless drawing or 3D model review with multi-discipline comments, grading and resubmission"
+  },
+  "states": [
+    { "name": "SubmissionReceived", "is_initial": true, "category": "Intake" },
+    { "name": "ComplianceReview", "category": "Review" },
+    { "name": "StructuralReview", "category": "Review" },
+    { "name": "MEPReview", "category": "Review" },
+    { "name": "ConsolidateComments", "category": "Review" },
+    { "name": "Grading", "category": "Decision" },
+    { "name": "RevisionRequired", "category": "Resubmission" },
+    { "name": "Resubmitted", "category": "Resubmission" },
+    { "name": "Approved", "is_final": true, "category": "Outcome" },
+    { "name": "Rejected", "is_final": true, "category": "Outcome" }
+  ],
+  "events": [
+    { "code": 3000, "name": "AutoStart" },
+    { "code": 3001, "name": "ComplianceAccepted" },
+    { "code": 3002, "name": "ComplianceNeedsRevision" },
+    { "code": 3003, "name": "StructuralAccepted" },
+    { "code": 3004, "name": "StructuralNeedsRevision" },
+    { "code": 3005, "name": "MepAccepted" },
+    { "code": 3006, "name": "MepNeedsRevision" },
+    { "code": 3007, "name": "CommentsConsolidated" },
+    { "code": 3008, "name": "GradeAccepted" },
+    { "code": 3009, "name": "GradeNeedsRevision" },
+    { "code": 3010, "name": "ConsultantResubmitted" },
+    { "code": 3011, "name": "RestartReview" },
+    { "code": 3012, "name": "RevisionExpired" }
+  ],
+  "transitions": [
+    { "event": 3000, "from": "SubmissionReceived", "to": "ComplianceReview" },
+    { "event": 3001, "from": "ComplianceReview", "to": "StructuralReview" },
+    { "event": 3002, "from": "ComplianceReview", "to": "RevisionRequired" },
+    { "event": 3003, "from": "StructuralReview", "to": "MEPReview" },
+    { "event": 3004, "from": "StructuralReview", "to": "RevisionRequired" },
+    { "event": 3005, "from": "MEPReview", "to": "ConsolidateComments" },
+    { "event": 3006, "from": "MEPReview", "to": "RevisionRequired" },
+    { "event": 3007, "from": "ConsolidateComments", "to": "Grading" },
+    { "event": 3008, "from": "Grading", "to": "Approved" },
+    { "event": 3009, "from": "Grading", "to": "RevisionRequired" },
+    { "event": 3010, "from": "RevisionRequired", "to": "Resubmitted" },
+    { "event": 3011, "from": "Resubmitted", "to": "ComplianceReview" },
+    { "event": 3012, "from": "RevisionRequired", "to": "Rejected" }
+  ]
+}

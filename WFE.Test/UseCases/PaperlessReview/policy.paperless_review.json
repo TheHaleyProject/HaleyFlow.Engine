@@ -1,0 +1,94 @@
+{
+  "policy_name": "paperlessreview.policy",
+  "defName": "PaperlessReview",
+  "params": [
+    {
+      "code": "PARAMS.REVIEW.GRADE",
+      "data": {
+        "grading": {
+          "scale": "A-F",
+          "passGrades": [ "A", "B", "C" ]
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "state": "ComplianceReview",
+      "emit": [
+        {
+          "route": "APP.REVIEW.COMPLIANCE",
+          "complete": { "success": 3001, "failure": 3002 }
+        }
+      ]
+    },
+    {
+      "state": "StructuralReview",
+      "emit": [
+        {
+          "route": "APP.REVIEW.STRUCTURAL",
+          "complete": { "success": 3003, "failure": 3004 }
+        }
+      ]
+    },
+    {
+      "state": "MEPReview",
+      "emit": [
+        {
+          "route": "APP.REVIEW.MEP",
+          "complete": { "success": 3005, "failure": 3006 }
+        }
+      ]
+    },
+    {
+      "state": "ConsolidateComments",
+      "emit": [
+        {
+          "route": "APP.REVIEW.COMMENTS.CONSOLIDATE",
+          "complete": { "success": 3007 }
+        }
+      ]
+    },
+    {
+      "state": "Grading",
+      "params": [ "PARAMS.REVIEW.GRADE" ],
+      "emit": [
+        {
+          "route": "APP.REVIEW.GRADING",
+          "complete": { "success": 3008, "failure": 3009 }
+        }
+      ]
+    },
+    {
+      "state": "RevisionRequired",
+      "via": 3009,
+      "emit": [
+        {
+          "route": "APP.REVIEW.REVISION.NOTIFY",
+          "complete": { "success": 3010 }
+        }
+      ]
+    },
+    {
+      "state": "Resubmitted",
+      "emit": [
+        {
+          "route": "APP.REVIEW.RESUBMISSION.RECEIVED",
+          "complete": { "success": 3011 }
+        }
+      ]
+    },
+    {
+      "state": "RevisionRequired",
+      "via": 3012,
+      "emit": [
+        {
+          "route": "APP.REVIEW.REVISION.EXPIRED"
+        }
+      ]
+    }
+  ],
+  "timeouts": [
+    { "state": "RevisionRequired", "timeout": "P14D", "timeout_event": 3012 }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "definition": {
+    "name": "ProjectChangeRequest",
+    "version": 1,
+    "description": "Project change request with impact, cost, schedule and steering review"
+  },
+  "states": [
+    { "name": "RequestLogged", "is_initial": true, "category": "Intake" },
+    { "name": "ImpactAssessment", "category": "Assessment" },
+    { "name": "CostReview", "category": "Assessment" },
+    { "name": "ScheduleReview", "category": "Assessment" },
+    { "name": "SteeringDecision", "category": "Approval" },
+    { "name": "ReworkRequired", "category": "Resubmission" },
+    { "name": "Approved", "is_final": true, "category": "Outcome" },
+    { "name": "Cancelled", "is_final": true, "category": "Outcome" }
+  ],
+  "events": [
+    { "code": 4000, "name": "AutoStart" },
+    { "code": 4001, "name": "ImpactAccepted" },
+    { "code": 4002, "name": "ImpactRejected" },
+    { "code": 4003, "name": "CostAccepted" },
+    { "code": 4004, "name": "CostReworkNeeded" },
+    { "code": 4005, "name": "ScheduleAccepted" },
+    { "code": 4006, "name": "ScheduleRejected" },
+    { "code": 4007, "name": "SteeringApproved" },
+    { "code": 4008, "name": "SteeringReworkNeeded" },
+    { "code": 4009, "name": "Resubmitted" },
+    { "code": 4010, "name": "ReworkExpired" }
+  ],
+  "transitions": [
+    { "event": 4000, "from": "RequestLogged", "to": "ImpactAssessment" },
+    { "event": 4001, "from": "ImpactAssessment", "to": "CostReview" },
+    { "event": 4002, "from": "ImpactAssessment", "to": "Cancelled" },
+    { "event": 4003, "from": "CostReview", "to": "ScheduleReview" },
+    { "event": 4004, "from": "CostReview", "to": "ReworkRequired" },
+    { "event": 4005, "from": "ScheduleReview", "to": "SteeringDecision" },
+    { "event": 4006, "from": "ScheduleReview", "to": "ReworkRequired" },
+    { "event": 4007, "from": "SteeringDecision", "to": "Approved" },
+    { "event": 4008, "from": "SteeringDecision", "to": "ReworkRequired" },
+    { "event": 4009, "from": "ReworkRequired", "to": "ImpactAssessment" },
+    { "event": 4010, "from": "ReworkRequired", "to": "Cancelled" }
+  ]
+}

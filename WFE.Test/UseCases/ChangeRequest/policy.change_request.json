@@ -1,0 +1,89 @@
+{
+  "policy_name": "projectchangerequest.policy",
+  "defName": "ProjectChangeRequest",
+  "params": [
+    {
+      "code": "PARAMS.CHANGE.STEERING.APPROVAL",
+      "data": {
+        "approval": {
+          "rule": "any",
+          "selector": {
+            "mode": "role",
+            "value": "steering_committee"
+          }
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "state": "ImpactAssessment",
+      "emit": [
+        {
+          "route": "APP.CHANGE.IMPACT.ASSESS",
+          "complete": { "success": 4001, "failure": 4002 }
+        }
+      ]
+    },
+    {
+      "state": "CostReview",
+      "emit": [
+        {
+          "route": "APP.CHANGE.COST.REVIEW",
+          "complete": { "success": 4003, "failure": 4004 }
+        }
+      ]
+    },
+    {
+      "state": "ScheduleReview",
+      "emit": [
+        {
+          "route": "APP.CHANGE.SCHEDULE.REVIEW",
+          "complete": { "success": 4005, "failure": 4006 }
+        }
+      ]
+    },
+    {
+      "state": "SteeringDecision",
+      "params": [ "PARAMS.CHANGE.STEERING.APPROVAL" ],
+      "emit": [
+        {
+          "route": "APP.CHANGE.STEERING.DECIDE",
+          "complete": { "success": 4007, "failure": 4008 }
+        }
+      ]
+    },
+    {
+      "state": "ReworkRequired",
+      "via": 4004,
+      "emit": [
+        {
+          "route": "APP.CHANGE.REWORK.REQUEST",
+          "complete": { "success": 4009 }
+        }
+      ]
+    },
+    {
+      "state": "ReworkRequired",
+      "via": 4008,
+      "emit": [
+        {
+          "route": "APP.CHANGE.REWORK.REQUEST",
+          "complete": { "success": 4009 }
+        }
+      ]
+    },
+    {
+      "state": "ReworkRequired",
+      "via": 4010,
+      "emit": [
+        {
+          "route": "APP.CHANGE.REWORK.EXPIRED"
+        }
+      ]
+    }
+  ],
+  "timeouts": [
+    { "state": "ReworkRequired", "timeout": "P7D", "timeout_event": 4010 }
+  ]
+}

@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyFlowEngine", "HaleyFlo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyAbstractionsCore", "..\HaleyAbstractions.Core\HaleyAbstractionsCore\HaleyAbstractionsCore.csproj", "{04532139-F515-A77D-6BAD-E5AE4ABA8805}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyFlowConsumer", "..\HaleyFlow.Consumer\HaleyFlowConsumer\HaleyFlowConsumer.csproj", "{486CD71B-9DDC-9C8F-C62F-7E53A4C88F0B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,10 @@ Global
 		{04532139-F515-A77D-6BAD-E5AE4ABA8805}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{04532139-F515-A77D-6BAD-E5AE4ABA8805}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{04532139-F515-A77D-6BAD-E5AE4ABA8805}.Release|Any CPU.Build.0 = Release|Any CPU
+		{486CD71B-9DDC-9C8F-C62F-7E53A4C88F0B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{486CD71B-9DDC-9C8F-C62F-7E53A4C88F0B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{486CD71B-9DDC-9C8F-C62F-7E53A4C88F0B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{486CD71B-9DDC-9C8F-C62F-7E53A4C88F0B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -40,17 +40,16 @@
   </Choose>
 
   <ItemGroup>
-    <None Remove="vendor_registration.json" />
-    <None Remove="vendor_registration_policies.json" />
+    <ProjectReference Include="..\..\HaleyFlow.Consumer\HaleyFlowConsumer\HaleyFlowConsumer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="vendor_registration.json">
+    <Content Include="UseCases\**\*.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="vendor_registration_policies.json">
+    <Content Include="appsettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-  
+
 </Project>

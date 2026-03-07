@@ -1,11 +1,15 @@
 {
-  "definition": { "name": "VendorRegistration", "version": 1, "description": "Registration workflow for account creation validation" },
+  "definition": {
+    "name": "VendorRegistration",
+    "version": 1,
+    "description": "Registration workflow for account creation validation"
+  },
   "states": [
     { "name": "FormSubmitted", "is_initial": true, "category": "Intake" },
     { "name": "CheckVendorRegistered", "category": "Eligibility" },
     { "name": "CheckRecentSubmission", "category": "Eligibility" },
     { "name": "RequestAccepted", "category": "Intake" },
-    { "name": "PendingPQValidation", "category": "Validation"},
+    { "name": "PendingPQValidation", "category": "Validation" },
     { "name": "Overdue", "category": "Validation" },
     { "name": "VendorCreation", "category": "Creation" },
     { "name": "Registered", "is_final": true, "category": "Outcome" },

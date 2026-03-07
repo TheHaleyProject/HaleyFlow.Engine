@@ -1,0 +1,88 @@
+{
+  "policy_name": "vendorregistration.policy",
+  "defName": "VendorRegistration",
+  "params": [
+    {
+      "code": "PARAMS.REG.PQ.VALIDATE",
+      "data": {
+        "approval": {
+          "rule": "any",
+          "selector": {
+            "mode": "role",
+            "value": "procurement"
+          }
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "state": "CheckVendorRegistered",
+      "emit": [
+        {
+          "route": "APP.REG.CHECK.VENDOR_REGISTERED",
+          "complete": { "success": 1001, "failure": 1002 }
+        }
+      ]
+    },
+    {
+      "state": "CheckRecentSubmission",
+      "emit": [
+        {
+          "route": "APP.REG.CHECK.RECENT_SUBMISSION",
+          "complete": { "success": 1003, "failure": 1004 }
+        }
+      ]
+    },
+    {
+      "state": "RequestAccepted",
+      "emit": [
+        {
+          "route": "APP.REG.PQ.VALIDATION.START",
+          "complete": { "success": 1005 }
+        }
+      ]
+    },
+    {
+      "state": "PendingPQValidation",
+      "params": ["PARAMS.REG.PQ.VALIDATE"],
+      "emit": [
+        {
+          "route": "APP.REG.PQ.VALIDATION.REQUIRED",
+          "complete": { "success": 1006, "failure": 1008 }
+        }
+      ]
+    },
+    {
+      "state": "Overdue",
+      "via": 1010,
+      "emit": [
+        {
+          "route": "APP.REG.PQ.OVERDUE.ENTER"
+        }
+      ]
+    },
+    {
+      "state": "Overdue",
+      "via": 1011,
+      "emit": [
+        {
+          "route": "APP.REG.PQ.OVERDUE.REMIND"
+        }
+      ]
+    },
+    {
+      "state": "VendorCreation",
+      "emit": [
+        {
+          "route": "APP.REG.VENDOR_CREATE",
+          "complete": { "success": 1007 }
+        }
+      ]
+    }
+  ],
+  "timeouts": [
+    { "state": "PendingPQValidation", "timeout": "P2D", "timeout_event": 1010 },
+    { "state": "Overdue", "timeout": "P1D", "timeout_event": 1011, "timeout_mode": "repeat" }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "definition": {
+    "name": "LoanApproval",
+    "version": 1,
+    "description": "Loan approval flow with KYC, credit, risk and manager decision"
+  },
+  "states": [
+    { "name": "ApplicationReceived", "is_initial": true, "category": "Intake" },
+    { "name": "KycCheck", "category": "Validation" },
+    { "name": "CreditAssessment", "category": "Assessment" },
+    { "name": "RiskReview", "category": "Assessment" },
+    { "name": "ManagerApproval", "category": "Approval" },
+    { "name": "Approved", "is_final": true, "category": "Outcome" },
+    { "name": "Rejected", "is_final": true, "category": "Outcome" }
+  ],
+  "events": [
+    { "code": 2000, "name": "AutoStart" },
+    { "code": 2001, "name": "KycPassed" },
+    { "code": 2002, "name": "KycFailed" },
+    { "code": 2003, "name": "CreditAccepted" },
+    { "code": 2004, "name": "CreditRejected" },
+    { "code": 2005, "name": "RiskAccepted" },
+    { "code": 2006, "name": "RiskRejected" },
+    { "code": 2007, "name": "ManagerApproved" },
+    { "code": 2008, "name": "ManagerRejected" },
+    { "code": 2009, "name": "ManagerReminder" }
+  ],
+  "transitions": [
+    { "event": 2000, "from": "ApplicationReceived", "to": "KycCheck" },
+    { "event": 2001, "from": "KycCheck", "to": "CreditAssessment" },
+    { "event": 2002, "from": "KycCheck", "to": "Rejected" },
+    { "event": 2003, "from": "CreditAssessment", "to": "RiskReview" },
+    { "event": 2004, "from": "CreditAssessment", "to": "Rejected" },
+    { "event": 2005, "from": "RiskReview", "to": "ManagerApproval" },
+    { "event": 2006, "from": "RiskReview", "to": "Rejected" },
+    { "event": 2007, "from": "ManagerApproval", "to": "Approved" },
+    { "event": 2008, "from": "ManagerApproval", "to": "Rejected" },
+    { "event": 2009, "from": "ManagerApproval", "to": "ManagerApproval" }
+  ]
+}

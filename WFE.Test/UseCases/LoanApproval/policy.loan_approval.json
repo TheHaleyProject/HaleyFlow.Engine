@@ -1,0 +1,69 @@
+{
+  "policy_name": "loanapproval.policy",
+  "defName": "LoanApproval",
+  "params": [
+    {
+      "code": "PARAMS.LOAN.MANAGER.APPROVAL",
+      "data": {
+        "approval": {
+          "rule": "any",
+          "selector": {
+            "mode": "role",
+            "value": "loan_manager"
+          }
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "state": "KycCheck",
+      "emit": [
+        {
+          "route": "APP.LOAN.KYC.CHECK",
+          "complete": { "success": 2001, "failure": 2002 }
+        }
+      ]
+    },
+    {
+      "state": "CreditAssessment",
+      "emit": [
+        {
+          "route": "APP.LOAN.CREDIT.CHECK",
+          "complete": { "success": 2003, "failure": 2004 }
+        }
+      ]
+    },
+    {
+      "state": "RiskReview",
+      "emit": [
+        {
+          "route": "APP.LOAN.RISK.CHECK",
+          "complete": { "success": 2005, "failure": 2006 }
+        }
+      ]
+    },
+    {
+      "state": "ManagerApproval",
+      "params": [ "PARAMS.LOAN.MANAGER.APPROVAL" ],
+      "emit": [
+        {
+          "route": "APP.LOAN.MANAGER.DECISION",
+          "complete": { "success": 2007, "failure": 2008 }
+        }
+      ]
+    },
+    {
+      "state": "ManagerApproval",
+      "via": 2009,
+      "emit": [
+        {
+          "route": "APP.LOAN.MANAGER.REMINDER"
+        }
+      ]
+    }
+  ],
+  "timeouts": [
+    { "state": "ManagerApproval", "timeout": "P1D", "timeout_event": 2009, "timeout_mode": "repeat" }
+  ]
+}

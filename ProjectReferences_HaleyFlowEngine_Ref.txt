@@ -10,6 +10,7 @@
     <HaleyHelpersDB>$(HaleyProject)\HaleyHelpers.DB\HaleyHelpersDB</HaleyHelpersDB>
     <HaleyRest>$(HaleyProject)\HaleyRest\HaleyRest</HaleyRest>  
     <HaleyFlowEngine>$(HaleyProject)\HaleyFlow.Engine\HaleyFlowEngine</HaleyFlowEngine>    
+    <HaleyFlowConsumer>$(HaleyProject)\HaleyFlow.Consumer\HaleyFlowConsumer</HaleyFlowConsumer>  
  </PropertyGroup>
 </Project>
 
