@@ -13,6 +13,12 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
+    // AckManager owns the full acknowledgement lifecycle for both lifecycle transitions and hooks.
+    // It creates ack rows, attaches consumer rows, maps consumer outcomes to status+next_due,
+    // and exposes dispatch-listing queries that the monitor uses to find overdue deliveries.
+    // AckManager does NOT trigger events or drive workflow progress — it only tracks delivery state.
+    // Resend scheduling is implicit: next_due drives the monitor's "is this due?" query. When a
+    // consumer ACKs with Retry, the next_due is pushed forward; with Processed/Failed, it goes NULL.
     internal sealed class AckManager : IAckManager {
         private readonly IWorkFlowDAL _dal;
 
@@ -36,10 +42,21 @@ namespace Haley.Services {
             _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         }
 
+        // Resolves which consumer IDs should receive transition events for the given def_version.
+        // Delegates to the _consumers callback injected at construction — the callback is owned by
+        // WorkFlowEngine, which knows how to query the registered consumer list for a definition.
+        // AckManager intentionally doesn't query consumers directly; this keeps DAL coupling out of here.
         public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Transition, defVersionId, ct); }
 
+        // Same as GetTransitionConsumersAsync but scoped to hook-type consumers.
+        // Hook consumers receive hook emission events; they may differ from transition consumers
+        // if the deployment separates concern (one service for state changes, another for side-effects).
         public Task<IReadOnlyList<long>> GetHookConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Hook, defVersionId, ct); }
 
+        // Creates (or retrieves) an ack record for a lifecycle transition and attaches consumers to it.
+        // If an ack already exists for this lifecycle row, we skip creating a new one and only insert
+        // any missing consumers via EnsureConsumersInsertOnly — we never reschedule existing consumers,
+        // because that would reset their next_due and effectively re-deliver an already-in-progress event.
         public async Task<IWorkFlowAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (lifecycleId <= 0) throw new ArgumentOutOfRangeException(nameof(lifecycleId));
@@ -64,6 +81,10 @@ namespace Haley.Services {
             return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
 
+        // Same pattern as CreateLifecycleAckAsync but for hook rows instead of lifecycle rows.
+        // Idempotent on the ack itself; only inserts missing consumer rows — never overwrites
+        // existing status or next_due. Safe to call on every trigger even if the hook has already
+        // been partially delivered to some consumers.
         public async Task<IWorkFlowAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (hookId <= 0) throw new ArgumentOutOfRangeException(nameof(hookId));
@@ -88,7 +109,15 @@ namespace Haley.Services {
             return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
 
-        // ACK FROM CONSUMER
+        // Records the consumer's acknowledgement outcome for a specific ack_guid.
+        // Outcome maps to status + next_due:
+        //   Delivered → status=Delivered, next_due=now+deliveredWindow (monitor will re-fire if not processed)
+        //   Processed → status=Processed, next_due=NULL    (terminal — no further dispatch)
+        //   Failed    → status=Failed,    next_due=NULL    (terminal — consumer gave up)
+        //   Retry     → status=Pending,   next_due=retryAt or now+pendingWindow (consumer requests retry)
+        //   (default) → status=Pending,   next_due=now+pendingWindow
+        // Only the consumer's own row is updated — keyed by (ackGuid, consumerId). Other consumers
+        // tracking the same ack are unaffected.
         public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
@@ -126,7 +155,12 @@ namespace Haley.Services {
             return _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, ackStatus, nextDueUtc, load);
         }
 
-        // DISPATCH LISTING (monitor uses these)
+        // Returns lifecycle transition events that are "due" for a given consumer.
+        // "Due" means: ack_status matches the requested status AND next_due <= NOW AND
+        // the consumer process is considered alive (within ttlSeconds of its last heartbeat).
+        // The monitor calls this periodically and re-fires events found here.
+        // Policy params and completion events are resolved from the stored policy JSON at list time —
+        // so the consumer always gets the policy snapshot that was active when the instance was created.
         public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int ttlSeconds, int skip, int take, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             var rows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);
@@ -182,6 +216,9 @@ namespace Haley.Services {
             return list;
         }
 
+        // Same as ListDueLifecycleDispatchAsync but for hook events.
+        // Hook dispatch items carry the route, blocking flag, group, and timing (notBefore/deadline)
+        // resolved from the policy JSON. The consumer uses these to decide how to execute the hook.
         public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueHookDispatchAsync(long consumerId, int ackStatus, int ttlSeconds, int skip, int take, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             var rows = await _dal.AckDispatch.ListDueHookPagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);

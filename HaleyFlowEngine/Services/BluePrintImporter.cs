@@ -21,6 +21,13 @@ using System.Threading.Tasks;
 using System.Xml;
 
 namespace Haley.Services {
+    // BlueprintImporter is the "write path" for definitions and policies.
+    // It parses JSON, computes a SHA-256 hash of the content, and writes to the DB atomically.
+    // Hash-guarding makes it fully idempotent: importing the same JSON twice is a no-op that
+    // returns the existing ID. Call both methods every application startup — they're always safe.
+    //
+    // Definition import creates: environment, definition, def_version, categories, events, states, transitions.
+    // Policy import creates: policy (hash → content), timeouts, and attaches the policy to the definition.
     internal sealed class BlueprintImporter : IBlueprintImporter {
         private readonly IWorkFlowDAL _dal;
         public BlueprintImporter(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
@@ -47,7 +54,9 @@ namespace Haley.Services {
                 var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
                 var defId = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName, defDesc, load);
 
-                //Check if the definition has the version json already with the hash.
+                // Hash the raw JSON (only the definition-relevant fields) to get a stable fingerprint.
+                // If a def_version with this exact hash already exists, skip all writes and return the existing ID.
+                // This means re-deploying with the same definition JSON is truly zero-cost and zero-side-effect.
                 var defhashMaterial = root.BuildDefinitionHashMaterial();
                 var defHash = defhashMaterial.CreateGUID(HashMethod.Sha256).ToString();
                 var existing = await _dal.Blueprint.GetDefVersionByParentAndHashAsync(defId, defHash, load);
@@ -57,12 +66,17 @@ namespace Haley.Services {
                     return existing.GetLong("id"); //Definition version already exists with the same hash. Return existing version id.
                 }
 
+                // If the JSON specifies a version number, honour it — but reject it if it's lower than what
+                // already exists in the DB (that would be a backwards import). If no version in JSON, auto-assign
+                // the next available number. This avoids gaps or conflicts in the version sequence.
                 var nextVer = await _dal.Blueprint.GetNextDefVersionNumberByEnvCodeAndDefNameAsync(envCode, defName, load) ?? 1;
                 var verToUse = requestedVer > 0 ? requestedVer : nextVer; //If version is not specified in the json, then automatically, next available version is accepted.
                 if (requestedVer > 0 && requestedVer < nextVer) throw new InvalidOperationException($"JSON version={requestedVer} but DB next_version={nextVer}. Import rejected. Requested version should either be equal to or greater than the next available version. Leave version empty in the json to automatically assign the version.");
 
                 var defVersionId = await _dal.BlueprintWrite.InsertDefVersionAsync(defId, verToUse, defhashMaterial, defHash, load);
 
+                // Import in dependency order: categories first (referenced by states), then events, then states,
+                // then transitions (which reference both states and events by code/name).
                 var categoryMap = await ImportCategoriesFromStatesAsync(root, load);
                 var eventsByCode = await ImportEventsAsync(defVersionId, root, load);
                 var statesByName = await ImportStatesAsync(defVersionId, root, categoryMap, eventsByCode, load);
@@ -78,7 +92,10 @@ namespace Haley.Services {
         }
 
         async Task ImportPolicyTimeoutsAsync(long policyId, JsonElement root, DbExecutionLoad load) {
-            //// Always clear first to make policy re-import idempotent. Remember we are deleting by policy id, which means it wont affect the other policies even if they share same definition.
+            // Always delete existing timeout rows for this policy before re-inserting.
+            // This makes policy re-import idempotent: importing the same policy JSON twice ends up with
+            // exactly the timeouts defined in the JSON, no accumulation.
+            // Safe because we delete BY POLICY ID — other policies with different IDs are untouched.
             await _dal.BlueprintWrite.DeleteByPolicyIdAsync(policyId, load);
 
             if (!root.TryGetProperty("timeouts", out var arr) || arr.ValueKind != JsonValueKind.Array) return;
@@ -121,6 +138,9 @@ namespace Haley.Services {
                 var envId = await _dal.BlueprintWrite.EnsureEnvironmentByCodeAsync(envCode, envDisplayName, load);
                 _ = await _dal.BlueprintWrite.EnsureDefinitionByEnvIdAsync(envId, defName!, description: null, load);
 
+                // Build a canonical hash of only the policy-relevant fields (rules, params, timeouts).
+                // The full JSON might contain display metadata or comments — we don't want those affecting the hash.
+                // EnsurePolicyByHash finds or creates a policy row; the actual JSON is stored as the content.
                 var policyHashmaterial = root.BuildPolicyHashMaterial(); //take only relevant blocks.
                 var hash = policyHashmaterial.CreateGUID(HashMethod.Sha256).ToString();
                 var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
@@ -129,6 +149,9 @@ namespace Haley.Services {
                 //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
 
                 await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);
+                // Attaching links this policy to the definition as the "current" policy.
+                // New instances created after this call will use this policy.
+                // Existing in-flight instances keep whatever policy was attached at their creation time.
 
                 tx.Commit();
                 committed = true;
@@ -185,6 +208,8 @@ namespace Haley.Services {
                 var key = name!.N();
                 if (map.ContainsKey(key)) throw new InvalidOperationException($"Duplicate state name in JSON: {name}");
 
+                // States carry flags for special lifecycle roles: IsInitial marks the starting state,
+                // IsFinal marks terminal states. The state machine enforces exactly one initial state per version.
                 var flags = (uint)(s.GetInt("flags") ?? 0);
                 if (s.GetBool("is_initial") == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
                 if (s.GetBool("is_final") == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
@@ -232,6 +257,9 @@ namespace Haley.Services {
             var dur = stateNode.GetString("timeout");
             if (string.IsNullOrWhiteSpace(dur)) return null;
 
+            // We support both raw minutes (timeout_minutes: 2880) and ISO 8601 duration strings (timeout: "P2D").
+            // ISO 8601 is more human-readable in JSON (P2D = 2 days, PT30M = 30 minutes).
+            // XmlConvert.ToTimeSpan exists but doesn't handle months/years correctly, so we use ISODurationUtils.
             //We can use XMLConvert, but it cannot handle all cases like months and years properly.
             //var ts = XmlConvert.ToTimeSpan(dur!);
             //var mins = (int)Math.Ceiling(ts.TotalMinutes);

@@ -15,17 +15,33 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
+    // PolicyEnforcer reads and evaluates the policy JSON to answer two questions:
+    //   1. "Which hooks should fire for this transition?" → EmitHooksAsync
+    //   2. "What params and completion event codes does the consumer need?" → ResolveRuleContextFromJson
+    //
+    // A policy is a JSON document containing:
+    //   - rules: array of { state, via?, blocking?, emit[], params[], complete{} }
+    //   - params: catalog of named param sets that rules/emits can reference by code
+    //
+    // Each rule matches a (targetState, optionalEvent) pair. The emit[] array says which hooks fire.
+    // The complete{} block tells the consumer what to trigger next on success/failure.
+    // The params[] field specifies which param sets from the catalog to include in the event.
     internal sealed class PolicyEnforcer : IPolicyEnforcer {
         private readonly IWorkFlowDAL _dal;
 
         public PolicyEnforcer(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
+        // Fetches the LATEST policy for a definition. Used when creating a NEW instance —
+        // the instance is stamped with this policy_id and will use it for its entire lifetime.
         public async Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             var pr = new PolicyResolution();
             if (!applied.Applied) return pr; //Applied is nothing but was policy already applied for this transition or not.. 
             return await ResolvePolicyAsync(bp.DefinitionId, load);
         }
+        // Fetches a SPECIFIC policy by ID. Used for EXISTING instances — they must be evaluated
+        // against the policy that was active when they were created, not the current latest policy.
+        // This is the key isolation guarantee: policy changes don't affect in-flight workflows.
         public async Task<PolicyResolution> ResolvePolicyByIdAsync(long policyId, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             return PreparePolicyResolution(await _dal.Blueprint.GetPolicyByIdAsync(policyId, load));
@@ -46,6 +62,17 @@ namespace Haley.Services {
             return pr;
         }
 
+        // This is the hook fan-out decision engine. After a state transition:
+        //   1. Parse all policy rules. For each rule: check if its state matches the target state
+        //      and (if "via" is set) the triggering event matches.
+        //   2. For each matched rule's emit entries: collect hook specs — route, blocking, group,
+        //      order_seq, ack_mode, on_success/failure event codes, params.
+        //   3. Determine minOrder across ALL collected specs.
+        //      Only min-order hooks get dispatched=true (ACK rows created, events fired now).
+        //      Higher-order hooks get dispatched=false (row created in DB, but no ACK/event yet).
+        //      They wait for AdvanceNextHookOrderAsync to activate them after prior-order completion.
+        //   4. If AckRequired=false, ordering is bypassed — all hooks dispatch immediately.
+        //      (No consumer will ACK them, so ordering can never advance — fire-and-forget.)
         public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, string? resolvedPolicyJson = null, bool ackRequired = true) {
             load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
@@ -139,7 +166,8 @@ namespace Haley.Services {
 
             if (specs.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
 
-            // Determine minOrder. If AckRequired=false, ordering is bypassed (all hooks dispatch immediately).
+            // If AckRequired=false, treat all hooks as order=1 so everything dispatches immediately.
+            // There's no mechanism to advance orders without ACKs, so ordering would freeze indefinitely.
             var minOrder = ackRequired ? specs.Min(s => s.orderSeq) : 1;
 
             var emissions = new List<ILifeCycleHookEmission>(specs.Count);
@@ -261,6 +289,10 @@ namespace Haley.Services {
             return root.TryGetProperty("rules", out rules) && rules.ValueKind == JsonValueKind.Array;
         }
 
+        // The params catalog is a top-level lookup: code → data dictionary.
+        // Rules and emits reference param sets by code ("credit-check-data", "approval-params").
+        // The catalog lives at the policy level so multiple rules can share the same param set.
+        // At emit time, we resolve codes → actual data dictionaries and include them in the event.
         private static Dictionary<string, IReadOnlyDictionary<string, object?>?> BuildParamCatalog(JsonElement root) {
             var catalog = new Dictionary<string, IReadOnlyDictionary<string, object?>?>(StringComparer.OrdinalIgnoreCase);
 
@@ -274,6 +306,10 @@ namespace Haley.Services {
             return catalog;
         }
 
+        // Rule selection: among all matching rules, prefer the one with a "via" clause (more specific)
+        // over a rule that matches any event (no "via"). If there are two equally specific rules,
+        // the first one in the array wins. This gives authors a predictable override mechanism:
+        // put the specific via-rule after the general rule — it will take priority.
         private bool TrySelectBestRule(JsonElement rules, StateDef toState, EventDef? viaEvent, CancellationToken ct, out JsonElement best) {
             best = default;
             var found = false;
@@ -331,6 +367,10 @@ namespace Haley.Services {
             return false;
         }
 
+        // Inheritance cascade: emit-level settings override rule-level settings where specified.
+        // Params: if the emit has its own params list, use that; otherwise fall back to rule params.
+        // Completion events: if the emit specifies on_success/on_failure, those win; else use rule's.
+        // This lets emits share the rule's params/completion by default, but override when needed.
         private void ApplyEmitOverrides(HookContext hc, JsonElement rule, JsonElement emit, IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog) {
             // completion: emit wins, missing filled from rule
             var (ruleSuccess, ruleFailure) = ReadCompletionEvents(rule);

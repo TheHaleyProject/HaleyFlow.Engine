@@ -12,6 +12,18 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
+    // WorkFlowEngine is the central brain of the lifecycle system.
+    // It is NOT created directly by the caller — the builder (WorkFlowEngineMaker) constructs it after
+    // verifying and provisioning the DB schema. The caller only ever sees ILifeCycleEngine.
+    //
+    // Internally it is composed of specialised sub-engines (all internal, not exposed publicly):
+    //   BlueprintManager  — caches and resolves definitions+versions+states+events by envCode+defName
+    //   BlueprintImporter — writes definition JSON and policy JSON into the DB (idempotent, hash-guarded)
+    //   StateMachine      — applies state transitions and writes lifecycle (lc_data) entries
+    //   PolicyEnforcer    — evaluates policy rules; decides which hooks to emit per transition
+    //   AckManager        — creates ACK entries, schedules resends, tracks delivery per consumer
+    //   RuntimeEngine     — persists arbitrary runtime-log entries per activity/actor (side-channel data)
+    //   Monitor           — background timer that drives the resend loop for undelivered events
     public sealed class WorkFlowEngine : IWorkFlowEngine {
         public IDALUtilBase Dal => _dal;
         private readonly IWorkFlowDAL _dal;
@@ -24,8 +36,15 @@ namespace Haley.Services {
         internal IRuntimeEngine Runtime { get; }
         internal ILifeCycleMonitor Monitor { get; }
 
+        // Two public events that the host application subscribes to:
+        //   EventRaised  — a lifecycle transition or hook event that a consumer must process and ACK.
+        //   NoticeRaised — informational / warning / error signals (ACK_RETRY, STATE_STALE, etc.) for monitoring.
+        //                  These are fire-and-forget signals; they don't affect engine state.
         public event Func<ILifeCycleEvent, Task>? EventRaised;
         public event Func<LifeCycleNotice, Task>? NoticeRaised;
+
+        // In-memory throttle map for STATE_STALE notices — prevents the same (consumer, instance, state)
+        // combination from flooding the NoticeRaised handler on every monitor tick.
         readonly ConcurrentDictionary<string, DateTimeOffset> _overDueLastAt = new(StringComparer.Ordinal);
 
         internal WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
@@ -36,14 +55,46 @@ namespace Haley.Services {
             BlueprintImporter = new BlueprintImporter(_dal);
             StateMachine = new StateMachine(_dal, BlueprintManager);
             PolicyEnforcer =  new PolicyEnforcer(_dal);
+
+            // WHY ResolveConsumers is a callback and not a DB query:
+            //
+            // The engine stores consumer rows (via RegisterConsumerAsync) and knows they are alive (via
+            // BeatConsumerAsync), but it has NO knowledge of WHICH consumer handles WHICH definition.
+            // That mapping is entirely application-level — and intentionally so.
+            //
+            // Think of the real world: one environment might have 20 definitions (loan-approval, mortgage,
+            // onboarding, ...) and 5 consumer processes. Each process only cares about 2-3 definitions.
+            // A consumer doesn't register for all definitions — it subscribes only to the ones it handles.
+            //
+            // This is the responsibility of Haley.Flow.Hub (the orchestration layer that sits above the engine):
+            //   - Hub knows every consumer's subscriptions: consumer-A → [loan-approval, onboarding]
+            //   - When the engine asks "for defVersionId X, give me the consumer IDs", Hub answers that question
+            //   - The engine then uses those IDs to create ack_consumer rows → fan-out events → track delivery
+            //
+            // The callback signature is:
+            //   Func<LifeCycleConsumerType, long? defVersionId, CancellationToken, Task<IReadOnlyList<long>>>
+            //
+            // LifeCycleConsumerType distinguishes what kind of consumers are needed:
+            //   Transition — consumer IDs that should receive lifecycle transition events for this def
+            //   Hook       — consumer IDs that should receive hook events for this def (may differ)
+            //   Monitor    — consumer IDs the monitor should run resends for (defVersionId is null here —
+            //                the monitor just needs "all active consumers", not filtered by definition)
+            //
+            // If ResolveConsumers is not supplied, TriggerAsync will throw (no consumers = nothing to fan-out to).
             var resolveConsumers = _opt.ResolveConsumers ?? ((LifeCycleConsumerType ty, long? id /* DefVersionId */, CancellationToken ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
+            // Monitor uses the same callback but without a defVersionId — it wants ALL active consumers
+            // so it can resend overdue ACK rows for any of them, regardless of which definition they belong to.
             var resolveMonitors = (LifeCycleConsumerType ty, CancellationToken ct) => resolveConsumers.Invoke(ty, null, ct);
 
             AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter);
 
             Runtime = new RuntimeEngine(_dal);
 
+            // The monitor is a background periodic loop. Every MonitorInterval it:
+            //   1. Scans for stale instances that have been sitting in the same state too long (STATE_STALE notices)
+            //   2. For each active consumer, resends any overdue Pending or Delivered ACK rows
+            // Any uncaught exception fires a MONITOR_ERROR notice — the loop itself never crashes the process.
             Monitor = new LifeCycleMonitor(_opt.MonitorInterval, ct => RunMonitorOnceInternalAsync(resolveMonitors, ct), (ex) => FireNotice(LifeCycleNotice.Error("MONITOR_ERROR", "MONITOR_ERROR", ex.Message, ex)));
         }
 
@@ -53,6 +104,21 @@ namespace Haley.Services {
 
         public async ValueTask DisposeAsync() { try { await StopMonitorAsync(CancellationToken.None); } catch { } await Monitor.DisposeAsync(); await _dal.DisposeAsync(); }
 
+        // -----------------------------------------------------------------------
+        // TRIGGER — the main entry point. The caller says: "entity X just triggered event Y on definition Z."
+        //
+        // Everything happens in a single atomic transaction:
+        //   1. Load the blueprint (definition + all states/events) — from cache, no DB round-trip usually
+        //   2. Ask ResolveConsumers who should receive transition events (throws if nobody)
+        //   3. Ensure the instance exists (creates it on first call); attach the current policy
+        //   4. If instance is on an old def_version, reload blueprint for that locked version
+        //   5. ACK gate check — optionally block if a prior transition still has unresolved consumers
+        //   6. Apply the state machine transition → write lc_data row, update instance.current_state
+        //   7. Create lifecycle ACK rows (one ack guid, one ack_consumer row per consumer)
+        //   8. Evaluate policy hooks for the target state → create hook rows + hook ACK rows
+        //   9. Commit all writes atomically
+        //  10. Fire events AFTER commit — fire-and-forget; the monitor handles missed deliveries
+        // -----------------------------------------------------------------------
         public async Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (req == null) throw new ArgumentNullException(nameof(req));
@@ -63,7 +129,9 @@ namespace Haley.Services {
             // Blueprint read can be outside txn (pure read + cached).
             var bp = await BlueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct);
 
-            // Transition consumers are needed definetly when a transition happens. Hook consumers are optional.
+            // Transition consumers must be resolved before we open the transaction. We need at least one
+            // consumer to receive this event — otherwise the ACK rows would be orphaned with no one to deliver to.
+            // Hook consumers are resolved later (after transition succeeds) because hooks are optional.
             var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
             if (transitionConsumers.Count < 1) throw new ArgumentException("No transition consumers found for this definition version. At least one transition consumer is required to proceed.", nameof(req));
 
@@ -81,19 +149,26 @@ namespace Haley.Services {
             PolicyResolution pr = null!;
 
             try {
-                //Before generating the instance, check if policy is needed to be attached. This can be found out from definition version and it's latest policy.. (we always focus on the latest policy for the definition)
-                //But once the policy is attached to the instance, it won't change for that instance. That is why it is very important to get the policy id at this stage.. If we are creating instance for first time, we attach whatever is latest at this moment. later on, even if policy changes, that won't affect existing instances.
-
+                // Resolve the LATEST policy for this definition. This is only used for new instances —
+                // once the policy is attached to an instance it is locked. The policy stores rule conditions
+                // (which hooks fire, on_success/on_failure event codes, params) that drive the workflow logic.
+                // If the policy changes tomorrow, already-running instances are unaffected.
                 var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); //latest policy
                 instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.EntityId, policy.PolicyId ?? 0, req.Metadata, load);
 
-                // If the instance was locked to a different def_version (created under an older version), reload blueprint for that version.
+                // Version lock: once an instance is created, it is tied to the def_version at that moment.
+                // If the definition was later updated (new states added, transitions changed), existing instances
+                // continue using their original version. We reload the blueprint for that locked version here
+                // so all subsequent state/event lookups are consistent with what this instance was created under.
                 var instanceDefVersion = instance.GetLong("def_version");
                 if (instanceDefVersion != bp.DefVersionId) {
                     bp = await BlueprintManager.GetBlueprintByVersionIdAsync(instanceDefVersion, ct);
                 }
 
-                // ACK gate: reject the transition if the last lifecycle entry still has unresolved consumers.
+                // ACK gate: if enabled, block this transition if any consumer for the LAST lifecycle entry
+                // still hasn't ACKed (status is Pending or Delivered). The idea is: don't advance the state
+                // machine if the current event hasn't been fully processed yet.
+                // The caller can bypass this with SkipAckGate=true (e.g. for administrative corrections).
                 if (_opt.AckGateEnabled && !req.SkipAckGate) {
                     var gateInstanceId = instance.GetLong("id");
                     var pendingAckCount = await _dal.LcAck.CountPendingForInstanceAsync(gateInstanceId, load);
@@ -125,8 +200,9 @@ namespace Haley.Services {
                     HookAckGuids = Array.Empty<string>()
                 };
 
-                // Even if transition not applied, instance may have been created/ensured -> commit that.
-                //Meaning, our goal was only to create an instance or just to ensure this exists.. not to make any transition at all. Like this is the first step.
+                // Even if the transition was not applied (event not valid in current state, or same-state),
+                // the instance may have just been CREATED for the first time — commit that creation.
+                // The caller will see Applied=false with a Reason explaining why (e.g. "NoTransition").
                 if (!transition.Applied) {
                     transaction.Commit(); 
                     committed = true;
@@ -138,14 +214,15 @@ namespace Haley.Services {
                 var normHookConsumers = NormalizeConsumers(hookConsumers);
 
                 var instanceId = result.InstanceId;
-                // See.. We have the instance created or ensured above. Now, we need to make sure that the policy is also resolved and sent back to the caller. Because, caller might need to know which policy is attached to this instance.
-                // We should never take the latest policy here.. Because the instance might have been created several days back and at that time, the latest policy was something else. So, we need to get the policy that is attached to this instance.
-                
+                // Now reload the policy that is ACTUALLY attached to this instance, not the latest one.
+                // The instance might have been created months ago when a different policy was active.
+                // We need the right policy to evaluate hooks and resolve params for the target state.
                 var pid = instance.GetLong("policy_id");
                 if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
 
-               
-                // Create lifecycle ACK (one ack guid, multiple consumers) if required
+                // Create the lifecycle ACK entry. One ack_guid is shared across all consumers — but each
+                // consumer gets its own ack_consumer row so we can track delivery independently.
+                // The monitor will resend the event to any consumer whose row is still Pending/Delivered.
                 var lcAckGuid = string.Empty;
                 if (req.AckRequired) {
                     var ackRef = await AckManager.CreateLifecycleAckAsync(transition.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
@@ -153,13 +230,18 @@ namespace Haley.Services {
                     lcAckGuids.Add(lcAckGuid);
                 }
 
+                // Resolve rule context from the policy JSON: for the target state + triggering event,
+                // extract the params (data consumers need), and on_success / on_failure event codes
+                // (what the consumer should trigger next if its work succeeds or fails).
                 RuleContext ctx = new RuleContext();
                 if (!string.IsNullOrWhiteSpace(pr.PolicyJson) && bp.StatesById.TryGetValue(transition.ToStateId, out var toState)) {
                     bp.EventsById.TryGetValue(transition.EventId, out var viaEvent);
                     ctx = PolicyEnforcer.ResolveRuleContextFromJson(pr.PolicyJson!, toState, viaEvent, ct);
                 }
 
-
+                // Build the base event object. This is cloned for every consumer (transition + hook).
+                // Metadata is the instance-level immutable string set when the instance was first created —
+                // it travels on every event so consumers don't need a separate lookup to read it.
                 var lcEvent = new LifeCycleEvent() {
                     InstanceGuid = result.InstanceGuid,
                     DefinitionId = bp.DefinitionId,
@@ -174,7 +256,8 @@ namespace Haley.Services {
                     OnFailureEvent = ctx.OnFailureEvent 
                 };
 
-                // Build transition events (dispatch after commit)
+                // Build one LifeCycleTransitionEvent per consumer. Each copy carries the same data
+                // but a different ConsumerId — so consumers identify themselves when calling AckAsync.
                 for (var i = 0; i < normTransitionConsumers.Count; i++) {
                     var consumerId = normTransitionConsumers[i];
                     var transitionEvent = new LifeCycleTransitionEvent(lcEvent) {
@@ -189,7 +272,11 @@ namespace Haley.Services {
                     toDispatch.Add(transitionEvent);
                 }
 
-                // Hooks (create hook rows in txn; dispatch after commit)
+                // Hooks: PolicyEnforcer looks at the policy JSON and decides which hooks should fire
+                // for this transition (based on target state, via-event, on_entry/on_exit rules).
+                // It creates the hook rows in the DB and returns only the min-order hooks (dispatched=true).
+                // Higher-order hooks are created in the DB with dispatched=0 and will be activated later
+                // by AdvanceNextHookOrderAsync once the current order's blocking hooks are all Processed.
                 var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr?.PolicyJson, req.AckRequired);
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
@@ -227,7 +314,9 @@ namespace Haley.Services {
                 transaction.Commit();
                 committed = true;
 
-                // Dispatch AFTER commit (failures become notices; monitor will resend due to pending ACK rows).
+                // Dispatch AFTER commit — this is critical. All ACK rows already exist in the DB,
+                // so even if the process crashes here or a handler throws, the monitor will resend
+                // on the next tick based on the still-Pending ack_consumer rows.
                 await DispatchEventsSafeAsync(toDispatch, ct);
 
                 result.LifecycleAckGuids = lcAckGuids;
@@ -243,6 +332,22 @@ namespace Haley.Services {
             }
         }
 
+        // -----------------------------------------------------------------------
+        // ACK — consumer tells us what happened with an event it received.
+        //
+        // Outcomes:
+        //   Processed — consumer handled the event successfully. Move the ack_consumer row to terminal state.
+        //   Retry     — consumer wants the engine to resend later (transient failure, retryAt is honoured).
+        //   Dead      — consumer gave up permanently; mark row Failed, do not retry.
+        //
+        // When Processed, we also run three side-effect checks specifically for hook events:
+        //   1. AckMode=Any fan-out  — if hook had ack_mode=Any, auto-mark ALL sibling consumers Processed
+        //                             so they don't get retried. "First one to ACK wins."
+        //   2. Group completion     — if hook is part of a named group, check if every member is now done.
+        //                             If yes, fire HOOK_GROUP_COMPLETE notice.
+        //   3. Order advancement    — if hook was blocking, check if ALL blocking hooks in its order_seq
+        //                             are now Processed. If yes, dispatch the next order's hooks.
+        // -----------------------------------------------------------------------
         public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
@@ -251,7 +356,9 @@ namespace Haley.Services {
             await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, load);
 
             if (outcome == AckOutcome.Processed) {
-                // Fetch hook context once — used for fan-out, group check, and order advancement.
+                // Fetch hook context once — reused for all three checks below.
+                // If this ack_guid belongs to a lifecycle transition (not a hook), GetContextByAckGuidAsync
+                // returns null and we skip all three checks safely.
                 DbRow? hookCtx = null;
                 try {
                     hookCtx = await _dal.Hook.GetContextByAckGuidAsync(ackGuid, load);
@@ -262,6 +369,8 @@ namespace Haley.Services {
 
                 // 1. AckMode=Any fan-out: mark all sibling ack_consumer rows Processed BEFORE group check
                 //    so CountUnresolvedInGroup sees them as terminal.
+                //    Scenario: hook has 3 consumers, ack_mode=Any. Consumer-A ACKs Processed →
+                //    Consumer-B and Consumer-C rows are auto-marked Processed. Monitor won't retry them.
                 if (hookCtx != null && hookCtx.GetInt("ack_mode") == 1) {
                     try {
                         await _dal.AckConsumer.MarkAllProcessedByAckIdAsync(hookCtx.GetLong("ack_id"), load);
@@ -370,19 +479,27 @@ namespace Haley.Services {
 
         public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(defVersionId); return Task.CompletedTask; }
 
+        // Public entry point for a single monitor pass for ONE specific consumer.
+        // Runs resend for both Pending rows (event never delivered) and Delivered rows (delivered but not ACKed).
+        // Ignores consumers that are currently down (PushNextDueForDown handles postponing their rows).
         public async Task RunMonitorOnceAsync(long consumerId, CancellationToken ct = default) {
-            //This can only check the acknowledgement tables and then send for specific consumers.. It will ignore the consumers which are down at the moment. 
             ct.ThrowIfCancellationRequested();
             await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
             await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
         }
 
-
+        // Internal entry point called by the background Monitor timer on each tick.
+        // Two responsibilities:
+        //   1. Stale instance scan — fires STATE_STALE notices for instances stuck too long (no DB writes)
+        //   2. Resend loop — for each active consumer returned by the Hub's ResolveConsumers callback,
+        //      call RunMonitorOnceAsync to resend any overdue events
         internal async Task RunMonitorOnceInternalAsync(Func<LifeCycleConsumerType, CancellationToken, Task<IReadOnlyList<long>>> consumersProvider, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
 
             await RaiseOverDueDefaultStateStaleNoticesAsync(ct);  // stale notice scan (no ACK, no DB writes)
 
+            // consumersProvider is the Hub's ResolveConsumers callback with defVersionId=null (Monitor type).
+            // Hub returns all currently active consumers so we resend for all of them.
             var consumerList = await consumersProvider(LifeCycleConsumerType.Monitor,ct);
             for (var i = 0; i < consumerList.Count; i++) {
                 var consumerId = consumerList[i];
@@ -391,18 +508,27 @@ namespace Haley.Services {
         }
 
 
+        // Registers a consumer process with the engine. Returns the engine-assigned numeric consumer ID.
+        // Idempotent — safe to call every startup. The consumerGuid is the stable identity of the consumer
+        // process (e.g. a fixed GUID in config). The numeric ID is what gets stored in ack_consumer rows.
         public Task<long> RegisterConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
-            return BlueprintManager.EnsureConsumerIdAsync(envCode, consumerGuid, ct); // or BlueprintManager.EnsureConsumerIdAsync if interface exposes it
+            return BlueprintManager.EnsureConsumerIdAsync(envCode, consumerGuid, ct);
         }
 
+        // Heartbeat — consumer calls this every N seconds to prove it is still alive.
+        // The engine uses the last-beat timestamp to decide whether a consumer is "down" when the monitor
+        // is deciding whether to postpone resending (no point retrying if the consumer is offline).
         public Task BeatConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
             return BlueprintManager.BeatConsumerAsync(envCode, consumerGuid, ct);
         }
 
+        // Resolves the engine-assigned definition ID for a (envCode, definitionName) pair.
+        // Used by the consumer library at startup to bind auto-discovered handler wrappers to their
+        // internal def_id — so the consumer knows which definition it is subscribing to.
         public async Task<long?> GetDefinitionIdAsync(int envCode, string definitionName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(definitionName)) throw new ArgumentNullException(nameof(definitionName));
@@ -411,7 +537,8 @@ namespace Haley.Services {
             return id > 0 ? id : null;
         }
 
-        // client-friendly ACK (guid)
+        // Consumer-friendly overload: resolves the consumer by guid (envCode+guid → consumerId) then ACKs.
+        // Useful for scenarios where the consumer only knows its guid, not its numeric ID.
         public async Task AckAsync(int envCode, string consumerGuid, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
@@ -509,6 +636,10 @@ namespace Haley.Services {
         }
 
 
+        // Called when all blocking hooks at the current order_seq are Processed.
+        // Finds the next undispatched order, atomically creates ACK rows + marks hooks dispatched,
+        // then fires the events. Loops if the new order has no blocking hooks (non-blocking-only orders
+        // need no ACK to advance further, so we immediately move to the next order in the same call).
         async Task AdvanceNextHookOrderAsync(DbRow hookCtx, CancellationToken ct) {
             var instanceId   = hookCtx.GetLong("instance_id");
             var stateId      = hookCtx.GetLong("state_id");
@@ -543,7 +674,8 @@ namespace Haley.Services {
                 var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, nextOrder, scanLoad);
                 if (nextHooks.Count == 0) return;
 
-                // Create ACK rows + mark dispatched atomically, then fire events after commit.
+                // Create ACK rows + mark hooks dispatched atomically in a transaction.
+                // Fire events only after commit — same pattern as TriggerAsync.
                 var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * (normConsumers.Count > 0 ? normConsumers.Count : 1));
                 var transaction = _dal.CreateNewTransaction();
                 using var tx = transaction.Begin(false);
@@ -600,19 +732,30 @@ namespace Haley.Services {
             }
         }
 
+        // Resends all overdue events of a given status (Pending or Delivered) for one consumer.
+        //
+        // "Pending" means the event was never delivered at all (e.g. process was down when TriggerAsync fired).
+        // "Delivered" means the event was delivered but the consumer hasn't called AckAsync yet (still processing).
+        //
+        // Flow:
+        //   1. If the consumer is currently DOWN (last heartbeat older than ConsumerTtlSeconds), push all its
+        //      due rows into the future by ConsumerDownRecheckSeconds — no point re-firing to a dead process.
+        //   2. List all rows that are now due for resend (next_due <= now).
+        //   3. For each row: if retry count exceeded MaxRetryCount → mark Failed + suspend the instance.
+        //      Otherwise: bump next_due (back-off), fire ACK_RETRY notice, re-fire the event.
         async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
             var load = new DbExecutionLoad(ct);
             var nowUtc = DateTime.UtcNow;
             var nextDueUtc = ackStatus == (int)AckStatus.Pending ? nowUtc.Add(_opt.AckPendingResendAfter) : nowUtc.Add(_opt.AckDeliveredResendAfter);
-            var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30; // add this option; fallback keeps it safe
-            var recheckSeconds = _opt.ConsumerDownRecheckSeconds; // add option, e.g. 30 or 60
+            var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30;
+            var recheckSeconds = _opt.ConsumerDownRecheckSeconds;
 
+            // If consumer is down, push their overdue rows into the future so we don't spam when they come back up.
             await _dal.AckConsumer.PushNextDueForDownAsync(consumerId, ackStatus, ttlSeconds, recheckSeconds, load);
 
-
-            // Lifecycle
+            // Lifecycle transition events — resend
             var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
             for (var i = 0; i < lc.Count; i++) {
                 ct.ThrowIfCancellationRequested();
@@ -638,7 +781,9 @@ namespace Haley.Services {
                 FireEvent(item.Event);
             }
 
-            // Hook
+            // Hook events — same resend logic as lifecycle events above, but blocking vs non-blocking
+            // hooks are treated differently: a blocking hook failure suspends the instance; a non-blocking
+            // hook failure just fires a notice and is abandoned (it doesn't block the workflow).
             var hk = await AckManager.ListDueHookDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
             for (var i = 0; i < hk.Count; i++) {
                 ct.ThrowIfCancellationRequested();
@@ -671,25 +816,32 @@ namespace Haley.Services {
             }
         }
 
+        // Iterates the event list and fires each one. Called after the DB transaction commits.
         async Task DispatchEventsSafeAsync(IReadOnlyList<ILifeCycleEvent> events, CancellationToken ct) {
             for (var i = 0; i < events.Count; i++) { ct.ThrowIfCancellationRequested(); FireEvent(events[i]); }
         }
+
+        // Fires an event to all EventRaised subscribers. Each subscriber runs as an independent background
+        // task (fire-and-forget). If a subscriber throws, it fires an EVENT_HANDLER_ERROR notice — it does
+        // NOT propagate back to the caller. The monitor resends if the ACK row stays Pending.
         void FireEvent(ILifeCycleEvent e) {
             var h = EventRaised;
             if (h == null) return;
-
             foreach (Func<ILifeCycleEvent, Task> sub in h.GetInvocationList()) {
-                _ = RunHandlerSafeAsync(() => sub(e)); //Dont await.. we are deliberately running this task in synchornous mode , so that it runs in background.
+                _ = RunHandlerSafeAsync(() => sub(e));
             }
         }
+
+        // Fires a notice to all NoticeRaised subscribers. Errors are swallowed (swallow=true) to prevent
+        // an infinite loop where a broken notice handler causes another notice, which causes another...
         void FireNotice(LifeCycleNotice n) {
             var h = NoticeRaised;
             if (h == null) return;
-
             foreach (Func<LifeCycleNotice, Task> sub in h.GetInvocationList()) {
-                _ = RunHandlerSafeAsync(() => sub(n), swallow: true); //Error should not be propagated , else it will end up in infinite loop.
+                _ = RunHandlerSafeAsync(() => sub(n), swallow: true);
             }
         }
+
         async Task RunHandlerSafeAsync(Func<Task> work, bool swallow = false) {
             try {
                 await work().ConfigureAwait(false);
@@ -700,6 +852,9 @@ namespace Haley.Services {
                 } catch { }
             }
         }
+
+        // Deduplicates and filters the consumer list — removes zeros and duplicates.
+        // The ResolveConsumers callback is external code; we can't trust it to return a clean list.
         static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers) {
             if (consumers == null || consumers.Count == 0) return new long[] {};
             var list = new List<long>(consumers.Count);
@@ -707,11 +862,18 @@ namespace Haley.Services {
             return list;
         }
 
+        // Scans for instances that have been sitting in the same state longer than DefaultStateStaleDuration
+        // without any resolved (Processed) lifecycle entry. This is purely a notification scan — no DB writes,
+        // no state changes. It fires STATE_STALE notices so the host can alert or take corrective action.
+        //
+        // Why throttle in memory? The scan runs on every monitor tick. Without throttling, the same stale
+        // instance would fire a notice every 2 minutes forever. The _overDueLastAt map ensures we only
+        // fire once per (consumer, instance, state) combination per DefaultStateStaleDuration window.
         async Task RaiseOverDueDefaultStateStaleNoticesAsync(CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
             var dur = _opt.DefaultStateStaleDuration;
-            if (dur <= TimeSpan.Zero) return;
+            if (dur <= TimeSpan.Zero) return; // disabled — host opted out by setting duration to zero
 
             var staleSeconds = (int)Math.Max(1, dur.TotalSeconds);
             var processed = (int)AckStatus.Processed;
@@ -796,10 +958,15 @@ namespace Haley.Services {
             }
         }
 
+        // These delegate directly to BlueprintImporter — thin pass-through so the caller never needs to
+        // know about internal sub-components. BlueprintImporter is idempotent (hash-guarded): re-importing
+        // the same JSON is safe and a no-op if nothing changed. Call these every startup to stay in sync.
         public Task<long> ImportDefinitionJsonAsync(int envCode, string envDisplayName, string definitionJson, CancellationToken ct = default)=> BlueprintImporter.ImportDefinitionJsonAsync(envCode, envDisplayName, definitionJson, ct);
 
         public Task<long> ImportPolicyJsonAsync(int envCode, string envDisplayName, string policyJson, CancellationToken ct = default)=> BlueprintImporter.ImportPolicyJsonAsync(envCode , envDisplayName, policyJson, ct);
 
+        // Ensures the environment row exists in the DB. Called by the consumer library at startup to
+        // make sure envCode+displayName is registered before anything else runs.
         public Task<int> RegisterEnvironmentAsync(int envCode, string? envDisplayName, CancellationToken ct) => BlueprintManager.EnsureEnvironmentAsync(envCode, envDisplayName, new DbExecutionLoad(ct));
     }
 }

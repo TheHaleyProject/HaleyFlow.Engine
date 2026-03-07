@@ -10,12 +10,21 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
+    // StateMachine is responsible for two things:
+    //   1. EnsureInstanceAsync — create-or-retrieve the instance row for an entity.
+    //      "Instance" is one running occurrence of a workflow definition for a specific entity (e.g. loan #42).
+    //   2. ApplyTransitionAsync — move the instance from one state to another.
+    //      Validates the event, checks the transition table, applies a CAS update, and writes the lc_data row.
     internal sealed class StateMachine : IStateMachine {
         private readonly IWorkFlowDAL _dal;
         private readonly IBlueprintManager _bp;
 
         public StateMachine(IWorkFlowDAL dal, IBlueprintManager bp) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); _bp = bp ?? throw new ArgumentNullException(nameof(bp)); }
 
+        // Creates the instance row on first call (with initial state + metadata), or returns the
+        // existing row if it already exists. Idempotent — UNIQUE(def_version_id, entity_id) in the DB.
+        // Metadata is set here and never changed afterwards — it's the immutable instance-level string.
+        // The initial state is taken from the blueprint (the state marked IsInitial=true).
         public async Task<DbRow> EnsureInstanceAsync(long defVersionId, string entityId, long policyId, string? metadata, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentNullException(nameof(entityId));
@@ -32,6 +41,20 @@ namespace Haley.Services {
             return row;
         }
 
+        // Attempts to move the instance to a new state by firing an event.
+        // Returns a result with Applied=false (and a Reason) if the transition cannot proceed:
+        //   UnknownEvent      — event name/code not found in this blueprint version
+        //   InvalidTransition — no transition defined from current state + this event
+        //   NoOpAlreadyInState— transition points to same state (self-loop — currently a no-op)
+        //   ConcurrencyConflict — another process moved the state between our read and our update (CAS miss)
+        //
+        // The CAS (Compare-And-Swap) on current_state is the concurrency guard:
+        //   UPDATE instance SET current_state=@new WHERE id=@id AND current_state=@expected
+        // If another trigger fires concurrently and changes the state, our update returns 0 rows affected
+        // and we return ConcurrencyConflict rather than writing a corrupt lifecycle entry.
+        //
+        // On success, writes a lifecycle row (lc_data) recording the transition permanently.
+        // The actor and payload are written to lc_data_ext — audit trail only, not forwarded to consumers.
         public async Task<ApplyTransitionResult> ApplyTransitionAsync(LifeCycleBlueprint bp, DbRow instance, string eventName, string? actor, IReadOnlyDictionary<string, object?>? payload, DateTimeOffset? occurredAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (bp == null) throw new ArgumentNullException(nameof(bp));
@@ -97,6 +120,9 @@ namespace Haley.Services {
         }
 
 
+        // Accepts event as either a string name ("submit") or a numeric code ("100").
+        // Events may be referred to by name in application code for readability but by code in policy JSON
+        // for stability (names can change, codes should not). Both are supported here.
         private static EventDef? ResolveEvent(LifeCycleBlueprint bp, string eventNameOrCode) {
             if (string.IsNullOrWhiteSpace(eventNameOrCode)) return null;
             var s = eventNameOrCode.Trim();

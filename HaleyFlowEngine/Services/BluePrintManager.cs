@@ -10,6 +10,16 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
+    // BlueprintManager is the read cache for the entire structural/routing part of the engine.
+    // It holds three in-memory caches:
+    //   _latestDefVersion      — latest def_version row for each (envCode, defName) pair
+    //   _blueprintsByVer       — fully hydrated LifeCycleBlueprint per def_version_id
+    //   _consumerIdByEnvGuid   — numeric consumer DB id per (envCode, consumerGuid) pair
+    //
+    // All caches use ConcurrentDictionary<key, Lazy<Task<T>>> — the Lazy wraps the async fetch so
+    // only ONE DB call fires per key even under concurrent startup requests (lazy singleton pattern).
+    // On any DB error the faulted task is evicted from the cache (see AwaitCachedAsync) so the next
+    // caller retries — preventing stale "always-faulted" entries.
     internal sealed class BlueprintManager : IBlueprintManager {
         private readonly IWorkFlowDAL _dal;
         private readonly ConcurrentDictionary<string, Lazy<Task<DbRow>>> _latestDefVersion = new();
@@ -31,6 +41,11 @@ namespace Haley.Services {
 
         public BlueprintManager(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
+        // Returns the latest def_version row for a (envCode, defName) pair, from cache.
+        // "Latest" = highest version number for that definition in that environment.
+        // The cache key is "envCode:normalizedDefName" — envCode scoping is critical because the
+        // same definition name can exist across multiple environments independently.
+        // After import (definition JSON changed), call Invalidate(envCode, defName) to force a reload.
         public Task<DbRow> GetLatestDefVersionAsync(int envCode, string defName, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var key = $"{envCode}:{(defName ?? string.Empty).N()}";
@@ -51,6 +66,10 @@ namespace Haley.Services {
             return await GetBlueprintByVersionIdAsync(dv.GetLong("id"), ct);
         }
 
+        // Returns the fully-hydrated blueprint for a specific def_version_id, from cache.
+        // Building the blueprint requires loading all states, events, and transitions for that version.
+        // Blueprints are immutable once built — versions never change after creation — so caching forever
+        // (until Invalidate is called) is correct and safe.
         public Task<LifeCycleBlueprint> GetBlueprintByVersionIdAsync(long defVersionId, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var lazy = _blueprintsByVer.GetOrAdd(defVersionId, _ => new Lazy<Task<LifeCycleBlueprint>>(() => BuildBlueprintAsync(defVersionId)));
@@ -69,6 +88,18 @@ namespace Haley.Services {
             return row;
         }
 
+        // Loads all states, events, and transitions for the given def_version and assembles them into
+        // a LifeCycleBlueprint — the engine's in-memory representation of the workflow graph.
+        //
+        // The blueprint is a set of lookup dictionaries for O(1) access at trigger time:
+        //   StatesById      — id → StateDef
+        //   EventsById      — id → EventDef
+        //   EventsByName    — normalised name → EventDef   (for string event resolution)
+        //   EventsByCode    — code (int) → EventDef        (for code-based resolution)
+        //   Transitions     — (fromStateId, eventId) → TransitionDef
+        //
+        // The validator checks for exactly one initial state (IsInitial flag). Zero or multiple initial
+        // states are programmer errors that should be caught early — hence the hard throws.
         private async Task<LifeCycleBlueprint> BuildBlueprintAsync(long defVersionId) {
             var dv = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, DbExecutionLoad.None);
             if (dv == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
@@ -131,6 +162,11 @@ namespace Haley.Services {
             return EnsureConsumerIdAsync(envCode, consumerGuid!, ct);
         }
 
+        // Registers (or re-registers) a consumer in the DB and returns its numeric ID.
+        // Idempotent — safe to call every startup. The numeric ID is what gets stored in ack_consumer rows.
+        // The result is cached in _consumerIdByEnvGuid so the lookup is free on every TriggerAsync call.
+        // Note: if the consumer's envCode or guid changes between restarts, the cache clears naturally
+        // on restart since caches are in-memory only.
         public Task<long> EnsureConsumerIdAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
@@ -140,6 +176,10 @@ namespace Haley.Services {
             return AwaitCachedAsync(_consumerIdByEnvGuid, key, lazy.Value, ct);
         }
 
+        // Writes a heartbeat timestamp for the consumer. Called periodically (every N seconds) to signal
+        // that the consumer process is alive. The monitor reads this timestamp to decide whether to
+        // postpone resending events to a consumer (no point firing to an offline process).
+        // Beat is NOT cached — every call goes to the DB to refresh the timestamp.
         public async Task BeatConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
@@ -182,6 +222,10 @@ namespace Haley.Services {
             }
         }
 
+        // Helper that awaits a cached Task while respecting cancellation.
+        // Critical: if the task faults (DB error, timeout), we REMOVE it from the cache.
+        // Without this, a faulted Lazy<Task<T>> would sit in the dict forever and every subsequent
+        // caller would immediately get the same exception without a DB retry.
         private static async Task<T> AwaitCachedAsync<TKey, T>(ConcurrentDictionary<TKey, Lazy<Task<T>>> dict, TKey key, Task<T> task, CancellationToken ct) {
             try { return await task.WaitAsync(ct); } catch { dict.TryRemove(key, out _); throw; }
         }
