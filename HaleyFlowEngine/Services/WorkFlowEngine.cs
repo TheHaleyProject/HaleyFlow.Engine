@@ -308,13 +308,10 @@ namespace Haley.Services {
             }
         }
 
-        public async Task<LifeCycleInstanceData?> GetInstanceDataAsync(string instanceGuid, CancellationToken ct = default) {
+        public async Task<LifeCycleInstanceData?> GetInstanceDataAsync(LifeCycleInstanceKey key, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
-
-            var row = await _dal.Instance.GetByGuidAsync(instanceGuid, new DbExecutionLoad(ct));
+            var row = await ResolveInstanceRowByKeyAsync(key, new DbExecutionLoad(ct));
             if (row == null) return null;
-
             return new LifeCycleInstanceData {
                 InstanceId = row.GetLong("id"),
                 InstanceGuid = row.GetString("guid") ?? string.Empty,
@@ -327,62 +324,28 @@ namespace Haley.Services {
             };
         }
 
-        public async Task<LifeCycleInstanceData?> GetInstanceDataAsync(string defName, string entityId, CancellationToken ct = default) {
+        public async Task<string?> GetInstanceContextAsync(LifeCycleInstanceKey key, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            var row = await ResolveInstanceByDefinitionAndEntityAsync(defName, entityId, ct);
-            if (row == null) return null;
-
-            return new LifeCycleInstanceData {
-                InstanceId = row.GetLong("id"),
-                InstanceGuid = row.GetString("guid") ?? string.Empty,
-                DefinitionId = row.GetLong("def_id"),
-                DefinitionVersionId = row.GetLong("def_version"),
-                EntityId = row.GetString("entity_id") ?? string.Empty,
-                CurrentStateId = row.GetLong("current_state"),
-                Metadata = row.GetString("metadata"),
-                Context = row.GetString("context")
-            };
-        }
-
-        public async Task<string?> GetInstanceContextAsync(string instanceGuid, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
-
-            var row = await _dal.Instance.GetByGuidAsync(instanceGuid, new DbExecutionLoad(ct));
+            var row = await ResolveInstanceRowByKeyAsync(key, new DbExecutionLoad(ct));
             return row?.GetString("context");
         }
 
-        public async Task<string?> GetInstanceContextAsync(string defName, string entityId, CancellationToken ct = default) {
+        public async Task<int> SetInstanceContextAsync(LifeCycleInstanceKey key, string? context, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            var row = await ResolveInstanceByDefinitionAndEntityAsync(defName, entityId, ct);
-            return row?.GetString("context");
-        }
-
-        public async Task<int> SetInstanceContextAsync(string instanceGuid, string? context, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
-
             var load = new DbExecutionLoad(ct);
-            var instanceId = await _dal.Instance.GetIdByGuidAsync(instanceGuid, load);
-            if (!instanceId.HasValue || instanceId.Value <= 0) return 0;
-
-            return await _dal.Instance.SetContextAsync(instanceId.Value, context, load);
-        }
-
-        public async Task<int> SetInstanceContextAsync(string defName, string entityId, string? context, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            var row = await ResolveInstanceByDefinitionAndEntityAsync(defName, entityId, ct);
+            var row = await ResolveInstanceRowByKeyAsync(key, load);
             if (row == null) return 0;
-
             var instanceId = row.GetLong("id");
             if (instanceId <= 0) return 0;
-
-            return await _dal.Instance.SetContextAsync(instanceId, context, new DbExecutionLoad(ct));
+            return await _dal.Instance.SetContextAsync(instanceId, context, load);
         }
 
-        public async Task<string?> GetTimelineJsonAsync(long instanceId, CancellationToken ct = default) {
+        public async Task<string?> GetTimelineJsonAsync(LifeCycleInstanceKey key, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(instanceId, new DbExecutionLoad(ct));
+            var load = new DbExecutionLoad(ct);
+            var row = await ResolveInstanceRowByKeyAsync(key, load);
+            if (row == null) return null;
+            return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(row.GetLong("id"), load);
         }
 
         public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(int envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, CancellationToken ct = default) {
@@ -459,48 +422,90 @@ namespace Haley.Services {
         public async Task<long> UpsertRuntimeAsync(RuntimeLogByNameRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (req == null) throw new ArgumentNullException(nameof(req));
+            if (string.IsNullOrWhiteSpace(req.Activity)) throw new ArgumentNullException(nameof(req.Activity));
+            if (string.IsNullOrWhiteSpace(req.Status)) throw new ArgumentNullException(nameof(req.Status));
+            if (string.IsNullOrWhiteSpace(req.ActorId)) throw new ArgumentNullException(nameof(req.ActorId));
 
-            if (string.IsNullOrWhiteSpace(req.InstanceGuid)) {
-                var row = await ResolveInstanceByDefinitionAndEntityAsync(req.DefName, req.EntityId, ct);
-                if (row == null) {
-                    throw new InvalidOperationException($"Instance not found for def='{req.DefName}', entity='{req.EntityId}'.");
-                }
-                req.InstanceGuid = row.GetString("guid") ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(req.InstanceGuid)) {
-                    throw new InvalidOperationException($"Instance guid missing for def='{req.DefName}', entity='{req.EntityId}'.");
-                }
-            }
+            var load = new DbExecutionLoad(ct);
+            var instanceRow = await ResolveInstanceRowByKeyAsync(req.Instance, load);
+            if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleInstanceKey.");
 
-            return await Runtime.UpsertAsync(req, ct);
+            var activityId = await Runtime.EnsureActivityAsync(req.Activity, ct);
+            var statusId   = await Runtime.EnsureActivityStatusAsync(req.Status, ct);
+
+            return await Runtime.UpsertAsync(new RuntimeLogByIdRequest {
+                InstanceGuid = instanceRow.GetString("guid") ?? string.Empty,
+                ActivityId   = activityId,
+                StateId      = req.StateId,
+                ActorId      = req.ActorId,
+                StatusId     = statusId,
+                LcId         = req.LcId,
+                Frozen       = req.Frozen,
+                Data         = req.Data ?? new { },
+                Payload      = req.Payload ?? new { }
+            }, ct);
         }
 
-        public Task<int> SetRuntimeStatusAsync(long runtimeId, string status, CancellationToken ct = default) => Runtime.SetStatusAsync(runtimeId, status, ct);
-
-        public Task<int> FreezeRuntimeAsync(long runtimeId, CancellationToken ct = default) => Runtime.SetFrozenAsync(runtimeId, true, ct);
-
-        public Task<int> UnfreezeRuntimeAsync(long runtimeId, CancellationToken ct = default) => Runtime.SetFrozenAsync(runtimeId, false, ct);
-
-        async Task<long?> ResolveDefinitionIdByNameAsync(string defName, CancellationToken ct) {
+        public async Task<int> SetRuntimeStatusAsync(LifeCycleRuntimeRef runtimeRef, string status, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(defName)) throw new ArgumentNullException(nameof(defName));
-
-            var rows = await _dal.Blueprint.ListDefinitionsByNameAsync(defName, new DbExecutionLoad(ct));
-            if (rows.Count < 1) return null;
-            if (rows.Count > 1) throw new InvalidOperationException($"Definition name '{defName}' is ambiguous across environments.");
-
-            var defId = rows[0].GetLong("id");
-            return defId > 0 ? defId : null;
+            var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
+            return await Runtime.SetStatusAsync(runtimeId, status, ct);
         }
 
-        async Task<DbRow?> ResolveInstanceByDefinitionAndEntityAsync(string defName, string entityId, CancellationToken ct) {
+        public async Task<int> FreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(defName)) throw new ArgumentNullException(nameof(defName));
-            if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentNullException(nameof(entityId));
+            var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
+            return await Runtime.SetFrozenAsync(runtimeId, true, ct);
+        }
 
-            var defId = await ResolveDefinitionIdByNameAsync(defName, ct);
-            if (!defId.HasValue || defId.Value <= 0) return null;
+        public async Task<int> UnfreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
+            return await Runtime.SetFrozenAsync(runtimeId, false, ct);
+        }
 
-            return await _dal.Instance.GetByDefIdAndEntityIdAsync(defId.Value, entityId, new DbExecutionLoad(ct));
+        // Resolves a LifeCycleInstanceKey → instance DbRow.
+        // Priority: InstanceGuid (direct) → EnvCode+DefName+EntityId (via blueprint lookup, fully environment-scoped).
+        async Task<DbRow?> ResolveInstanceRowByKeyAsync(LifeCycleInstanceKey key, DbExecutionLoad load) {
+            if (key == null) throw new ArgumentNullException(nameof(key));
+
+            if (!string.IsNullOrWhiteSpace(key.InstanceGuid))
+                return await _dal.Instance.GetByGuidAsync(key.InstanceGuid, load);
+
+            if (string.IsNullOrWhiteSpace(key.DefName))  throw new ArgumentException("LifeCycleInstanceKey requires InstanceGuid OR (EnvCode + DefName + EntityId).", nameof(key));
+            if (string.IsNullOrWhiteSpace(key.EntityId)) throw new ArgumentException("LifeCycleInstanceKey requires InstanceGuid OR (EnvCode + DefName + EntityId).", nameof(key));
+
+            // Use envCode + defName — the only unambiguous combination.
+            var defVersionRow = await _dal.Blueprint.GetLatestDefVersionByEnvCodeAndDefNameAsync(key.EnvCode, key.DefName, load);
+            if (defVersionRow == null) return null;
+            var defId = defVersionRow.GetLong("parent");
+            if (defId <= 0) return null;
+
+            return await _dal.Instance.GetByDefIdAndEntityIdAsync(defId, key.EntityId, load);
+        }
+
+        // Resolves a LifeCycleRuntimeRef → internal runtime row id.
+        // Priority: Id (if caller already has it) → Instance+Activity+ActorId+StateId business-key lookup.
+        async Task<long> ResolveRuntimeIdAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct) {
+            if (runtimeRef == null) throw new ArgumentNullException(nameof(runtimeRef));
+
+            if (runtimeRef.Id.HasValue && runtimeRef.Id.Value > 0)
+                return runtimeRef.Id.Value;
+
+            var load = new DbExecutionLoad(ct);
+
+            var instanceRow = await ResolveInstanceRowByKeyAsync(runtimeRef.Instance, load);
+            if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleRuntimeRef.");
+            var instanceId = instanceRow.GetLong("id");
+
+            var activityRow = await _dal.Activity.GetByNameAsync(runtimeRef.Activity, load);
+            if (activityRow == null) throw new InvalidOperationException($"Activity '{runtimeRef.Activity}' not found.");
+            var activityId = activityRow.GetLong("id");
+
+            var runtimeRow = await _dal.Runtime.GetByKeyAsync(instanceId, activityId, runtimeRef.StateId, runtimeRef.ActorId, load);
+            if (runtimeRow == null) throw new InvalidOperationException($"Runtime entry not found for activity='{runtimeRef.Activity}' actor='{runtimeRef.ActorId}' state={runtimeRef.StateId}.");
+
+            return runtimeRow.GetLong("id");
         }
 
 

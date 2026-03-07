@@ -13,31 +13,6 @@ namespace Haley.Services {
         private readonly IWorkFlowDAL _dal;
         public RuntimeEngine(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
 
-        public async Task<long> UpsertAsync(RuntimeLogByNameRequest req, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-
-            if (string.IsNullOrWhiteSpace(req.InstanceGuid)) throw new ArgumentNullException(nameof(req.InstanceGuid));
-            if (req.StateId <= 0) throw new ArgumentOutOfRangeException(nameof(req.StateId));
-            if (string.IsNullOrWhiteSpace(req.Activity)) throw new ArgumentNullException(nameof(req.Activity));
-            if (string.IsNullOrWhiteSpace(req.Status)) throw new ArgumentNullException(nameof(req.Status));
-            if (string.IsNullOrWhiteSpace(req.ActorId)) throw new ArgumentNullException(nameof(req.ActorId));
-
-            var activityId = await EnsureActivityAsync(req.Activity, ct);
-            var statusId = await EnsureActivityStatusAsync(req.Status, ct);
-
-            return await UpsertAsync(new RuntimeLogByIdRequest {
-                InstanceGuid = req.InstanceGuid,
-                ActivityId = activityId,
-                StateId = req.StateId,
-                ActorId = req.ActorId,
-                StatusId = statusId,
-                LcId = req.LcId,
-                Frozen = req.Frozen,
-                Data = req.Data ?? new { },
-                Payload = req.Payload ?? new { }
-            }, ct);
-        }
-
         public async Task<long> UpsertAsync(RuntimeLogByIdRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
 
