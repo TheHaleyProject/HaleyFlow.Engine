@@ -6,15 +6,15 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace WFE.Test.UseCases.ChangeRequest {
-    [LifeCycleDefinition(ChangeRequestUseCaseSettings.DefinitionNameConst)]
-    internal sealed class ChangeRequestWrapper : LifeCycleWrapper {
+namespace WFE.Test.UseCases.LoanApproval {
+    [LifeCycleDefinition(LoanApprovalUseCaseSettings.DefinitionNameConst)]
+    public sealed class LoanApprovalWrapper : LifeCycleWrapper {
         private static readonly SemaphoreSlim PromptLock = new(1, 1);
 
         private readonly IWorkFlowEngine _engine;
-        private readonly ChangeRequestUseCaseSettings _settings;
+        private readonly LoanApprovalUseCaseSettings _settings;
 
-        public ChangeRequestWrapper(IWorkFlowEngine engine, ChangeRequestUseCaseSettings settings) {
+        public LoanApprovalWrapper(IWorkFlowEngine engine, LoanApprovalUseCaseSettings settings) {
             _engine = engine;
             _settings = settings;
         }
@@ -23,7 +23,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             var timeout = _settings.ConfirmationTimeout;
             var timeoutText = timeout > TimeSpan.Zero ? $", auto-yes in {timeout.TotalSeconds:0}s" : string.Empty;
             var createNow = await AskConfirmationAsync(
-                $"[DRIVER] Create a new random change request entity now? (Y/N, Enter=Y{timeoutText})",
+                $"[DRIVER] Create a new random loan approval entity now? (Y/N, Enter=Y{timeoutText})",
                 ConsoleKey.Y,
                 timeout,
                 ct);
@@ -38,65 +38,62 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 EnvCode = _settings.EnvCode,
                 DefName = _settings.DefName,
                 EntityId = entityId,
-                Event = "4000",
+                Event = "2000",
                 Actor = "wfe.test.wrapper-driver",
                 AckRequired = true,
                 Payload = new Dictionary<string, object> {
                     ["source"] = "WFE.Test",
                     ["useCase"] = sourceUseCase,
-                    ["driver"] = nameof(ChangeRequestWrapper)
+                    ["driver"] = nameof(LoanApprovalWrapper)
                 },
-                Metadata = "debug;bulk-seed;change-request"
+                Metadata = "debug;bulk-seed;loan-approval"
             }, ct);
 
-            Console.WriteLine($"[DRIVER] entity={entityId} startEvent=4000 applied={trigger.Applied} instanceId={trigger.InstanceId} reason={trigger.Reason}");
+            Console.WriteLine($"[DRIVER] entity={entityId} startEvent=2000 applied={trigger.Applied} instanceId={trigger.InstanceId} reason={trigger.Reason}");
             return trigger.Applied ? entityId : null;
         }
 
-        [HookHandler("APP.CHANGE.IMPACT.ASSESS")]
-        private Task<AckOutcome> OnImpactAssessmentAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+        [HookHandler("APP.LOAN.KYC.CHECK")]
+        private Task<AckOutcome> OnKycCheckAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
                 evt,
                 ctx,
-                "Impact assessment approved?",
-                PickEvent(evt.OnSuccessEvent, "4001"),
-                PickEvent(evt.OnFailureEvent, "4002"));
+                "KYC passed?",
+                PickEvent(evt.OnSuccessEvent, "2001"),
+                PickEvent(evt.OnFailureEvent, "2002"));
 
-        [HookHandler("APP.CHANGE.COST.REVIEW")]
-        private Task<AckOutcome> OnCostReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+        [HookHandler("APP.LOAN.CREDIT.CHECK")]
+        private Task<AckOutcome> OnCreditCheckAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
                 evt,
                 ctx,
-                "Cost review approved?",
-                PickEvent(evt.OnSuccessEvent, "4003"),
-                PickEvent(evt.OnFailureEvent, "4004"));
+                "Credit assessment accepted?",
+                PickEvent(evt.OnSuccessEvent, "2003"),
+                PickEvent(evt.OnFailureEvent, "2004"));
 
-        [HookHandler("APP.CHANGE.SCHEDULE.REVIEW")]
-        private Task<AckOutcome> OnScheduleReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+        [HookHandler("APP.LOAN.RISK.CHECK")]
+        private Task<AckOutcome> OnRiskCheckAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
                 evt,
                 ctx,
-                "Schedule review approved?",
-                PickEvent(evt.OnSuccessEvent, "4005"),
-                PickEvent(evt.OnFailureEvent, "4006"));
+                "Risk review accepted?",
+                PickEvent(evt.OnSuccessEvent, "2005"),
+                PickEvent(evt.OnFailureEvent, "2006"));
 
-        [HookHandler("APP.CHANGE.STEERING.DECIDE")]
-        private Task<AckOutcome> OnSteeringDecisionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+        [HookHandler("APP.LOAN.MANAGER.DECISION")]
+        private Task<AckOutcome> OnManagerDecisionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
                 evt,
                 ctx,
-                "Steering decision approved?",
-                PickEvent(evt.OnSuccessEvent, "4007"),
-                PickEvent(evt.OnFailureEvent, "4008"));
+                "Manager approved loan?",
+                PickEvent(evt.OnSuccessEvent, "2007"),
+                PickEvent(evt.OnFailureEvent, "2008"));
 
-        [HookHandler("APP.CHANGE.REWORK.REQUEST")]
-        private Task<AckOutcome> OnReworkRequestedAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
-                evt,
-                ctx,
-                "Submit rework now?",
-                PickEvent(evt.OnSuccessEvent, "4009"),
-                null);
+        [HookHandler("APP.LOAN.MANAGER.REMINDER")]
+        private Task<AckOutcome> OnManagerReminderAsync(ILifeCycleHookEvent evt, ConsumerContext ctx) {
+            Console.WriteLine($"[CONSUMER] reminder route={evt.Route} entity={evt.EntityId} (no follow-up trigger).");
+            return Task.FromResult(AckOutcome.Processed);
+        }
 
         protected override Task<AckOutcome> OnUnhandledTransitionAsync(ILifeCycleTransitionEvent evt, ConsumerContext ctx) {
             Console.WriteLine($"[CONSUMER] transition event={evt.EventCode} state={evt.FromStateId}->{evt.ToStateId} (no custom action)");
@@ -120,36 +117,16 @@ namespace WFE.Test.UseCases.ChangeRequest {
             var timeout = _settings.ConfirmationTimeout;
             var timeoutText = timeout > TimeSpan.Zero ? $", auto-yes in {timeout.TotalSeconds:0}s" : string.Empty;
             var prompt = $"[CONSUMER] {decisionMessage} entity={evt.EntityId} route={evt.Route} (Y/N, Enter=Y{timeoutText})";
-
-            // Capture runtime: mark this activity as Running before user input.
-            var runtimeId = await _engine.UpsertRuntimeAsync(new RuntimeLogByNameRequest {
-                Instance  = new LifeCycleInstanceKey { InstanceGuid = evt.InstanceGuid },
-                Activity  = evt.Route,
-                Status    = "Running",
-                ActorId   = "wfe.test.consumer",
-                Data      = new { route = evt.Route, entity = evt.EntityId, question = decisionMessage }
-            }, ctx.CancellationToken);
-
-            var runtimeRef = new LifeCycleRuntimeRef {
-                Instance = new LifeCycleInstanceKey { InstanceGuid = evt.InstanceGuid },
-                Activity = evt.Route,
-                ActorId  = "wfe.test.consumer",
-                Id       = runtimeId > 0 ? runtimeId : null
-            };
-
             var yes = await AskConfirmationAsync(prompt, ConsoleKey.Y, timeout, ctx.CancellationToken);
 
             if (yes) {
-                await _engine.SetRuntimeStatusAsync(runtimeRef, "Approved", ctx.CancellationToken);
                 return await TriggerNextAsync(evt, ctx, yesEventCode);
             }
 
             if (!string.IsNullOrWhiteSpace(noEventCode)) {
-                await _engine.SetRuntimeStatusAsync(runtimeRef, "Rejected", ctx.CancellationToken);
                 return await TriggerNextAsync(evt, ctx, noEventCode);
             }
 
-            await _engine.SetRuntimeStatusAsync(runtimeRef, "Retry", ctx.CancellationToken);
             Console.WriteLine($"[CONSUMER] route={evt.Route} -> user chose NO, leaving ack as RETRY.");
             return AckOutcome.Retry;
         }

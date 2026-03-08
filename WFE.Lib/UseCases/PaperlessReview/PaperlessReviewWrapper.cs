@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace WFE.Test.UseCases.PaperlessReview {
     [LifeCycleDefinition(PaperlessReviewUseCaseSettings.DefinitionNameConst)]
-    internal sealed class PaperlessReviewWrapper : LifeCycleWrapper {
+    public sealed class PaperlessReviewWrapper : LifeCycleWrapper {
         private static readonly SemaphoreSlim PromptLock = new(1, 1);
 
         private readonly IWorkFlowEngine _engine;

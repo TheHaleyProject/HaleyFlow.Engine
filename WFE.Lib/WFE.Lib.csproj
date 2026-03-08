@@ -1,9 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <Import Project="$(SolutionDir)ProjectReferences_$(SolutionName).txt" Condition="Exists('$(SolutionDir)ProjectReferences_$(SolutionName).txt')" />
@@ -38,28 +38,14 @@
     </Otherwise>
   </Choose>
 
-  <Choose>
-    <When Condition="Exists($(HaleyHelpersDB))">
-      <ItemGroup>
-        <ProjectReference Include="$(HaleyHelpersDB)\HaleyHelpersDB.csproj">
-          <Name>HaleyHelpersDB</Name>
-        </ProjectReference>
-      </ItemGroup>
-    </When>
-    <Otherwise>
-      <ItemGroup>
-        <PackageReference Include="Haley.Helpers.DB" Version="0.1.1" />
-      </ItemGroup>
-    </Otherwise>
-  </Choose>
-
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.24" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <Content Include="UseCases\**\*.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WFE.Lib\WFE.Lib.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
   </ItemGroup>
 
 </Project>

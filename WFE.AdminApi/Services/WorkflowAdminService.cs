@@ -414,12 +414,14 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
     }
 
     private string ResolveUseCaseFilePath(string folder, string fileName) {
-        var candidateRoots = new List<string>(4);
+        var candidateRoots = new List<string>(6);
         if (!string.IsNullOrWhiteSpace(_options.UseCasesRootPath)) {
             candidateRoots.Add(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, _options.UseCasesRootPath)));
             candidateRoots.Add(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), _options.UseCasesRootPath)));
         }
 
+        candidateRoots.Add(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "WFE.Lib", "UseCases")));
+        candidateRoots.Add(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "WFE.Lib", "UseCases")));
         candidateRoots.Add(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "WFE.Test", "UseCases")));
         candidateRoots.Add(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "WFE.Test", "UseCases")));
 

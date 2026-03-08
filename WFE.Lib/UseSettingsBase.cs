@@ -1,7 +1,7 @@
 using System;
 
 namespace WFE.Test {
-    internal class UseSettingsBase  {
+    public class UseSettingsBase  {
         public int EnvCode { get; set; } = 1000;
         public string EnvDisplayName { get; set; } = "dev";
         public string ConsumerGuid { get; set; } = "89c52807-5054-47fc-9dee-dbb8b42218cb";

@@ -18,5 +18,9 @@ namespace Haley.Internal {
 
         // Pending hook dispatch is now per consumer/status in ack_consumer
         public const string PENDING_ACKS = $@"SELECT a.id AS ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.last_trigger, ac.trigger_count, h.* FROM hook_ack ha JOIN ack a ON a.id = ha.ack_id JOIN ack_consumer ac ON ac.ack_id = a.id JOIN hook h ON h.id = ha.hook_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.last_trigger ASC, ac.id ASC;";
+
+        // Resolves the state_id for a hook-type ack by guid (ack → hook_ack → hook).
+        // Used by UpsertRuntimeAsync to anchor runtime entries to the correct state even during replay.
+        public const string GET_STATE_ID_BY_ACK_GUID = $@"SELECT h.state_id FROM ack a JOIN hook_ack ha ON ha.ack_id = a.id JOIN hook h ON h.id = ha.hook_id WHERE a.guid = lower(trim({GUID})) LIMIT 1;";
     }
 }

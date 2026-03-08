@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace WFE.Test.UseCases.VendorRegistration {
     [LifeCycleDefinition(VendorRegistrationUseCaseSettings.DefinitionNameConst)]
-    internal sealed class VendorRegistrationWrapper : LifeCycleWrapper {
+    public sealed class VendorRegistrationWrapper : LifeCycleWrapper {
         private static readonly SemaphoreSlim PromptLock = new(1, 1);
 
         private readonly IWorkFlowEngine _engine;

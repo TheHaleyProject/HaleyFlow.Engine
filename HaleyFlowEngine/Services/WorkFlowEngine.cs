@@ -591,8 +591,18 @@ namespace Haley.Services {
             var instanceRow = await ResolveInstanceRowByKeyAsync(req.Instance, load);
             if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleInstanceKey.");
 
-            // StateId: derive from the instance's current state — consumer doesn't know the DB id.
-            var stateId    = instanceRow.GetLong(KEY_CURRENT_STATE_ID);
+            // StateId resolution:
+            //   1. AckGuid provided → resolve via hook_ack → hook.state_id.
+            //      This anchors the runtime entry to the state the hook originally fired for,
+            //      which is correct even during replay or when the instance has already moved on.
+            //   2. No AckGuid → fall back to instance.current_state_id (safe for direct/non-hook calls).
+            long stateId;
+            if (!string.IsNullOrWhiteSpace(req.AckGuid)) {
+                var resolvedStateId = await _dal.HookAck.GetStateIdByAckGuidAsync(req.AckGuid, load);
+                stateId = resolvedStateId ?? instanceRow.GetLong(KEY_CURRENT_STATE_ID);
+            } else {
+                stateId = instanceRow.GetLong(KEY_CURRENT_STATE_ID);
+            }
 
             var activityId = await Runtime.EnsureActivityAsync(activity, ct);
             var statusId   = await Runtime.EnsureActivityStatusAsync(status, ct);

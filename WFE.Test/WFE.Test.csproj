@@ -56,10 +56,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\HaleyFlow.Consumer\HaleyFlowConsumer\HaleyFlowConsumer.csproj" />
+    <ProjectReference Include="..\WFE.Lib\WFE.Lib.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="UseCases\**\*.json">
+    <Content Include="..\WFE.Lib\UseCases\**\*.json" Link="UseCases\%(RecursiveDir)%(Filename)%(Extension)">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="appsettings.json">

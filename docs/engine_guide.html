@@ -260,7 +260,7 @@
       <div class="logo-icon">h.</div>
       <div>
         <div class="logo-text">Haley Flow Engine</div>
-        <div class="logo-sub">Concepts &amp; Implementation Guide</div>
+        <div class="logo-sub">SDK &amp; Integration Guide</div>
       </div>
     </div>
     <div id="search-wrap">
@@ -274,29 +274,20 @@
     <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Overview <span class="caret">▾</span></button>
       <div class="nav-items">
+        <button class="nav-item" onclick="gotoSection('ref-quickstart')">Quick Start</button>
         <button class="nav-item" onclick="gotoSection('overview')">Introduction</button>
         <button class="nav-item" onclick="gotoSection('objective')">Objective &amp; Non-goals</button>
         <button class="nav-item" onclick="gotoSection('why-wfe')">Why a Workflow Engine?</button>
       </div>
     </div>
 
-    <div class="nav-section">
-      <button class="nav-group-btn" onclick="toggleGroup(this)">Coding Rules <span class="caret">▾</span></button>
-      <div class="nav-items">
-        <button class="nav-item" onclick="gotoSection('rules-sql')">SQL + DAL Discipline</button>
-        <button class="nav-item" onclick="gotoSection('rules-format')">Formatting Rules</button>
-        <button class="nav-item" onclick="gotoSection('rules-txn')">Transactions &amp; DbExecutionLoad</button>
-        <button class="nav-item" onclick="gotoSection('rules-ensure')">Ensure / Exists Rule</button>
-        <button class="nav-item" onclick="gotoSection('rules-naming')">Naming Conventions</button>
-      </div>
-    </div>
 
     <div class="nav-section">
-      <button class="nav-group-btn" onclick="toggleGroup(this)">Core Runtime Flow <span class="caret">▾</span></button>
+      <button class="nav-group-btn" onclick="toggleGroup(this)">How It Works <span class="caret">▾</span></button>
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('flow-trigger')">Trigger (App → Engine)</button>
         <button class="nav-item" onclick="gotoSection('flow-persist')">Engine Evaluates + Persists</button>
-        <button class="nav-item" onclick="gotoSection('flow-ackgate')">ACK Gate <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('flow-ackgate')">ACK Gate</button>
         <button class="nav-item" onclick="gotoSection('flow-emit')">Emit Outbound Events</button>
         <button class="nav-item" onclick="gotoSection('flow-ack')">ACK Updates</button>
         <button class="nav-item" onclick="gotoSection('flow-monitor')">Monitor (Reliability)</button>
@@ -304,7 +295,7 @@
     </div>
 
     <div class="nav-section">
-      <button class="nav-group-btn" onclick="toggleGroup(this)">Components <span class="caret">▾</span></button>
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Architecture <span class="caret">▾</span></button>
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('comp-dal')">WorkFlowDAL</button>
         <button class="nav-item" onclick="gotoSection('comp-importer')">BlueprintImporter</button>
@@ -338,10 +329,10 @@
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('pol-structure')">Policy Structure</button>
         <button class="nav-item" onclick="gotoSection('pol-emit')">Emit Fields</button>
-        <button class="nav-item" onclick="gotoSection('pol-blocking')">Blocking Flag <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('pol-groups')">Hook Groups <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('pol-order')">Ordered Emission <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('pol-ackmode')">ACK Mode: All vs Any <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('pol-blocking')">Blocking Flag</button>
+        <button class="nav-item" onclick="gotoSection('pol-groups')">Hook Groups</button>
+        <button class="nav-item" onclick="gotoSection('pol-order')">Ordered Emission</button>
+        <button class="nav-item" onclick="gotoSection('pol-ackmode')">ACK Mode: All vs Any</button>
         <button class="nav-item" onclick="gotoSection('pol-timeouts')">Timeouts</button>
         <button class="nav-item" onclick="gotoSection('pol-lifecycle')">Policy Attachment Lifecycle</button>
       </div>
@@ -351,21 +342,20 @@
       <button class="nav-group-btn" onclick="toggleGroup(this)">Schema Reference <span class="caret">▾</span></button>
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('schema-core')">Core Tables</button>
-        <button class="nav-item" onclick="gotoSection('schema-hook')">Hook Tables <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('schema-instance-data')">Instance Data Columns <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('schema-hook')">Hook Tables</button>
+        <button class="nav-item" onclick="gotoSection('schema-instance-data')">Instance Data Columns</button>
         <button class="nav-item" onclick="gotoSection('schema-ack')">ACK Tables</button>
         <button class="nav-item" onclick="gotoSection('schema-unique')">Required Unique Constraints <span class="badge-new" style="background:#d97706;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">ACTION</span></button>
       </div>
     </div>
 
     <div class="nav-section">
-      <button class="nav-group-btn" onclick="toggleGroup(this)">Instance Data <span class="caret">▾</span></button>
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Instance &amp; Runtime API <span class="caret">▾</span></button>
       <div class="nav-items">
-        <button class="nav-item" onclick="gotoSection('instance-data-model')">Three-Layer Model <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('instance-data-api')">Instance Data API <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('instance-data-api')">LifeCycleInstanceKey <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('instance-data-api')">LifeCycleRuntimeRef <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
-        <button class="nav-item" onclick="gotoSection('instance-data-api')">ILifeCycleRuntimeBus <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('instance-data-model')">Three-Layer Data Model</button>
+        <button class="nav-item" onclick="gotoSection('instance-data-api')">Instance Data API</button>
+        <button class="nav-item" onclick="gotoSection('instance-data-api')">RuntimeLogByNameRequest</button>
+        <button class="nav-item" onclick="gotoSection('instance-data-api')">ILifeCycleRuntimeBus</button>
       </div>
     </div>
 
@@ -374,7 +364,6 @@
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('ref-notices')">Notice Codes</button>
         <button class="nav-item" onclick="gotoSection('ref-options')">Engine Options</button>
-        <button class="nav-item" onclick="gotoSection('ref-quickstart')">Quick Start</button>
       </div>
     </div>
 
@@ -386,7 +375,7 @@
         <button class="nav-item" onclick="gotoSection('ex-ackgate')">3 — ACK Gate</button>
         <button class="nav-item" onclick="gotoSection('ex-timeout')">4 — Timeout Automation</button>
         <button class="nav-item" onclick="gotoSection('ex-runtime')">5 — Runtime Tracking</button>
-        <button class="nav-item" onclick="gotoSection('ex-orderedhooks')">6 — Ordered Hooks &amp; Any ACK <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('ex-orderedhooks')">6 — Ordered Hooks &amp; Any ACK</button>
       </div>
     </div>
 
@@ -402,7 +391,7 @@
     <div class="hero-logo">h.</div>
     <div>
       <h1>Haley Workflow Engine</h1>
-      <p>A dumb, reliable, DB-backed workflow/state machine engine. Tracks business entities through policy-driven transitions, emits hook events for downstream work, and retries delivery until acknowledged.</p>
+      <p>A reliable, DB-backed workflow engine for .NET. Define workflows as JSON policies. Fire events to advance state. React to hook emissions in your services. The engine handles persistence, delivery guarantees, retry, and timeout — your code handles business logic.</p>
       <div class="hero-meta">
         <span class="hero-tag">MariaDB</span>
         <span class="hero-tag">C# / .NET</span>
@@ -412,9 +401,86 @@
     </div>
   </div>
 
+  <!-- ──────────────── QUICK START ──────────────── -->
+  <section class="doc-section" id="ref-quickstart">
+    <div class="section-label">Getting Started</div>
+    <h2 class="section-title">Quick Start</h2>
+    <pre><code><span class="cm">// 1. Build engine — auto-creates/migrates DB schema on first run</span>
+<span class="kw">var</span> engine = <span class="kw">await new</span> <span class="ty">WorkFlowEngineMaker</span> {
+    Options = <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
+        AckGateEnabled           = <span class="nb">true</span>,
+        DefaultStateStaleDuration = TimeSpan.FromHours(<span class="jn">24</span>),
+        MaxRetryCount             = <span class="jn">5</span>
+    }
+}.WithConnectionString(connectionString).Build(adapterGateway);
+
+<span class="cm">// 2. Subscribe to events and notices</span>
+engine.EventRaised  += HandleEventAsync;
+engine.NoticeRaised += HandleNoticeAsync;
+
+<span class="cm">// 3. Import schema and policy (idempotent — safe every startup)</span>
+<span class="kw">await</span> engine.ImportDefinitionJsonAsync(envCode, <span class="st">"Production"</span>, defJson);
+<span class="kw">await</span> engine.ImportPolicyJsonAsync(envCode, <span class="st">"Production"</span>, policyJson);
+
+<span class="cm">// 4. Register consumer + start heartbeat</span>
+<span class="kw">var</span> consumerId = <span class="kw">await</span> engine.RegisterConsumerAsync(envCode, myGuid);
+_ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="cm">// every ~10s</span>
+
+<span class="cm">// 5. Start monitor</span>
+<span class="kw">await</span> engine.StartMonitorAsync(cts.Token);
+
+<span class="cm">// 6. Trigger a transition</span>
+<span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+    EnvCode     = envCode,
+    DefName     = <span class="st">"loan-approval"</span>,
+    EntityId    = loanId.ToString(),
+    Event       = <span class="st">"submit"</span>,
+    Actor       = userId,
+    AckRequired = <span class="nb">true</span>,
+    OccurredAt  = <span class="nb">null</span>,        <span class="cm">// set DateTimeOffset for replay</span>
+    SkipAckGate = <span class="nb">false</span>        <span class="cm">// set true to bypass ACK gate once</span>
+});
+
+<span class="kw">if</span> (!result.Applied) {
+    Console.WriteLine($<span class="st">"Blocked: {result.Reason}"</span>); <span class="cm">// e.g. "BlockedByPendingAck"</span>
+    <span class="kw">return</span>;
+}
+
+<span class="cm">// 7. In event handler — ACK after processing</span>
+<span class="kw">async</span> Task HandleEventAsync(<span class="ty">ILifeCycleEvent</span> e) {
+    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleHookEvent</span> hook) {
+        <span class="cm">// dispatch based on hook.Route</span>
+        <span class="kw">await</span> DispatchHookAsync(hook);
+        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, AckOutcome.Processed);
+        <span class="cm">// ↑ if hook belongs to a group and all siblings are Processed,</span>
+        <span class="cm">//   HOOK_GROUP_COMPLETE notice fires automatically</span>
+    }
+}
+
+<span class="cm">// 8. Handle notices</span>
+<span class="kw">async</span> Task HandleNoticeAsync(<span class="ty">LifeCycleNotice</span> n) {
+    <span class="kw">switch</span> (n.Code) {
+        <span class="kw">case</span> <span class="st">"HOOK_GROUP_COMPLETE"</span>:
+            <span class="kw">var</span> group    = (<span class="ty">string</span>)n.Data[<span class="st">"groupName"</span>];
+            <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
+            <span class="cm">// all hooks in group done — trigger next macro event</span>
+            <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
+                EntityId = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
+            });
+            <span class="kw">break</span>;
+        <span class="kw">case</span> <span class="st">"ACK_SUSPEND"</span>:
+            logger.LogCritical(<span class="st">"Instance suspended: {msg}"</span>, n.Message);
+            <span class="kw">break</span>;
+        <span class="kw">case</span> <span class="st">"STATE_STALE"</span>:
+            logger.LogWarning(<span class="st">"Instance overdue: {guid}"</span>, n.Data[<span class="st">"instanceGuid"</span>]);
+            <span class="kw">break</span>;
+    }
+}</code><span class="lang-label">C#</span></pre>
+  </section>
+
   <!-- ──────────────── OBJECTIVE ──────────────── -->
   <section class="doc-section" id="objective">
-    <div class="section-label">Section 2</div>
+    <div class="section-label">Concept</div>
     <h2 class="section-title">Concept &amp; Objective</h2>
     <p>The engine is <strong>intentionally "dumb"</strong> — it enforces state transitions and tracks delivery, but carries no business logic.</p>
     <div class="card-grid">
@@ -523,71 +589,10 @@
     </div>
   </section>
 
-  <!-- ──────────────── CODING RULES ──────────────── -->
-  <section class="doc-section" id="rules-sql">
-    <div class="section-label">Section 1</div>
-    <h2 class="section-title">General Coding Rules <em style="font-size:14px;font-weight:400;color:var(--brand)">(non-negotiable)</em></h2>
-
-    <h3 class="sub-title">1.1 SQL + DAL Discipline</h3>
-    <ul>
-      <li><strong>SQL queries are first-class citizens</strong> — every DB operation must be a named constant in the relevant <code>QRY_*</code> class.</li>
-      <li><code>WorkFlowDAL</code> is the <strong>only</strong> DB entry point for the engine. Components must not call leaf DALs directly.</li>
-      <li>Adding new DB capability: (1) add query to <code>QRY_*</code> class → (2) extend DAL → (3) expose via <code>IWorkFlowDAL</code>.</li>
-    </ul>
-  </section>
-
-  <section class="doc-section" id="rules-format">
-    <h3 class="sub-title">1.2 Formatting Rules</h3>
-    <ul>
-      <li><strong>Models</strong>: prefer object initializer style — <code>new X { A = a, B = b }</code>, not constructor overloads.</li>
-      <li>Method signatures and constructors: one line, no multi-line wrapping.</li>
-      <li>SQL query strings: one line.</li>
-    </ul>
-  </section>
-
-  <section class="doc-section" id="rules-txn">
-    <h3 class="sub-title">1.3 Transactions + Cancellation (DbExecutionLoad)</h3>
-    <p><code>DbExecutionLoad</code> = <code>CancellationToken</code> + <code>TransactionHandler</code>. Public engine APIs accept <code>CancellationToken</code>; internal DB methods accept <code>DbExecutionLoad</code>.</p>
-    <pre><code><span class="kw">var</span> transaction = _dal.CreateNewTransaction();
-<span class="kw">using var</span> tx = transaction.Begin(<span class="nb">false</span>);
-<span class="kw">var</span> load = <span class="kw">new</span> <span class="ty">DbExecutionLoad</span>(ct, transaction);
-<span class="cm">// committed flag guards Commit/Rollback</span>
-<span class="kw">var</span> committed = <span class="nb">false</span>;
-<span class="kw">try</span> {
-    <span class="cm">// ... DB operations ...</span>
-    transaction.Commit(); committed = <span class="nb">true</span>;
-} <span class="kw">catch</span> {
-    <span class="kw">if</span> (!committed) { <span class="kw">try</span> { transaction.Rollback(); } <span class="kw">catch</span> { } }
-    <span class="kw">throw</span>;
-}</code><span class="lang-label">C#</span></pre>
-  </section>
-
-  <section class="doc-section" id="rules-ensure">
-    <h3 class="sub-title">1.4 "Ensure / Exists then Insert" Rule</h3>
-    <p>For upsert-style operations, prefer:</p>
-    <ul>
-      <li>EXISTS → return id</li>
-      <li>else INSERT → return id</li>
-    </ul>
-    <div class="callout danger">
-      <div class="callout-title">Avoid</div>
-      The pattern <code>INSERT ... ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)</code> — this wastes one auto-increment gap per duplicate hit. Use the <strong>check-then-insert</strong> pattern for all registration-time tables: <code>SELECT id (check) → try INSERT → catch dup → re-read</code>. This applies to <em>all</em> lookup tables including <code>hook_route</code>, <code>hook_group</code>, <code>activity</code>, and <code>activity_status</code>.
-    </div>
-  </section>
-
-  <section class="doc-section" id="rules-naming">
-    <h3 class="sub-title">1.5 Naming Conventions</h3>
-    <ul>
-      <li>Flag enums prefixed: <code>LifeCycleStateFlag</code>, <code>LifeCycleInstanceFlag</code>, etc.</li>
-      <li>DAL group classes: <code>internal sealed</code> (except <code>WorkflowDAL</code> / <code>DALUtil</code>).</li>
-      <li>Query placeholders for JOIN queries: use unique identifiers — e.g. <code>ENV_NAME</code>, <code>DEF_NAME</code>, <code>ROUTE_ID</code>, <code>GROUP_ID</code> instead of generic <code>NAME</code>.</li>
-    </ul>
-  </section>
-
   <!-- ──────────────── FLOW ──────────────── -->
   <section class="doc-section" id="flow-trigger">
-    <div class="section-label">Section 3</div>
-    <h2 class="section-title">Core Runtime Flow</h2>
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">How It Works</h2>
     <h3 class="sub-title">3.1 Trigger (Application → Engine)</h3>
     <p>Application calls <code>TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct)</code>.</p>
     <div class="table-wrap">
@@ -603,10 +608,10 @@
           <tr><td><code>Flag</code></td><td>Optional</td><td><code>LifeCycleInstanceFlag?</code> — instance-level flags (e.g. <code>Suspended</code>). Applied at creation time; ignored on subsequent triggers.</td></tr>
           <tr><td><code>InstanceGuid</code></td><td>Optional</td><td>If set, used as highest-priority direct lookup for the instance — skips <code>EnvCode+DefName+EntityId</code> resolution. Inherited from <code>LifeCycleInstanceKey</code>.</td></tr>
           <tr><td><code>Payload</code></td><td>Optional</td><td>Audit data for this specific transition. Stored in <code>lc_data.payload</code>. <strong>Not forwarded to consumers in events</strong> — audit-only.</td></tr>
-          <tr><td><code>Metadata</code></td><td>Optional <span class="badge new">NEW</span></td><td>Immutable instance tag set once at creation. Opaque string (consumer-defined structure). Stored in <code>instance.metadata</code>. Forwarded on every <code>ILifeCycleEvent</code> as <code>Metadata</code>. Ignored on subsequent triggers for the same instance.</td></tr>
+          <tr><td><code>Metadata</code></td><td>Optional </td><td>Immutable instance tag set once at creation. Opaque string (consumer-defined structure). Stored in <code>instance.metadata</code>. Forwarded on every <code>ILifeCycleEvent</code> as <code>Metadata</code>. Ignored on subsequent triggers for the same instance.</td></tr>
           <tr><td><code>AckRequired</code></td><td>Optional</td><td>Default <code>true</code>. When <code>false</code>: no <code>inbox</code>/<code>outbox</code> ACK rows are created; hooks fire immediately ignoring <code>order</code>. Only appropriate for purely system-automated transitions (e.g. timeouts). See <a href="#ack-required-design" style="color:var(--accent)">AckRequired design notes</a>.</td></tr>
-          <tr><td><code>OccurredAt</code></td><td>Optional <span class="badge new">NEW</span></td><td>Real-world event time for replay/backdating. <code>null</code> = engine uses UTC now. Stored in <code>lifecycle.occurred</code>; never overwrites <code>lifecycle.created</code>.</td></tr>
-          <tr><td><code>SkipAckGate</code></td><td>Optional <span class="badge new">NEW</span></td><td>Bypass the ACK gate for this specific call. Default <code>false</code>.</td></tr>
+          <tr><td><code>OccurredAt</code></td><td>Optional </td><td>Real-world event time for replay/backdating. <code>null</code> = engine uses UTC now. Stored in <code>lifecycle.occurred</code>; never overwrites <code>lifecycle.created</code>.</td></tr>
+          <tr><td><code>SkipAckGate</code></td><td>Optional </td><td>Bypass the ACK gate for this specific call. Default <code>false</code>.</td></tr>
         </tbody>
       </table>
     </div>
@@ -619,7 +624,7 @@
       <li><div class="step-num">2</div><div class="step-body"><strong>Resolve consumers</strong> — at least one transition consumer must exist. Hook consumers are optional.</div></li>
       <li><div class="step-num">3</div><div class="step-body"><strong>Resolve policy</strong> (<code>IPolicyEnforcer.ResolvePolicyAsync</code>) — gets the latest policy for the definition.</div></li>
       <li><div class="step-num">4</div><div class="step-body"><strong>Ensure instance</strong> (<code>IStateMachine.EnsureInstanceAsync</code>) — creates or retrieves. Policy is attached at creation time and never changes for that instance.</div></li>
-      <li><div class="step-num new-step">4b</div><div class="step-body"><strong>ACK gate check</strong> <span class="badge new">NEW</span> — if <code>AckGateEnabled &amp;&amp; !SkipAckGate</code>, counts <code>ack_consumer</code> rows for the last lifecycle entry of this instance that are NOT in terminal status (Processed / Failed). If any exist, commits and returns <code>Applied=false, Reason="BlockedByPendingAck"</code>.</div></li>
+      <li><div class="step-num new-step">4b</div><div class="step-body"><strong>ACK gate check</strong>  — if <code>AckGateEnabled &amp;&amp; !SkipAckGate</code>, counts <code>ack_consumer</code> rows for the last lifecycle entry of this instance that are NOT in terminal status (Processed / Failed). If any exist, commits and returns <code>Applied=false, Reason="BlockedByPendingAck"</code>.</div></li>
       <li><div class="step-num">5</div><div class="step-body"><strong>Apply transition</strong> (<code>IStateMachine.ApplyTransitionAsync</code>) — validates transition, CAS-updates instance state, inserts lifecycle row. If already moved → commits and returns early.</div></li>
       <li><div class="step-num">6</div><div class="step-body"><strong>Resolve rule context</strong> from policy JSON — extracts <code>params</code>, <code>on_success_event</code>, <code>on_failure_event</code> for the matched rule.</div></li>
       <li><div class="step-num">7</div><div class="step-body"><strong>Create lifecycle ACK</strong> (<code>IAckManager.CreateLifecycleAckAsync</code>) — one <code>ack_guid</code>, multiple consumer rows, linked via <code>lc_ack</code>.</div></li>
@@ -630,7 +635,7 @@
   </section>
 
   <section class="doc-section" id="flow-ackgate">
-    <h3 class="sub-title">3.2b ACK Gate <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">3.2b ACK Gate </h3>
     <p>Prevents a new state transition from being applied while the last lifecycle entry of the instance still has unresolved ACK consumers.</p>
     <div class="card-grid">
       <div class="card">
@@ -674,7 +679,7 @@
           <tr><td><code>DefinitionId</code></td><td>long</td><td>Engine definition ID</td></tr>
           <tr><td><code>DefinitionVersionId</code></td><td>long</td><td>Engine def_version ID</td></tr>
           <tr><td><code>AckGuid</code></td><td>string?</td><td>ACK GUID for this event — passed back via <code>AckAsync</code></td></tr>
-          <tr><td><code>Metadata</code></td><td>string?</td><td><span class="badge new">NEW</span> Immutable instance metadata tag set once at creation via <code>LifeCycleTriggerRequest.Metadata</code>. Stored in <code>instance.metadata</code>. Forwarded on every event. Not interpreted by the engine.</td></tr>
+          <tr><td><code>Metadata</code></td><td>string?</td><td> Immutable instance metadata tag set once at creation via <code>LifeCycleTriggerRequest.Metadata</code>. Stored in <code>instance.metadata</code>. Forwarded on every event. Not interpreted by the engine.</td></tr>
           <tr><td><code>Params</code></td><td>object?</td><td>Params from the matched policy rule</td></tr>
           <tr><td><code>OnSuccessEvent</code></td><td>string?</td><td>Event code to trigger on success (from policy <code>complete.success</code>)</td></tr>
           <tr><td><code>OnFailureEvent</code></td><td>string?</td><td>Event code to trigger on failure (from policy <code>complete.failure</code>)</td></tr>
@@ -695,10 +700,10 @@
           <tr><td><code>ACK_RETRY</code></td><td><span class="badge warn">Warn</span></td><td>ACK pending/delivered too long; event re-raised</td></tr>
           <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>blocking</strong> hook; instance suspended</td></tr>
           <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td></tr>
-          <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> All hooks in a named group are Processed for this instance</td></tr>
-          <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Group completion DB check failed; ACK itself was still accepted</td></tr>
-          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> Next-order hooks dispatched after all blocking hooks at the prior order completed</td></tr>
-          <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Exception during order advancement or ACK fan-out; originating ACK was still accepted</td></tr>
+          <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td> All hooks in a named group are Processed for this instance</td></tr>
+          <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks dispatched after all blocking hooks at the prior order completed</td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; originating ACK was still accepted</td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance stuck in state with no open ACKs and no policy timeout</td></tr>
           <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop</td></tr>
           <tr><td><code>EVENT_HANDLER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception in an <code>EventRaised</code> handler</td></tr>
@@ -717,18 +722,48 @@
 <span class="kw">await</span> engine.AckAsync(envCode, consumerGuid, ackGuid, outcome, ...);</code><span class="lang-label">C#</span></pre>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>AckOutcome (input)</th><th>AckStatus (persisted)</th><th>Meaning</th></tr></thead>
+        <thead><tr><th>AckOutcome (input)</th><th>AckStatus (persisted)</th><th>next_due</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td><code>Delivered</code></td><td><code>Delivered</code></td><td>"I received it" — fast, &lt;30 s</td></tr>
-          <tr><td><code>Processed</code></td><td><code>Processed</code></td><td>"I finished processing it" — &lt;5 min</td></tr>
-          <tr><td><code>Retry</code></td><td><code>Pending</code> + reschedule</td><td>Transient fault — retry later</td></tr>
-          <tr><td><code>Failed</code></td><td><code>Failed</code></td><td>Terminal — no more retries</td></tr>
+          <tr><td><code>Delivered</code></td><td><code>Delivered</code></td><td>now + deliveredWindow</td><td>"I received it, still processing" — monitor will re-fire if no further ACK arrives</td></tr>
+          <tr><td><code>Processed</code></td><td><code>Processed</code></td><td>NULL (terminal)</td><td>"Done" — no further delivery</td></tr>
+          <tr><td><code>Retry</code></td><td><code>Pending</code></td><td>retryAt ?? now + pendingWindow</td><td>"Not ready yet — check back later" — consumer controls the reschedule time</td></tr>
+          <tr><td><code>Failed</code></td><td><code>Failed</code></td><td>NULL (terminal)</td><td>"Giving up" — no more retries</td></tr>
         </tbody>
       </table>
     </div>
-    <div class="callout new">
-      <div class="callout-title">Hook Group Completion Check (NEW)</div>
-      After any <code>AckAsync(Processed)</code> call, the engine automatically checks whether the ACK belongs to a grouped hook. If all sibling hooks in the group (same <code>instance_id + state_id + via_event + on_entry</code>) are now Processed, a <code>HOOK_GROUP_COMPLETE</code> Info notice fires. Errors in this check are isolated — the ACK itself succeeds regardless.
+
+    <h4 class="mini-title">How Retry and trigger_count interact</h4>
+    <p>
+      <code>trigger_count</code> tracks how many times the engine has actually re-delivered the event.
+      It is incremented <strong>only by the monitor</strong> when it fires the event — not by the consumer calling <code>Retry</code>.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Action</th><th>trigger_count</th><th>next_due</th></tr></thead>
+        <tbody>
+          <tr><td>Engine first fires event</td><td>+1</td><td>now + pendingWindow</td></tr>
+          <tr><td>Consumer calls <code>AckAsync(Retry, retryAt)</code></td><td>no change</td><td>retryAt (consumer-controlled)</td></tr>
+          <tr><td>Monitor ticks — next_due still in future</td><td>no change</td><td>unchanged</td></tr>
+          <tr><td>Monitor ticks — next_due has passed → re-delivers</td><td>+1</td><td>now + pendingWindow</td></tr>
+          <tr><td>Consumer calls <code>Retry</code> again</td><td>no change</td><td>new retryAt</td></tr>
+          <tr><td>Monitor re-delivers again</td><td>+1</td><td>now + pendingWindow</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">Retry does not grant unlimited time</div>
+      <p>
+        The consumer can push the re-delivery date forward using <code>retryAt</code>, but each time the monitor eventually re-delivers, <code>trigger_count</code> increments.
+        Once <code>trigger_count &ge; MaxRetryCount</code>, the engine marks the ACK <code>Failed</code> and suspends the instance (for blocking hooks) regardless of how far out the consumer kept scheduling retries.
+      </p>
+      <p style="margin-top:8px">
+        <strong>For genuinely long-running human tasks</strong> (reviews that take days or weeks), the right pattern is to ACK <code>Processed</code> immediately when the hook fires — recording that the task was handed off — and then call <code>TriggerAsync</code> with the appropriate event when the human completes their work. This keeps the ACK clean and the workflow from being held hostage to a retry counter.
+      </p>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">Hook Group Completion</div>
+      After any <code>AckAsync(Processed)</code> call, the engine automatically checks whether the ACK belongs to a grouped hook. If all sibling hooks in the group (same <code>instance_id + state_id + via_event + on_entry</code>) are now Processed, a <code>HOOK_GROUP_COMPLETE</code> notice fires. Errors in this check are isolated — the ACK itself succeeds regardless.
     </div>
   </section>
 
@@ -765,15 +800,19 @@
 
   <!-- ──────────────── COMPONENTS ──────────────── -->
   <section class="doc-section" id="comp-dal">
-    <div class="section-label">Section 4</div>
-    <h2 class="section-title">Major Components</h2>
+    <div class="section-label">Architecture</div>
+    <h2 class="section-title">Architecture</h2>
+    <div class="callout tip" style="margin-bottom:24px">
+      <div class="callout-title">For SDK users</div>
+      This section describes the engine's internal architecture. If you are building an application that uses the engine, you do not need to understand these components — they are wired up automatically by <code>WorkFlowEngine</code>. Jump to <a href="#" onclick="gotoSection('chore-saga');return false;" style="color:var(--tip-border)">Consumer Patterns</a>, <a href="#" onclick="gotoSection('pol-structure');return false;" style="color:var(--tip-border)">Policy Reference</a>, or <a href="#" onclick="gotoSection('ex-loan');return false;" style="color:var(--tip-border)">Examples</a>.
+    </div>
     <h3 class="sub-title">4.1 WorkFlowDAL <span class="tag" style="background:#f1f5f9;color:#374151">DB gateway</span></h3>
     <ul>
       <li>Single entry point to DB for all engine operations</li>
       <li>Consolidates all read/write DALs behind <code>IWorkFlowDAL</code></li>
       <li>Enforces query-first discipline (<code>QRY_*</code>)</li>
       <li>Exposes <code>CreateNewTransaction()</code> for engine-owned transactions</li>
-      <li>DAL properties: <code>Instance</code>, <code>LifeCycle</code>, <code>LcAck</code>, <code>HookAck</code>, <code>AckConsumer</code>, <code>Hook</code>, <code>HookRoute</code> <span class="badge new">NEW</span>, <code>HookGroup</code> <span class="badge new">NEW</span>, <code>Blueprint</code>, <code>Policy</code>, …</li>
+      <li>DAL properties: <code>Instance</code>, <code>LifeCycle</code>, <code>LcAck</code>, <code>HookAck</code>, <code>AckConsumer</code>, <code>Hook</code>, <code>HookRoute</code> , <code>HookGroup</code> , <code>Blueprint</code>, <code>Policy</code>, …</li>
     </ul>
   </section>
 
@@ -825,10 +864,10 @@
       <li><code>EmitHooksAsync(blueprint, instance, transition, load, policyJson)</code>:
         <ul>
           <li>Matches policy rules by <code>(state, via_event)</code></li>
-          <li>For each emit entry: resolves <code>route</code> string → <code>hook_route.id</code> (upsert, global table) <span class="badge new">NEW</span></li>
-          <li>If <code>"group"</code> present: resolves group name → <code>hook_group.id</code> (upsert, global table) <span class="badge new">NEW</span></li>
+          <li>For each emit entry: resolves <code>route</code> string → <code>hook_route.id</code> (upsert, global table) </li>
+          <li>If <code>"group"</code> present: resolves group name → <code>hook_group.id</code> (upsert, global table) </li>
           <li>Upserts <code>hook</code> row with <code>route_id</code>, <code>blocking</code>, <code>group_id</code></li>
-          <li>Returns <code>LifeCycleHookEmission</code> with: <code>HookId</code>, <code>HookCode</code>, <code>OnEntry</code>, <code>IsBlocking</code> <span class="badge new">NEW</span>, <code>GroupName</code> <span class="badge new">NEW</span>, <code>OnSuccessEvent</code>, <code>OnFailureEvent</code>, <code>NotBefore</code>, <code>Deadline</code>, <code>Params</code></li>
+          <li>Returns <code>LifeCycleHookEmission</code> with: <code>HookId</code>, <code>HookCode</code>, <code>OnEntry</code>, <code>IsBlocking</code> , <code>GroupName</code> , <code>OnSuccessEvent</code>, <code>OnFailureEvent</code>, <code>NotBefore</code>, <code>Deadline</code>, <code>Params</code></li>
         </ul>
       </li>
     </ul>
@@ -846,7 +885,7 @@
       <li>Creates <code>ack_consumer</code> rows with initial status and <code>next_due</code> scheduling</li>
       <li><strong>Insert-only rule:</strong> <code>EnsureConsumersInsertOnlyAsync</code> — never overwrites existing status/next_due. Prevents rescheduling on restart</li>
       <li>Updates statuses on <code>AckAsync</code> calls</li>
-      <li>Monitor dispatch: <code>ListDueLifecycleDispatchAsync</code>, <code>ListDueHookDispatchAsync</code> (carry <code>group_name</code> <span class="badge new">NEW</span>)</li>
+      <li>Monitor dispatch: <code>ListDueLifecycleDispatchAsync</code>, <code>ListDueHookDispatchAsync</code> (carry <code>group_name</code> )</li>
       <li><strong>Critical:</strong> ACK identifiers are stable — re-dispatch always uses the same <code>ack_guid</code></li>
     </ul>
   </section>
@@ -867,13 +906,13 @@
     <p><strong>Role:</strong> The orchestrator + public API surface. Implements <code>IWorkFlowEngine</code> + <code>ILifeCycleEngine</code>.</p>
     <p><strong>Public operations:</strong></p>
     <ul>
-      <li><code>TriggerAsync</code> — full transactional trigger pipeline (includes ACK gate check) <span class="badge new">NEW</span></li>
-      <li><code>AckAsync</code> — two overloads; after Processed: runs hook group completion check <span class="badge new">NEW</span></li>
+      <li><code>TriggerAsync</code> — full transactional trigger pipeline (includes ACK gate check) </li>
+      <li><code>AckAsync</code> — two overloads; after Processed: runs hook group completion check </li>
       <li><code>RegisterConsumerAsync</code>, <code>BeatConsumerAsync</code></li>
       <li><code>InvalidateAsync</code>, <code>ClearCacheAsync</code></li>
       <li><code>StartMonitorAsync</code>, <code>StopMonitorAsync</code></li>
       <li><code>GetTimelineJsonAsync</code></li>
-      <li><code>UpsertRuntimeAsync</code>, <code>SetRuntimeStatusAsync</code>, <code>FreezeRuntimeAsync</code>, <code>UnfreezeRuntimeAsync</code></li>
+      <li><code>UpsertRuntimeAsync</code> — single write API for runtime activity logging (call twice: once with "running", once with final status)</li>
     </ul>
     <p>Raises only two C# events: <code>EventRaised</code> (actionable) and <code>NoticeRaised</code> (informational). Implements <code>IAsyncDisposable</code>.</p>
   </section>
@@ -882,10 +921,10 @@
     <h3 class="sub-title">4.9 RuntimeEngine</h3>
     <p><strong>Role:</strong> Observability + app activity/status storage. <em>Not smart workflow.</em></p>
     <ul>
-      <li><code>UpsertAsync(RuntimeLogByNameRequest)</code> — create or update runtime activity rows by name; <code>RuntimeLogByNameRequest.Instance</code> is a <code>LifeCycleInstanceKey</code></li>
-      <li><code>SetStatusAsync(LifeCycleRuntimeRef, status)</code> — update activity status by business key</li>
-      <li><code>SetFrozenAsync(LifeCycleRuntimeRef, frozen)</code> — freeze/unfreeze a runtime activity by business key</li>
-      <li>Runtime rows link to: <code>instance_id</code>, <code>lc_id</code>, <code>state_id</code>, <code>activity</code>, <code>status</code>, <code>actor_id</code></li>
+      <li><code>UpsertAsync(RuntimeLogByIdRequest)</code> — internal upsert via <code>ON DUPLICATE KEY UPDATE</code>; called twice (once with "running", once with final status) to update the same row in-place</li>
+      <li><code>EnsureActivityAsync(name)</code> / <code>EnsureActivityStatusAsync(name)</code> — get-or-create activity and status lookup rows</li>
+      <li>Runtime rows link to: <code>instance_id</code>, <code>state_id</code>, <code>activity_id</code>, <code>status_id</code>, <code>actor_id</code></li>
+      <li>State is resolved by the public API (<code>WorkFlowEngine.UpsertRuntimeAsync</code>) via <code>AckGuid → hook_ack → hook.state_id</code>, never by the consumer directly</li>
       <li>Does not participate in workflow correctness — reporting and timeline only</li>
     </ul>
   </section>
@@ -895,14 +934,14 @@
     <p><code>GetTimelineJsonAsync(LifeCycleInstanceKey key)</code> returns a comprehensive JSON document built via a single SQL query using JSON aggregation. Pass <code>InstanceGuid</code> for direct lookup or <code>EnvCode+DefName+EntityId</code> for name-based resolution.</p>
     <dl>
       <dt><code>lifecycle.created</code></dt><dd>When the engine captured the transition. Always set by the engine. Never overridden.</dd>
-      <dt><code>lifecycle.occurred</code> <span class="badge new">NEW</span></dt><dd>The real-world event time. Set by the caller via <code>req.OccurredAt</code> for replay or late-join scenarios. <code>null</code> for normal flow.</dd>
+      <dt><code>lifecycle.occurred</code> </dt><dd>The real-world event time. Set by the caller via <code>req.OccurredAt</code> for replay or late-join scenarios. <code>null</code> for normal flow.</dd>
     </dl>
     <div class="callout tip"><div class="callout-title">Display rule</div>When rendering a timeline, prefer <code>occurred</code> if present, fall back to <code>created</code>. Never override <code>created</code>.</div>
   </section>
 
   <!-- ──────────────── CHOREOGRAPHY ──────────────── -->
   <section class="doc-section" id="chore-saga">
-    <div class="section-label">Section 5</div>
+    <div class="section-label">Consumer Patterns</div>
     <h2 class="section-title">Consumer Choreography</h2>
     <h3 class="sub-title" id="chore-saga">5.1 Saga Choreography</h3>
     <p>A decentralized, event-driven process where each consumer (microservice) reacts independently and makes the state transition after completing their work. Other consumers remain as observers.</p>
@@ -984,7 +1023,7 @@
 
   <!-- ──────────────── POLICY REFERENCE ──────────────── -->
   <section class="doc-section" id="pol-structure">
-    <div class="section-label">Section 6</div>
+    <div class="section-label">Policy</div>
     <h2 class="section-title">JSON Policy Reference</h2>
     <h3 class="sub-title">6.1 Policy Structure</h3>
     <pre><code>{
@@ -1042,10 +1081,10 @@
         <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><code>event</code></td><td>string</td><td>Route / hook code. Stored in <code>hook_route</code> table (normalized). Consumers use this to dispatch work.</td></tr>
-          <tr><td><code>blocking</code></td><td>bool</td><td><span class="badge new">NEW</span> If <code>true</code> (default), ACK failure suspends the instance. If <code>false</code>, failure fires <code>ACK_FAIL</code> notice and instance continues.</td></tr>
-          <tr><td><code>group</code></td><td>string?</td><td><span class="badge new">NEW</span> Group name. Emits sharing the same group in the same rule are tracked together. <code>HOOK_GROUP_COMPLETE</code> fires when all are Processed.</td></tr>
-          <tr><td><code>order</code></td><td>int</td><td><span class="badge new">NEW</span> Emission order stage (default <code>1</code>). Lower-numbered stages fire first. Same-order emits dispatch in parallel. Blocking hooks at stage N must all reach <code>Processed</code> before stage N+1 is dispatched. If <code>AckRequired=false</code>, all hooks dispatch immediately regardless of order.</td></tr>
-          <tr><td><code>ack_mode</code></td><td>string</td><td><span class="badge new">NEW</span> <code>"all"</code> (default) — every consumer must ACK Processed. <code>"any"</code> — the first consumer to ACK Processed marks all sibling <code>ack_consumer</code> rows Processed automatically.</td></tr>
+          <tr><td><code>blocking</code></td><td>bool</td><td> If <code>true</code> (default), ACK failure suspends the instance. If <code>false</code>, failure fires <code>ACK_FAIL</code> notice and instance continues.</td></tr>
+          <tr><td><code>group</code></td><td>string?</td><td> Group name. Emits sharing the same group in the same rule are tracked together. <code>HOOK_GROUP_COMPLETE</code> fires when all are Processed.</td></tr>
+          <tr><td><code>order</code></td><td>int</td><td> Emission order stage (default <code>1</code>). Lower-numbered stages fire first. Same-order emits dispatch in parallel. Blocking hooks at stage N must all reach <code>Processed</code> before stage N+1 is dispatched. If <code>AckRequired=false</code>, all hooks dispatch immediately regardless of order.</td></tr>
+          <tr><td><code>ack_mode</code></td><td>string</td><td> <code>"all"</code> (default) — every consumer must ACK Processed. <code>"any"</code> — the first consumer to ACK Processed marks all sibling <code>ack_consumer</code> rows Processed automatically.</td></tr>
           <tr><td><code>params</code></td><td>string[]</td><td>Param codes to resolve from the <code>params</code> catalog. Overrides rule-level params.</td></tr>
           <tr><td><code>complete</code></td><td>object</td><td><code>{ "success": eventCode, "failure": eventCode }</code>. Overrides rule-level complete.</td></tr>
           <tr><td><code>on_entry</code></td><td>bool</td><td>Default <code>true</code>. Set <code>false</code> for on-exit hooks.</td></tr>
@@ -1057,7 +1096,7 @@
   </section>
 
   <section class="doc-section" id="pol-blocking">
-    <h3 class="sub-title">6.3 Blocking Flag <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">6.3 Blocking Flag </h3>
     <p>Controls what happens when an ACK consumer exceeds max retries.</p>
     <div class="card-grid">
       <div class="card">
@@ -1085,9 +1124,9 @@
   </section>
 
   <section class="doc-section" id="pol-groups">
-    <h3 class="sub-title">6.4 Hook Groups <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">6.4 Hook Groups </h3>
     <p>Two or more emit entries sharing the same <code>"group"</code> value in the same rule belong to a <strong>hook group</strong>. The engine tracks all hooks in the group and fires a notice when all are Processed.</p>
-    <div class="callout new">
+    <div class="callout tip">
       <div class="callout-title">Key design decisions</div>
       <ul style="margin:6px 0 0;padding-left:18px">
         <li>Group names are stored in a global <code>hook_group</code> table (no <code>instance_id</code>) — same pattern as <code>hook_route</code></li>
@@ -1120,7 +1159,7 @@
   </section>
 
   <section class="doc-section" id="pol-order">
-    <h3 class="sub-title">6.5 Ordered Emission <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">6.5 Ordered Emission </h3>
     <p>Add an <code>"order"</code> integer (default <code>1</code>) to each emit entry. The engine groups emits by their order value and dispatches them sequentially:</p>
     <ol style="margin:10px 0 14px;padding-left:22px;line-height:1.9">
       <li>On trigger, only the <strong>lowest-order</strong> hooks are dispatched (their hook rows get ACK rows and events fired).</li>
@@ -1191,7 +1230,7 @@
   </section>
 
   <section class="doc-section" id="pol-ackmode">
-    <h3 class="sub-title">6.6 ACK Mode: All vs Any <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">6.6 ACK Mode: All vs Any </h3>
     <p>Controls how many consumers need to ACK <code>Processed</code> for a hook to be considered satisfied.</p>
     <div class="card-grid">
       <div class="card">
@@ -1265,8 +1304,8 @@
           <tr><td><code>state</code></td><td>States per def_version</td><td><code>id</code>, <code>def_version</code>, <code>name</code>, <code>flags</code></td></tr>
           <tr><td><code>events</code></td><td>Events per def_version</td><td><code>id</code>, <code>def_version</code>, <code>code</code>, <code>name</code></td></tr>
           <tr><td><code>transition</code></td><td>Valid state transitions</td><td><code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>def_version</code></td></tr>
-          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>entity_id</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code>, <code>metadata</code> <span class="badge new">NEW</span>, <code>context</code> <span class="badge new">NEW</span></td></tr>
-          <tr><td><code>lifecycle</code></td><td>Transition audit log</td><td><code>id</code>, <code>instance_id</code>, <code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>created</code>, <code>occurred</code> <span class="badge new">NEW</span></td></tr>
+          <tr><td><code>instance</code></td><td>Running workflow instances</td><td><code>id</code>, <code>guid</code>, <code>def_version</code>, <code>entity_id</code>, <code>current_state</code>, <code>flags</code>, <code>policy_id</code>, <code>metadata</code> , <code>context</code> </td></tr>
+          <tr><td><code>lifecycle</code></td><td>Transition audit log</td><td><code>id</code>, <code>instance_id</code>, <code>from_state</code>, <code>to_state</code>, <code>event</code>, <code>created</code>, <code>occurred</code> </td></tr>
           <tr><td><code>lc_data</code></td><td>Payload / actor per lifecycle entry</td><td><code>lc_id</code>, <code>actor</code>, <code>payload</code></td></tr>
           <tr><td><code>policy</code></td><td>Policy content (hashed)</td><td><code>id</code>, <code>hash</code>, <code>content</code></td></tr>
           <tr><td><code>def_policies</code></td><td>Policy ↔ definition link</td><td><code>definition</code>, <code>policy</code></td></tr>
@@ -1279,14 +1318,14 @@
   </section>
 
   <section class="doc-section" id="schema-hook">
-    <h3 class="sub-title">Hook Tables <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">Hook Tables </h3>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Table</th><th>Purpose</th><th>Key Columns</th></tr></thead>
         <tbody>
-          <tr><td><code>hook_route</code> <span class="badge new">NEW</span></td><td>Global normalized lookup for route names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(240) UNIQUE</code></td></tr>
-          <tr><td><code>hook_group</code> <span class="badge new">NEW</span></td><td>Global normalized lookup for group names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(140) UNIQUE</code></td></tr>
-          <tr><td><code>hook</code></td><td>Work items derived from policy emit rules</td><td><code>id</code>, <code>instance_id</code>, <code>state_id</code>, <code>via_event</code>, <code>on_entry</code>, <code>route_id FK→hook_route</code>, <code>blocking</code> <span class="badge new">NEW</span>, <code>group_id FK→hook_group</code> <span class="badge new">NEW</span>, <code>order_seq</code> <span class="badge new">NEW</span>, <code>dispatched</code> <span class="badge new">NEW</span>, <code>ack_mode</code> <span class="badge new">NEW</span></td></tr>
+          <tr><td><code>hook_route</code> </td><td>Global normalized lookup for route names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(240) UNIQUE</code></td></tr>
+          <tr><td><code>hook_group</code> </td><td>Global normalized lookup for group names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(140) UNIQUE</code></td></tr>
+          <tr><td><code>hook</code></td><td>Work items derived from policy emit rules</td><td><code>id</code>, <code>instance_id</code>, <code>state_id</code>, <code>via_event</code>, <code>on_entry</code>, <code>route_id FK→hook_route</code>, <code>blocking</code> , <code>group_id FK→hook_group</code> , <code>order_seq</code> , <code>dispatched</code> , <code>ack_mode</code> </td></tr>
         </tbody>
       </table>
     </div>
@@ -1314,7 +1353,7 @@
   </section>
 
   <section class="doc-section" id="schema-instance-data">
-    <h3 class="sub-title">Instance Data Columns <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">Instance Data Columns </h3>
     <p>Two new columns were added to the <code>instance</code> table to support immutable metadata tagging and mutable consumer-controlled context:</p>
     <pre><code><span class="sql-kw">ALTER TABLE</span> <span class="sql-id">instance</span> <span class="sql-kw">ADD COLUMN</span> <span class="sql-id">metadata</span> TEXT <span class="sql-kw">NULL</span>;
 <span class="sql-kw">ALTER TABLE</span> <span class="sql-id">instance</span> <span class="sql-kw">ADD COLUMN</span> <span class="sql-id">context</span>  JSON <span class="sql-kw">NULL</span>;</code><span class="lang-label">SQL</span></pre>
@@ -1372,7 +1411,7 @@
           <tr>
             <td><code>runtime</code></td>
             <td><code>UNIQUE(instance_id, activity, state_id, actor_id)</code></td>
-            <td><code>UPSERT_BY_KEY_RETURN_ID</code> updates the existing runtime log entry rather than duplicating it. Without it, every <code>UpsertRuntimeAsync</code> call appends a new row. Status updates via <code>SetRuntimeStatusAsync</code> then target the correct single row.</td>
+            <td><code>UpsertRuntimeAsync</code> uses <code>ON DUPLICATE KEY UPDATE</code> — first call records "running", second call updates the same row to the final status. Without this constraint every call appends a new row.</td>
           </tr>
           <tr>
             <td><code>activity</code></td>
@@ -1420,8 +1459,8 @@
 
   <!-- ──────────────── INSTANCE DATA MODEL ──────────────── -->
   <section class="doc-section" id="instance-data-model">
-    <div class="section-label">Section 7</div>
-    <h2 class="section-title">Instance Data Model <span class="badge new">NEW</span></h2>
+    <div class="section-label">Instance Data</div>
+    <h2 class="section-title">Instance Data Model</h2>
     <p>Every workflow instance carries three distinct data layers. Understanding which layer to use is critical for correct consumer design.</p>
     <div class="table-wrap">
       <table>
@@ -1459,7 +1498,7 @@
 
   <!-- ──────────────── INSTANCE DATA API ──────────────── -->
   <section class="doc-section" id="instance-data-api">
-    <h2 class="section-title">Instance Data API <span class="badge new">NEW</span></h2>
+    <h2 class="section-title">Instance Data API</h2>
     <p>New public methods on <code>ILifeCycleRuntimeBus</code> (implemented by <code>WorkFlowEngine</code>) allow consumers and application code to query and update instance state.</p>
 
     <h4 class="mini-title">GetInstanceDataAsync</h4>
@@ -1525,7 +1564,7 @@
       <code>instance.context</code> is intentionally <strong>not</strong> forwarded in <code>ILifeCycleEvent</code> to keep event payloads lean and avoid stale-read issues. Always call <code>GetInstanceContextAsync</code> when you need the latest context value.
     </div>
 
-    <h4 class="mini-title">LifeCycleInstanceKey — Model Properties <span class="badge new">NEW</span></h4>
+    <h4 class="mini-title">LifeCycleInstanceKey — Model Properties </h4>
     <p>Used as the input key for all instance lookup operations. Set <code>InstanceGuid</code> alone for direct lookup; set <code>EnvCode + DefName + EntityId</code> for name-based resolution. <code>LifeCycleTriggerRequest</code> inherits from this class.</p>
     <div class="table-wrap">
       <table>
@@ -1543,27 +1582,32 @@
       If <code>InstanceGuid</code> is set → direct DB lookup by GUID. Otherwise → resolve blueprint via <code>EnvCode+DefName</code> (unique), then resolve instance via <code>defVersionId+EntityId</code>.
     </div>
 
-    <h4 class="mini-title">LifeCycleRuntimeRef — Model Properties <span class="badge new">NEW</span></h4>
-    <p>Business-key reference to a specific runtime log entry. Used by <code>SetRuntimeStatusAsync</code>, <code>FreezeRuntimeAsync</code>, and <code>UnfreezeRuntimeAsync</code> instead of storing a raw numeric runtime ID.</p>
+    <h4 class="mini-title">RuntimeLogByNameRequest — Model Properties</h4>
+    <p>Passed to <code>UpsertRuntimeAsync</code>. The engine normalises <code>Activity</code> and <code>Status</code> (trim + lowercase + collapse whitespace) before writing to the DB, so consumer strings like <code>"Running"</code> or <code>"APPROVED"</code> are always stored in canonical form.</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <thead><tr><th>Property</th><th>Type</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>Instance</code></td><td>LifeCycleInstanceKey</td><td>Identifies the workflow instance (by <code>InstanceGuid</code> or <code>EnvCode+DefName+EntityId</code>).</td></tr>
-          <tr><td><code>Activity</code></td><td>string</td><td>Activity display name (e.g. <code>"credit_check"</code>).</td></tr>
-          <tr><td><code>ActorId</code></td><td>string</td><td>Actor / consumer identifier that owns this runtime entry.</td></tr>
-          <tr><td><code>StateId</code></td><td>long</td><td>State DB ID — obtained from <code>ILifeCycleEvent</code> or <code>ILifeCycleTransitionEvent</code>.</td></tr>
-          <tr><td><code>Id</code></td><td>long?</td><td>If set, used as highest priority — skips all instance/activity lookups. This is the value returned by <code>UpsertRuntimeAsync</code>.</td></tr>
+          <tr><td><code>Instance</code></td><td>LifeCycleInstanceKey</td><td>Identifies the workflow instance. Set <code>InstanceGuid</code> for the fastest path, or <code>EnvCode+DefName+EntityId</code> for name-based resolution.</td></tr>
+          <tr><td><code>Activity</code></td><td>string</td><td>What the consumer did (e.g. <code>"send approval email"</code>). Normalised before storage.</td></tr>
+          <tr><td><code>Status</code></td><td>string</td><td>Current status (e.g. <code>"running"</code>, <code>"approved"</code>, <code>"failed"</code>). Normalised before storage.</td></tr>
+          <tr><td><code>ActorId</code></td><td>string</td><td>The actor / consumer identifier performing this activity.</td></tr>
+          <tr><td><code>AckGuid</code></td><td>string?</td><td>The <code>AckGuid</code> received in <code>ILifeCycleHookEvent</code>. When set, the engine resolves the correct state via <code>ack → hook_ack → hook.state_id</code> — guaranteeing the runtime row is anchored to the state that originally fired the hook, even during replay. See the callout below.</td></tr>
+          <tr><td><code>Data</code></td><td>object?</td><td>Arbitrary structured data (serialised to JSON). Useful for output values, IDs, or results produced during this activity.</td></tr>
+          <tr><td><code>Payload</code></td><td>object?</td><td>Arbitrary input payload (serialised to JSON). Useful for recording what the consumer was given when the hook fired.</td></tr>
         </tbody>
       </table>
     </div>
+
     <div class="callout tip">
-      <div class="callout-title">Recommended pattern</div>
-      Capture the <code>long</code> returned by <code>UpsertRuntimeAsync</code>, then pass it as <code>new LifeCycleRuntimeRef { Id = runtimeId }</code> to subsequent status/freeze calls. This is the fastest path and avoids re-lookup.
+      <div class="callout-title">Why AckGuid — not StateId</div>
+      <p>State is an <em>engine-internal</em> concept. Consumers only know <em>events</em> (actions like <code>"reviewCompleted"</code>) — the engine decides which state that action leads to. Exposing a numeric <code>StateId</code> on the request would force consumers to understand internal DB IDs they have no way to obtain.</p>
+      <p style="margin-top:8px">Instead, the consumer echoes back the <code>AckGuid</code> it already received in <code>ILifeCycleHookEvent</code>. The engine follows the chain <code>ack.guid → hook_ack.hook_id → hook.state_id</code> to resolve the correct state automatically.</p>
+      <p style="margin-top:8px"><strong>Replay safety:</strong> during a replay or a fast-moving workflow the instance may have already moved to a later state by the time the consumer calls <code>UpsertRuntimeAsync</code>. Anchoring via <code>AckGuid</code> ensures the runtime row is always recorded against the state the hook <em>actually fired for</em>, not whatever state the instance happens to be in at call time.</p>
     </div>
 
-    <h4 class="mini-title">ILifeCycleRuntimeBus — Full Interface <span class="badge new">NEW</span></h4>
-    <p>All public runtime bus operations on <code>WorkFlowEngine</code> (implements both <code>IWorkFlowEngine</code> and <code>ILifeCycleRuntimeBus</code>):</p>
+    <h4 class="mini-title">ILifeCycleRuntimeBus — Full Interface</h4>
+    <p>All public runtime bus operations on <code>WorkFlowEngine</code>:</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead>
@@ -1577,10 +1621,9 @@
           <tr><td><code>InvalidateAsync(long defVersionId, ct)</code></td><td><code>void</code></td><td>Invalidates cached blueprint by version ID.</td></tr>
           <tr><td><code>GetTimelineJsonAsync(LifeCycleInstanceKey key, ct)</code></td><td><code>string?</code></td><td>Returns comprehensive JSON timeline for the instance.</td></tr>
           <tr><td><code>GetInstanceRefsAsync(int envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, ct)</code></td><td><code>IReadOnlyList&lt;InstanceRefItem&gt;</code></td><td>Paged list of instance refs matching flags.</td></tr>
-          <tr><td><code>UpsertRuntimeAsync(RuntimeLogByNameRequest req, ct)</code></td><td><code>long</code></td><td>Create or update a runtime activity row. Returns the runtime row ID.</td></tr>
-          <tr><td><code>SetRuntimeStatusAsync(LifeCycleRuntimeRef runtimeRef, string status, ct)</code></td><td><code>int</code></td><td>Updates the status of a runtime activity row. Returns rows affected.</td></tr>
-          <tr><td><code>FreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, ct)</code></td><td><code>int</code></td><td>Freezes a runtime row (prevents future overwrites). Returns rows affected.</td></tr>
-          <tr><td><code>UnfreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, ct)</code></td><td><code>int</code></td><td>Unfreezes a previously frozen runtime row. Returns rows affected.</td></tr>
+          <tr><td><code>UpsertRuntimeAsync(RuntimeLogByNameRequest req, ct)</code></td><td><code>long</code></td><td>Create or update a runtime activity row. Call once with <code>Status="running"</code>, call again with the final status — the upsert updates the same row in-place via <code>ON DUPLICATE KEY UPDATE</code>. Returns the runtime row ID.</td></tr>
+          <tr><td><code>ListInstancesAsync(int envCode, string? defName, bool runningOnly, int skip, int take, ct)</code></td><td><code>DbRows</code></td><td>Paged list of instances, optionally filtered to running only.</td></tr>
+          <tr><td><code>ListPendingAcksAsync(int envCode, int skip, int take, ct)</code></td><td><code>DbRows</code></td><td>Paged list of pending ACK entries across all consumers.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1600,10 +1643,10 @@
           <tr><td><code>ACK_RETRY</code></td><td><span class="badge warn">Warn</span></td><td>Monitor re-dispatching a due event (pending or delivered too long)</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Instance suspended — max retries exceeded on a blocking hook</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>hookCode</code>, <code>instanceGuid</code></td></tr>
-          <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> All hooks in a named group are Processed for this instance+state</td><td><code>groupName</code>, <code>instanceGuid</code></td></tr>
-          <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Group completion DB check failed; ACK itself was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
-          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td><span class="badge new">NEW</span> Next-order hooks were dispatched after all blocking hooks at the prior order completed</td><td><code>orderSeq</code>, <code>instanceGuid</code></td></tr>
-          <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td><span class="badge new">NEW</span> Exception during order advancement or ACK fan-out; the originating ACK was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
+          <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td> All hooks in a named group are Processed for this instance+state</td><td><code>groupName</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks were dispatched after all blocking hooks at the prior order completed</td><td><code>orderSeq</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; the originating ACK was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance overdue in current state (no open ACKs, no policy timeout)</td><td><code>consumerId</code>, <code>instanceId</code>, <code>instanceGuid</code>, <code>stateName</code>, <code>staleSeconds</code></td></tr>
         </tbody>
       </table>
@@ -1616,7 +1659,7 @@
       <table>
         <thead><tr><th>Option</th><th>Default</th><th>Purpose</th></tr></thead>
         <tbody>
-          <tr><td><code>AckGateEnabled</code> <span class="badge new">NEW</span></td><td><code>false</code></td><td>Block new transitions while last lifecycle entry has pending consumers</td></tr>
+          <tr><td><code>AckGateEnabled</code> </td><td><code>false</code></td><td>Block new transitions while last lifecycle entry has pending consumers</td></tr>
           <tr><td><code>AckPendingResendAfter</code></td><td>40 seconds</td><td><code>next_due</code> interval for Pending status</td></tr>
           <tr><td><code>AckDeliveredResendAfter</code></td><td>4 minutes</td><td><code>next_due</code> interval for Delivered status</td></tr>
           <tr><td><code>MaxRetryCount</code></td><td>configurable</td><td>Max dispatch attempts before failure/suspension</td></tr>
@@ -1630,84 +1673,9 @@
     </div>
   </section>
 
-  <section class="doc-section" id="ref-quickstart">
-    <h3 class="sub-title">Quick Start</h3>
-    <pre><code><span class="cm">// 1. Build engine — auto-creates/migrates DB schema on first run</span>
-<span class="kw">var</span> engine = <span class="kw">await new</span> <span class="ty">WorkFlowEngineMaker</span> {
-    Options = <span class="kw">new</span> <span class="ty">WorkFlowEngineOptions</span> {
-        AckGateEnabled           = <span class="nb">true</span>,
-        DefaultStateStaleDuration = TimeSpan.FromHours(<span class="jn">24</span>),
-        MaxRetryCount             = <span class="jn">5</span>
-    }
-}.WithConnectionString(connectionString).Build(adapterGateway);
-
-<span class="cm">// 2. Subscribe to events and notices</span>
-engine.EventRaised  += HandleEventAsync;
-engine.NoticeRaised += HandleNoticeAsync;
-
-<span class="cm">// 3. Import schema and policy (idempotent — safe every startup)</span>
-<span class="kw">await</span> engine.ImportDefinitionJsonAsync(envCode, <span class="st">"Production"</span>, defJson);
-<span class="kw">await</span> engine.ImportPolicyJsonAsync(envCode, <span class="st">"Production"</span>, policyJson);
-
-<span class="cm">// 4. Register consumer + start heartbeat</span>
-<span class="kw">var</span> consumerId = <span class="kw">await</span> engine.RegisterConsumerAsync(envCode, myGuid);
-_ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="cm">// every ~10s</span>
-
-<span class="cm">// 5. Start monitor</span>
-<span class="kw">await</span> engine.StartMonitorAsync(cts.Token);
-
-<span class="cm">// 6. Trigger a transition</span>
-<span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-    EnvCode     = envCode,
-    DefName     = <span class="st">"loan-approval"</span>,
-    EntityId    = loanId.ToString(),
-    Event       = <span class="st">"submit"</span>,
-    Actor       = userId,
-    AckRequired = <span class="nb">true</span>,
-    OccurredAt  = <span class="nb">null</span>,        <span class="cm">// set DateTimeOffset for replay</span>
-    SkipAckGate = <span class="nb">false</span>        <span class="cm">// set true to bypass ACK gate once</span>
-});
-
-<span class="kw">if</span> (!result.Applied) {
-    Console.WriteLine($<span class="st">"Blocked: {result.Reason}"</span>); <span class="cm">// e.g. "BlockedByPendingAck"</span>
-    <span class="kw">return</span>;
-}
-
-<span class="cm">// 7. In event handler — ACK after processing</span>
-<span class="kw">async</span> Task HandleEventAsync(<span class="ty">ILifeCycleEvent</span> e) {
-    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleHookEvent</span> hook) {
-        <span class="cm">// dispatch based on hook.HookCode</span>
-        <span class="kw">await</span> DispatchHookAsync(hook);
-        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, AckOutcome.Processed);
-        <span class="cm">// ↑ if hook belongs to a group and all siblings are Processed,</span>
-        <span class="cm">//   HOOK_GROUP_COMPLETE notice fires automatically</span>
-    }
-}
-
-<span class="cm">// 8. Handle notices</span>
-<span class="kw">async</span> Task HandleNoticeAsync(<span class="ty">LifeCycleNotice</span> n) {
-    <span class="kw">switch</span> (n.Code) {
-        <span class="kw">case</span> <span class="st">"HOOK_GROUP_COMPLETE"</span>:
-            <span class="kw">var</span> group    = (<span class="ty">string</span>)n.Data[<span class="st">"groupName"</span>];
-            <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
-            <span class="cm">// all hooks in group done — trigger next macro event</span>
-            <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-                EntityId = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
-            });
-            <span class="kw">break</span>;
-        <span class="kw">case</span> <span class="st">"ACK_SUSPEND"</span>:
-            logger.LogCritical(<span class="st">"Instance suspended: {msg}"</span>, n.Message);
-            <span class="kw">break</span>;
-        <span class="kw">case</span> <span class="st">"STATE_STALE"</span>:
-            logger.LogWarning(<span class="st">"Instance overdue: {guid}"</span>, n.Data[<span class="st">"instanceGuid"</span>]);
-            <span class="kw">break</span>;
-    }
-}</code><span class="lang-label">C#</span></pre>
-  </section>
-
   <!-- ──────────────── EXAMPLES ──────────────── -->
   <section class="doc-section" id="ex-loan">
-    <div class="section-label">Section 8 — Examples</div>
+    <div class="section-label">Examples</div>
     <h2 class="section-title">Code Examples</h2>
     <h3 class="sub-title">Example 1 — Loan Approval (End-to-End)</h3>
     <p>A three-state approval workflow with a parallel hook group that gates the <code>approve</code> transition until all review hooks are Processed.</p>
@@ -1928,51 +1896,90 @@ engine.NoticeRaised += (n) => {
 
   <section class="doc-section" id="ex-runtime">
     <h3 class="sub-title">Example 5 — Runtime Activity Tracking</h3>
-    <p>Use the runtime engine to log fine-grained activity progress within a state. This is application-owned bookkeeping — not part of the state machine. Useful for detailed timeline views and dashboards.</p>
-    <pre><code><span class="cm">// Inside your transition event handler:</span>
+
+    <h4 class="mini-title">The Consumer Mental Model</h4>
+    <p>
+      A consumer only knows <strong>events</strong> (actions like <code>"reviewCompleted"</code> or <code>"creditCheckPassed"</code>).
+      It fires an event and the engine decides which state to move to based on the workflow definition.
+      The consumer never needs to know about states, state IDs, or internal DB identifiers — those are all engine-internal concepts.
+    </p>
+    <p style="margin-top:8px">
+      Runtime logging follows the same principle. The consumer says "I performed this activity with this outcome for this hook" — it does not say "I performed this activity in state 42". The engine derives the correct state automatically.
+    </p>
+
+    <h4 class="mini-title">The Upsert-as-Update Pattern</h4>
+    <p>
+      <code>UpsertRuntimeAsync</code> is the <em>only</em> write API for runtime data. The DB row is uniquely keyed on
+      <code>(instance_id, activity_id, state_id, actor_id)</code> with <code>ON DUPLICATE KEY UPDATE</code>.
+      This means calling it twice with the same key updates the same row — no separate status-update call is needed.
+    </p>
+    <pre><code><span class="cm">// Hook fires for "UnderReview" state → consumer handles it:</span>
 engine.EventRaised += <span class="kw">async</span> (e) => {
-    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleTransitionEvent</span> t &amp;&amp; t.EventCode == <span class="jn">100</span>) { <span class="cm">// submit</span>
+    <span class="kw">if</span> (e <span class="kw">is not</span> <span class="ty">ILifeCycleHookEvent</span> h) <span class="kw">return</span>;
+    <span class="kw">if</span> (h.Route != <span class="st">"CREDIT.CHECK"</span>) <span class="kw">return</span>;
 
-        <span class="cm">// Log "credit_check" activity as Pending</span>
-        <span class="kw">var</span> runtimeId = <span class="kw">await</span> engine.UpsertRuntimeAsync(<span class="kw">new</span> <span class="ty">RuntimeLogByNameRequest</span> {
-            Instance = <span class="kw">new</span> <span class="ty">LifeCycleInstanceKey</span> { InstanceGuid = t.InstanceGuid },
-            LcId     = t.LifeCycleId,
-            StateId  = t.ToStateId,
-            Activity = <span class="st">"credit_check"</span>,
-            ActorId  = t.Actor,
-            Status   = <span class="st">"Pending"</span>
-        });
+    <span class="cm">// Step 1 — record that work has started.</span>
+    <span class="cm">// AckGuid anchors this entry to the state that fired the hook.</span>
+    <span class="kw">await</span> engine.UpsertRuntimeAsync(<span class="kw">new</span> <span class="ty">RuntimeLogByNameRequest</span> {
+        Instance = <span class="kw">new</span> <span class="ty">LifeCycleInstanceKey</span> { InstanceGuid = h.InstanceGuid },
+        AckGuid  = h.AckGuid,   <span class="cm">// engine resolves state_id from here</span>
+        Activity = <span class="st">"credit check"</span>,
+        ActorId  = h.ConsumerId.ToString(),
+        Status   = <span class="st">"running"</span>
+    });
 
-        <span class="cm">// ... perform credit check ...</span>
-        <span class="kw">var</span> passed = <span class="kw">await</span> _credit.CheckAsync(t.EntityId);
+    <span class="cm">// Step 2 — do the actual work.</span>
+    <span class="kw">var</span> passed = <span class="kw">await</span> _credit.CheckAsync(h.EntityId);
 
-        <span class="cm">// Update to Completed or Failed using LifeCycleRuntimeRef</span>
-        <span class="kw">var</span> runtimeRef = <span class="kw">new</span> <span class="ty">LifeCycleRuntimeRef</span> {
-            Id = runtimeId  <span class="cm">// highest priority — skips all lookups</span>
-        };
-        <span class="kw">await</span> engine.SetRuntimeStatusAsync(runtimeRef, passed ? <span class="st">"Completed"</span> : <span class="st">"Failed"</span>);
+    <span class="cm">// Step 3 — update status. Same key → same row updated in-place.</span>
+    <span class="kw">await</span> engine.UpsertRuntimeAsync(<span class="kw">new</span> <span class="ty">RuntimeLogByNameRequest</span> {
+        Instance = <span class="kw">new</span> <span class="ty">LifeCycleInstanceKey</span> { InstanceGuid = h.InstanceGuid },
+        AckGuid  = h.AckGuid,
+        Activity = <span class="st">"credit check"</span>,
+        ActorId  = h.ConsumerId.ToString(),
+        Status   = passed ? <span class="st">"approved"</span> : <span class="st">"rejected"</span>,
+        Data     = <span class="kw">new</span> { Score = _credit.LastScore, PassedAt = DateTimeOffset.UtcNow }
+    });
 
-        <span class="cm">// Optionally freeze to prevent future overwrites</span>
-        <span class="kw">await</span> engine.FreezeRuntimeAsync(runtimeRef);
+    <span class="cm">// Step 4 — ACK the hook so the engine can advance.</span>
+    <span class="kw">var</span> outcome = passed ? <span class="ty">AckOutcome</span>.Processed : <span class="ty">AckOutcome</span>.Failed;
+    <span class="kw">await</span> engine.AckAsync(envCode, myGuid, h.AckGuid, outcome);
+};</code><span class="lang-label">C#</span></pre>
 
-        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, t.AckGuid, <span class="ty">AckOutcome</span>.Processed);
-    }
-};
+    <div class="callout tip">
+      <div class="callout-title">Why AckGuid instead of StateId</div>
+      <p>
+        The instance may have already moved to a later state by the time the consumer calls <code>UpsertRuntimeAsync</code>
+        (this is common during replay and fast-moving workflows).
+        Passing <code>AckGuid</code> tells the engine "this runtime entry belongs to the hook that sent me this guid"
+        — the engine looks up <code>ack → hook_ack → hook.state_id</code> to get the correct state.
+        Without it, the engine would fall back to <code>instance.current_state</code>, which may already be a later state.
+      </p>
+      <p style="margin-top:8px">
+        If you are recording activity outside of a hook handler (e.g. from a direct API call where no hook fired),
+        omit <code>AckGuid</code> — the engine will use the current state, which is correct in that case.
+      </p>
+    </div>
 
-<span class="cm">// Retrieve full timeline (includes runtime rows):</span>
-<span class="kw">var</span> timelineJson = <span class="kw">await</span> engine.GetTimelineJsonAsync(<span class="kw">new</span> <span class="ty">LifeCycleInstanceKey</span> { InstanceGuid = instanceGuid });
-<span class="cm">// Returns ordered JSON array: states, transitions, actors, timestamps, activity rows</span>
-
-<span class="cm">// For backdated/replay triggers, set OccurredAt:</span>
+    <h4 class="mini-title">Replay Example</h4>
+    <pre><code><span class="cm">// Replay: re-fire a past transition with its original timestamp.</span>
+<span class="cm">// The hook fires again; consumer receives a fresh AckGuid for that re-fired hook.</span>
+<span class="cm">// Consumer calls UpsertRuntimeAsync with that AckGuid — engine anchors to the replayed state.</span>
 <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
     OccurredAt = DateTimeOffset.Parse(<span class="st">"2024-11-15T09:00:00Z"</span>),
+    EntityId   = loanId,
+    Event      = <span class="st">"submit"</span>,
     <span class="cm">// lifecycle.occurred stores this; lifecycle.created = engine capture time</span>
-    EntityId = loanId, Event = <span class="st">"submit"</span>, ...
-});</code><span class="lang-label">C#</span></pre>
+});
+
+<span class="cm">// Retrieve the full timeline including all runtime activity rows:</span>
+<span class="kw">var</span> timelineJson = <span class="kw">await</span> engine.GetTimelineJsonAsync(
+    <span class="kw">new</span> <span class="ty">LifeCycleInstanceKey</span> { InstanceGuid = instanceGuid });
+<span class="cm">// Returns ordered JSON: states, transitions, actors, timestamps, activity rows</span></code><span class="lang-label">C#</span></pre>
   </section>
 
   <section class="doc-section" id="ex-orderedhooks">
-    <h3 class="sub-title">Example 6 — Ordered Hooks &amp; Any ACK <span class="badge new">NEW</span></h3>
+    <h3 class="sub-title">Example 6 — Ordered Hooks &amp; Any ACK </h3>
     <p>A loan application requires two parallel credit-bureau checks (first response wins), followed by a decision step and a non-blocking summary email.</p>
 
     <h4 class="mini-title">Policy JSON</h4>

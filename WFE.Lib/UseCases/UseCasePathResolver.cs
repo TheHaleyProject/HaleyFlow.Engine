@@ -18,10 +18,16 @@ namespace WFE.Test.UseCases {
 
             var probe = new DirectoryInfo(Directory.GetCurrentDirectory());
             while (probe != null) {
-                var marker = Path.Combine(probe.FullName, "WFE.Test.csproj");
-                if (File.Exists(marker)) {
-                    var p3 = Path.Combine(probe.FullName, relativePath);
-                    if (File.Exists(p3)) return p3;
+                var libMarker = Path.Combine(probe.FullName, "WFE.Lib.csproj");
+                if (File.Exists(libMarker)) {
+                    var libPath = Path.Combine(probe.FullName, relativePath);
+                    if (File.Exists(libPath)) return libPath;
+                }
+
+                var testMarker = Path.Combine(probe.FullName, "WFE.Test.csproj");
+                if (File.Exists(testMarker)) {
+                    var testPath = Path.Combine(probe.FullName, "..", "WFE.Lib", relativePath);
+                    if (File.Exists(testPath)) return testPath;
                 }
                 probe = probe.Parent;
             }
