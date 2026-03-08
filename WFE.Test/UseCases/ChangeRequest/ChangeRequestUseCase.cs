@@ -14,7 +14,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             var agw = new AdapterGateway();
             long resolvedConsumerId = 0;
 
-            var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(agw.GetDefaultKey());
+            var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(agw.GetDefaultKey()); //Use default adapter for engine
             engineMaker.Options = new WorkFlowEngineOptions {
                 MonitorInterval = settings.MonitorInterval,
                 AckPendingResendAfter = settings.AckPendingResendAfter,
@@ -36,7 +36,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 await engine.RegisterEnvironmentAsync(settings.EnvCode, settings.EnvDisplayName, ct);
                 resolvedConsumerId = await engine.RegisterConsumerAsync(settings.EnvCode, settings.ConsumerGuid, ct);
 
-                var feed = new InProcessEventFeed(engine);
+                var feed = new InProcessEngineProxy(engine); //Proxy feed for the Engine
 
                 var serviceCollection = new ServiceCollection(); //Start a new service colletion
                 serviceCollection.AddSingleton<IWorkFlowEngine>(engine);
@@ -48,7 +48,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                     .WithAdapterKey(agw.GetDefaultKey())
                     .WithProvider(serviceProvider);
 
-                consumerMaker.EventFeed = feed;
+                consumerMaker.EngineProxy = feed;
                 consumerMaker.Options = new ConsumerServiceOptions {
                     EnvCode = settings.EnvCode,
                     ConsumerGuid = settings.ConsumerGuid,
@@ -60,7 +60,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 consumer = await consumerMaker.Build(agw);
                 consumer.RegisterAssembly(typeof(ChangeRequestWrapper).Assembly); //only for in memory cache loading.
 
-                // Engine notices are relayed through InProcessEventFeed → consumer.NoticeRaised,
+                // Engine notices are relayed through InProcessEngineProxy → consumer.NoticeRaised,
                 // so a single subscription here captures both engine and consumer failures.
                 consumer.NoticeRaised += n => {
                     Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}" +

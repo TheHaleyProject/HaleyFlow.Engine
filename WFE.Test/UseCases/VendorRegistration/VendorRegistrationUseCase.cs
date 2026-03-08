@@ -43,7 +43,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
                 await engine.RegisterEnvironmentAsync(settings.EnvCode, settings.EnvDisplayName, ct);
                 resolvedConsumerId = await engine.RegisterConsumerAsync(settings.EnvCode, settings.ConsumerGuid, ct);
 
-                var feed = new InProcessEventFeed(engine);
+                var feed = new InProcessEngineProxy(engine);
 
                 var serviceCollection = new ServiceCollection();
                 serviceCollection.AddSingleton<IWorkFlowEngine>(engine);
@@ -55,7 +55,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
                     .WithAdapterKey(agw.GetDefaultKey())
                     .WithProvider(serviceProvider);
 
-                consumerMaker.EventFeed = feed;
+                consumerMaker.EngineProxy = feed;
                 consumerMaker.Options = new ConsumerServiceOptions {
                     EnvCode = settings.EnvCode,
                     ConsumerGuid = settings.ConsumerGuid,
@@ -67,8 +67,11 @@ namespace WFE.Test.UseCases.VendorRegistration {
                 consumer = await consumerMaker.Build(agw);
                 consumer.RegisterAssembly(typeof(VendorRegistrationWrapper).Assembly);
 
-                engine.NoticeRaised += n => {
-                    Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}");
+                // Engine notices are relayed through InProcessEngineProxy → consumer.NoticeRaised,
+                // so a single subscription here captures both engine and consumer failures.
+                consumer.NoticeRaised += n => {
+                    Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}" +
+                        (n.Exception != null ? $" ex={n.Exception.GetType().Name}: {n.Exception.Message}" : string.Empty));
                     return Task.CompletedTask;
                 };
 
