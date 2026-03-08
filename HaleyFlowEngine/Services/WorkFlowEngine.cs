@@ -603,29 +603,9 @@ namespace Haley.Services {
                 StateId      = stateId,
                 ActorId      = req.ActorId,
                 StatusId     = statusId,
-                LcId         = 0,   // not available at public-API call time; stored as 0
-                Frozen       = req.Frozen,
                 Data         = req.Data ?? new { },
                 Payload      = req.Payload ?? new { }
             }, ct);
-        }
-
-        public async Task<int> SetRuntimeStatusAsync(LifeCycleRuntimeRef runtimeRef, string status, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
-            return await Runtime.SetStatusAsync(runtimeId, NormalizeRuntimeName(status), ct);
-        }
-
-        public async Task<int> FreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
-            return await Runtime.SetFrozenAsync(runtimeId, true, ct);
-        }
-
-        public async Task<int> UnfreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
-            return await Runtime.SetFrozenAsync(runtimeId, false, ct);
         }
 
         // Resolves a LifeCycleInstanceKey → instance DbRow.
@@ -646,33 +626,6 @@ namespace Haley.Services {
             if (defId <= 0) return null;
 
             return await _dal.Instance.GetByDefIdAndEntityIdAsync(defId, key.EntityId, load);
-        }
-
-        // Resolves a LifeCycleRuntimeRef → internal runtime row id.
-        // Priority: Id (direct — fastest, no extra DB reads) → key-based lookup via Instance+Activity+ActorId.
-        // StateId is always derived from the instance's current_state_id — same as UpsertRuntimeAsync.
-        async Task<long> ResolveRuntimeIdAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct) {
-            if (runtimeRef == null) throw new ArgumentNullException(nameof(runtimeRef));
-
-            if (runtimeRef.Id.HasValue && runtimeRef.Id.Value > 0)
-                return runtimeRef.Id.Value;
-
-            var load = new DbExecutionLoad(ct);
-
-            var instanceRow = await ResolveInstanceRowByKeyAsync(runtimeRef.Instance, load);
-            if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleRuntimeRef.");
-            var instanceId = instanceRow.GetLong(KEY_ID);
-            var stateId    = instanceRow.GetLong(KEY_CURRENT_STATE_ID);
-
-            var activity   = NormalizeRuntimeName(runtimeRef.Activity);
-            var activityRow = await _dal.Activity.GetByNameAsync(activity, load);
-            if (activityRow == null) throw new InvalidOperationException($"Activity '{runtimeRef.Activity}' not found.");
-            var activityId = activityRow.GetLong(KEY_ID);
-
-            var runtimeRow = await _dal.Runtime.GetByKeyAsync(instanceId, activityId, stateId, runtimeRef.ActorId, load);
-            if (runtimeRow == null) throw new InvalidOperationException($"Runtime entry not found for activity='{runtimeRef.Activity}' actor='{runtimeRef.ActorId}'.");
-
-            return runtimeRow.GetLong(KEY_ID);
         }
 
         // Normalizes an activity or status name: trim, lowercase, collapse whitespace to single space.

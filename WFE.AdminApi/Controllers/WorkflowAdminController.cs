@@ -114,6 +114,29 @@ public sealed class WorkflowAdminController : ControllerBase {
         return StatusCode(isHealthy ? 200 : 503, health);
     }
 
+    [HttpGet("test/usecases")]
+    public async Task<IActionResult> GetTestUseCases(CancellationToken ct) {
+        var useCases = await _service.GetTestUseCasesAsync(ct);
+        return Ok(useCases);
+    }
+
+    [HttpPost("test/entities")]
+    public async Task<IActionResult> CreateTestEntities(
+        [FromBody] CreateTestEntitiesRequest request,
+        CancellationToken ct) {
+        if (request == null) return BadRequest("Request body is required.");
+        if (string.IsNullOrWhiteSpace(request.UseCase)) return BadRequest("useCase is required.");
+        if (request.Count < 1) return BadRequest("count must be greater than 0.");
+
+        var results = await _service.CreateTestEntitiesAsync(request.UseCase, request.Count, ct);
+        return Ok(new {
+            useCase = request.UseCase,
+            requested = request.Count,
+            created = results.Count,
+            results
+        });
+    }
+
     private static LifeCycleInstanceFlag ParseFlags(string? flags) {
         if (string.IsNullOrWhiteSpace(flags)) return LifeCycleInstanceFlag.Active;
 
@@ -126,5 +149,10 @@ public sealed class WorkflowAdminController : ControllerBase {
         }
 
         return parsed == LifeCycleInstanceFlag.None ? LifeCycleInstanceFlag.Active : parsed;
+    }
+
+    public sealed class CreateTestEntitiesRequest {
+        public string UseCase { get; set; } = "change-request";
+        public int Count { get; set; } = 1;
     }
 }

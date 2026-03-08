@@ -62,4 +62,11 @@ public interface IWorkflowAdminService {
     /// Returns status "healthy" when all checks pass, "unhealthy" when any fail.
     /// </summary>
     Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct);
+
+    Task<IReadOnlyList<string>> GetTestUseCasesAsync(CancellationToken ct);
+
+    Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(
+        string useCase,
+        int count,
+        CancellationToken ct);
 }

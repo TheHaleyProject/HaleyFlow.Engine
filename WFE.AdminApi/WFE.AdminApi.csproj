@@ -58,4 +58,20 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\WFE.Test\UseSettingsBase.cs" Link="Testing\UseSettingsBase.cs" />
+
+    <Compile Include="..\WFE.Test\UseCases\ChangeRequest\ChangeRequestUseCaseSettings.cs" Link="Testing\UseCases\ChangeRequest\ChangeRequestUseCaseSettings.cs" />
+    <Compile Include="..\WFE.Test\UseCases\ChangeRequest\ChangeRequestWrapper.cs" Link="Testing\UseCases\ChangeRequest\ChangeRequestWrapper.cs" />
+
+    <Compile Include="..\WFE.Test\UseCases\LoanApproval\LoanApprovalUseCaseSettings.cs" Link="Testing\UseCases\LoanApproval\LoanApprovalUseCaseSettings.cs" />
+    <Compile Include="..\WFE.Test\UseCases\LoanApproval\LoanApprovalWrapper.cs" Link="Testing\UseCases\LoanApproval\LoanApprovalWrapper.cs" />
+
+    <Compile Include="..\WFE.Test\UseCases\PaperlessReview\PaperlessReviewUseCaseSettings.cs" Link="Testing\UseCases\PaperlessReview\PaperlessReviewUseCaseSettings.cs" />
+    <Compile Include="..\WFE.Test\UseCases\PaperlessReview\PaperlessReviewWrapper.cs" Link="Testing\UseCases\PaperlessReview\PaperlessReviewWrapper.cs" />
+
+    <Compile Include="..\WFE.Test\UseCases\VendorRegistration\VendorRegistrationUseCaseSettings.cs" Link="Testing\UseCases\VendorRegistration\VendorRegistrationUseCaseSettings.cs" />
+    <Compile Include="..\WFE.Test\UseCases\VendorRegistration\VendorRegistrationWrapper.cs" Link="Testing\UseCases\VendorRegistration\VendorRegistrationWrapper.cs" />
+  </ItemGroup>
+
 </Project>
