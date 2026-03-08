@@ -3,6 +3,7 @@ using Haley.Enums;
 using Haley.Models;
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -60,7 +61,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 ctx,
                 "Impact assessment approved?",
                 PickEvent(evt.OnSuccessEvent, "4001"),
-                PickEvent(evt.OnFailureEvent, "4002"));
+                PickEvent(evt.OnFailureEvent, "4002"),
+                executionModeOverride: ResolveExecutionModeFromParams(evt));
 
         [HookHandler("APP.CHANGE.COST.REVIEW")]
         private Task<AckOutcome> OnCostReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
@@ -98,6 +100,12 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 PickEvent(evt.OnSuccessEvent, "4009"),
                 null);
 
+        [TransitionHandler(4000)]
+        private Task<AckOutcome> OnAutoStartTransitionAsync(ILifeCycleTransitionEvent evt, ConsumerContext ctx) {
+            Console.WriteLine($"[CONSUMER] transition-handler event={evt.EventCode} entity={evt.EntityId} state={evt.FromStateId}->{evt.ToStateId}");
+            return Task.FromResult(AckOutcome.Processed);
+        }
+
         protected override Task<AckOutcome> OnUnhandledTransitionAsync(ILifeCycleTransitionEvent evt, ConsumerContext ctx) {
             Console.WriteLine($"[CONSUMER] transition event={evt.EventCode} state={evt.FromStateId}->{evt.ToStateId} (no custom action)");
             return Task.FromResult(AckOutcome.Processed);
@@ -116,7 +124,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
             ConsumerContext ctx,
             string decisionMessage,
             string yesEventCode,
-            string? noEventCode) {
+            string? noEventCode,
+            BusinessActionExecutionMode? executionModeOverride = null) {
             var timeout = _settings.ConfirmationTimeout;
             var timeoutText = timeout > TimeSpan.Zero ? $", auto-yes in {timeout.TotalSeconds:0}s" : string.Empty;
             var prompt = $"[CONSUMER] {decisionMessage} entity={evt.EntityId} route={evt.Route} (Y/N, Enter=Y{timeoutText})";
@@ -130,6 +139,12 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
             bool yes;
             if (!string.IsNullOrWhiteSpace(noEventCode) && int.TryParse(yesEventCode, out var actionCode)) {
+                var executionMode = executionModeOverride ?? BusinessActionExecutionMode.SkipIfCompleted;
+                var alreadyCompleted = await IsBusinessActionCompletedAsync(ctx, evt.DefinitionId, evt.EntityId, actionCode);
+                if (alreadyCompleted) {
+                    Console.WriteLine($"[CONSUMER] route={evt.Route} action={actionCode} already completed. mode={executionMode}.");
+                }
+
                 var decision = false;
                 var execution = await ExecuteBusinessActionAsync(ctx, evt.DefinitionId, evt.EntityId, actionCode,
                     async token => {
@@ -140,7 +155,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
                             entity = evt.EntityId,
                             question = decisionMessage
                         };
-                    });
+                    },
+                    executionMode);
 
                 yes = execution.Executed
                     ? decision
@@ -177,6 +193,51 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 ctx.CancellationToken);
             Console.WriteLine($"[CONSUMER] route={evt.Route} -> user chose NO, leaving ack as RETRY.");
             return AckOutcome.Retry;
+        }
+
+        private static BusinessActionExecutionMode ResolveExecutionModeFromParams(ILifeCycleHookEvent evt) {
+            // Example override:
+            // params: { "forceBusinessAction": true } => ForceRun
+            if (evt.Params == null || evt.Params.Count < 1) return BusinessActionExecutionMode.SkipIfCompleted;
+            for (var i = 0; i < evt.Params.Count; i++) {
+                var data = evt.Params[i]?.Data;
+                if (data == null || data.Count < 1) continue;
+                if (TryReadBool(data, "forceBusinessAction", out var force) && force) {
+                    return BusinessActionExecutionMode.ForceRun;
+                }
+            }
+            return BusinessActionExecutionMode.SkipIfCompleted;
+        }
+
+        private static bool TryReadBool(IReadOnlyDictionary<string, object?> data, string key, out bool value) {
+            value = false;
+            if (!data.TryGetValue(key, out var raw) || raw == null) return false;
+
+            switch (raw) {
+                case bool b:
+                    value = b;
+                    return true;
+                case string s when bool.TryParse(s, out var parsed):
+                    value = parsed;
+                    return true;
+                case int i:
+                    value = i != 0;
+                    return true;
+                case long l:
+                    value = l != 0;
+                    return true;
+                case JsonElement je when je.ValueKind == JsonValueKind.True || je.ValueKind == JsonValueKind.False:
+                    value = je.GetBoolean();
+                    return true;
+                case JsonElement je when je.ValueKind == JsonValueKind.String && bool.TryParse(je.GetString(), out var p2):
+                    value = p2;
+                    return true;
+                case JsonElement je when je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var p3):
+                    value = p3 != 0;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private Task<long> UpsertRuntimeStatusAsync(
