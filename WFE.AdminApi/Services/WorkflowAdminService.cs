@@ -96,6 +96,18 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
         return await _engine!.GetTimelineJsonAsync(key, ct);
     }
 
+    public async Task<string?> GetTimelineHtmlAsync(
+        int? envCode,
+        string? defName,
+        string? entityId,
+        string? instanceGuid,
+        string? displayName,
+        CancellationToken ct) {
+        var json = await GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, ct);
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        return TimelineHtmlRenderer.Render(json, displayName?.Trim());
+    }
+
     public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(
         int? envCode,
         string defName,
@@ -247,6 +259,17 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return Task.FromResult<IReadOnlyList<string>>(keys);
+    }
+
+    public async Task<LifeCycleTriggerResult> ReopenInstanceAsync(
+        string instanceGuid,
+        string actor,
+        CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
+
+        await EnsureInitializedAsync(ct);
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.adminapi.reopen" : actor.Trim();
+        return await _engine!.ReopenAsync(instanceGuid.Trim(), normalizedActor, ct);
     }
 
     public async Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(

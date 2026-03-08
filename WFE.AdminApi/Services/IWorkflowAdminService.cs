@@ -18,6 +18,14 @@ public interface IWorkflowAdminService {
         string? instanceGuid,
         CancellationToken ct);
 
+    Task<string?> GetTimelineHtmlAsync(
+        int? envCode,
+        string? defName,
+        string? entityId,
+        string? instanceGuid,
+        string? displayName,
+        CancellationToken ct);
+
     Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(
         int? envCode,
         string defName,
@@ -70,6 +78,11 @@ public interface IWorkflowAdminService {
     Task<Dictionary<string, object?>> EnsureHostInitializedAsync(CancellationToken ct);
 
     Task<IReadOnlyList<string>> GetTestUseCasesAsync(CancellationToken ct);
+
+    Task<LifeCycleTriggerResult> ReopenInstanceAsync(
+        string instanceGuid,
+        string actor,
+        CancellationToken ct);
 
     Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(
         string useCase,

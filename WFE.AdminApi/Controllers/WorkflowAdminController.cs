@@ -37,6 +37,19 @@ public sealed class WorkflowAdminController : ControllerBase {
         return Content(timelineJson, "application/json");
     }
 
+    [HttpGet("timeline/html")]
+    public async Task<IActionResult> GetTimelineHtml(
+        [FromQuery] int? envCode,
+        [FromQuery] string? defName,
+        [FromQuery] string? entityId,
+        [FromQuery] string? instanceGuid,
+        [FromQuery] string? name,
+        CancellationToken ct) {
+        var html = await _service.GetTimelineHtmlAsync(envCode, defName, entityId, instanceGuid, name, ct);
+        if (string.IsNullOrWhiteSpace(html)) return NotFound();
+        return Content(html, "text/html");
+    }
+
     [HttpGet("refs")]
     public async Task<IActionResult> GetInstanceRefs(
         [FromQuery] int? envCode,
@@ -126,6 +139,18 @@ public sealed class WorkflowAdminController : ControllerBase {
         return Ok(useCases);
     }
 
+    [HttpPost("instance/reopen")]
+    public async Task<IActionResult> ReopenInstance(
+        [FromBody] ReopenInstanceRequest request,
+        CancellationToken ct) {
+        if (request == null) return BadRequest("Request body is required.");
+        if (string.IsNullOrWhiteSpace(request.InstanceGuid)) return BadRequest("instanceGuid is required.");
+
+        var actor = string.IsNullOrWhiteSpace(request.Actor) ? "wfe.adminapi.reopen" : request.Actor.Trim();
+        var result = await _service.ReopenInstanceAsync(request.InstanceGuid.Trim(), actor, ct);
+        return Ok(result);
+    }
+
     [HttpPost("test/entities")]
     public async Task<IActionResult> CreateTestEntities(
         [FromBody] CreateTestEntitiesRequest request,
@@ -160,5 +185,10 @@ public sealed class WorkflowAdminController : ControllerBase {
     public sealed class CreateTestEntitiesRequest {
         public string UseCase { get; set; } = "change-request";
         public int Count { get; set; } = 1;
+    }
+
+    public sealed class ReopenInstanceRequest {
+        public string InstanceGuid { get; set; } = string.Empty;
+        public string? Actor { get; set; }
     }
 }
