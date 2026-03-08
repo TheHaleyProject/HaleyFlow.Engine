@@ -120,16 +120,36 @@ namespace WFE.Test.UseCases.ChangeRequest {
             var timeout = _settings.ConfirmationTimeout;
             var timeoutText = timeout > TimeSpan.Zero ? $", auto-yes in {timeout.TotalSeconds:0}s" : string.Empty;
             var prompt = $"[CONSUMER] {decisionMessage} entity={evt.EntityId} route={evt.Route} (Y/N, Enter=Y{timeoutText})";
+
+            // Capture runtime: mark this activity as Running before user input.
+            var runtimeId = await _engine.UpsertRuntimeAsync(new RuntimeLogByNameRequest {
+                Instance  = new LifeCycleInstanceKey { InstanceGuid = evt.InstanceGuid },
+                Activity  = evt.Route,
+                Status    = "Running",
+                ActorId   = "wfe.test.consumer",
+                Data      = new { route = evt.Route, entity = evt.EntityId, question = decisionMessage }
+            }, ctx.CancellationToken);
+
+            var runtimeRef = new LifeCycleRuntimeRef {
+                Instance = new LifeCycleInstanceKey { InstanceGuid = evt.InstanceGuid },
+                Activity = evt.Route,
+                ActorId  = "wfe.test.consumer",
+                Id       = runtimeId > 0 ? runtimeId : null
+            };
+
             var yes = await AskConfirmationAsync(prompt, ConsoleKey.Y, timeout, ctx.CancellationToken);
 
             if (yes) {
+                await _engine.SetRuntimeStatusAsync(runtimeRef, "Approved", ctx.CancellationToken);
                 return await TriggerNextAsync(evt, ctx, yesEventCode);
             }
 
             if (!string.IsNullOrWhiteSpace(noEventCode)) {
+                await _engine.SetRuntimeStatusAsync(runtimeRef, "Rejected", ctx.CancellationToken);
                 return await TriggerNextAsync(evt, ctx, noEventCode);
             }
 
+            await _engine.SetRuntimeStatusAsync(runtimeRef, "Retry", ctx.CancellationToken);
             Console.WriteLine($"[CONSUMER] route={evt.Route} -> user chose NO, leaving ack as RETRY.");
             return AckOutcome.Retry;
         }

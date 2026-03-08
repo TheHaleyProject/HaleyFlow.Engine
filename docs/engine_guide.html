@@ -603,7 +603,7 @@
           <tr><td><code>InstanceGuid</code></td><td>Optional</td><td>If set, used as highest-priority direct lookup for the instance — skips <code>EnvCode+DefName+EntityId</code> resolution. Inherited from <code>LifeCycleInstanceKey</code>.</td></tr>
           <tr><td><code>Payload</code></td><td>Optional</td><td>Audit data for this specific transition. Stored in <code>lc_data.payload</code>. <strong>Not forwarded to consumers in events</strong> — audit-only.</td></tr>
           <tr><td><code>Metadata</code></td><td>Optional <span class="badge new">NEW</span></td><td>Immutable instance tag set once at creation. Opaque string (consumer-defined structure). Stored in <code>instance.metadata</code>. Forwarded on every <code>ILifeCycleEvent</code> as <code>Metadata</code>. Ignored on subsequent triggers for the same instance.</td></tr>
-          <tr><td><code>AckRequired</code></td><td>Optional</td><td>Default <code>true</code> — creates ACK rows</td></tr>
+          <tr><td><code>AckRequired</code></td><td>Optional</td><td>Default <code>true</code>. When <code>false</code>: no <code>inbox</code>/<code>outbox</code> ACK rows are created; hooks fire immediately ignoring <code>order</code>. Only appropriate for purely system-automated transitions (e.g. timeouts). See <a href="#ack-required-design" style="color:var(--accent)">AckRequired design notes</a>.</td></tr>
           <tr><td><code>OccurredAt</code></td><td>Optional <span class="badge new">NEW</span></td><td>Real-world event time for replay/backdating. <code>null</code> = engine uses UTC now. Stored in <code>lifecycle.occurred</code>; never overwrites <code>lifecycle.created</code>.</td></tr>
           <tr><td><code>SkipAckGate</code></td><td>Optional <span class="badge new">NEW</span></td><td>Bypass the ACK gate for this specific call. Default <code>false</code>.</td></tr>
         </tbody>
@@ -1098,9 +1098,43 @@
       <li>When <strong>all blocking hooks at the current order reach Processed</strong>, the engine atomically creates ACK rows for the next order, marks those hooks dispatched, and fires their events.</li>
       <li>If the next order contains <em>only</em> non-blocking hooks, the engine immediately advances through it without waiting for ACKs, continuing until a blocking stage or the end.</li>
     </ol>
-    <div class="callout tip">
-      <div class="callout-title">AckRequired=false bypass</div>
-      <p>If <code>TriggerAsync</code> is called with <code>AckRequired=false</code>, all hooks are dispatched immediately regardless of <code>order</code> (no ACK mechanism exists to drive advancement).</p>
+    <div class="callout tip" id="ack-required-design">
+      <div class="callout-title">AckRequired=false — what it does and when to use it</div>
+      <p><strong>Effect:</strong> When <code>TriggerAsync</code> is called with <code>AckRequired=false</code>:</p>
+      <ul style="margin:6px 0 10px;padding-left:20px;line-height:1.85">
+        <li>No <code>inbox</code> or <code>outbox</code> ACK rows are created for the consumer to process.</li>
+        <li>Hook ordering is bypassed — all hooks are dispatched immediately at <code>order=1</code> regardless of their configured <code>order</code> value. Since there is no ACK mechanism to advance through stages, ordered hooks would freeze permanently if ordering were honoured.</li>
+        <li>Hooks that are emitted still create their own <code>hook_ack</code> rows for external consumers — only the <em>transition-level</em> consumer ACK is suppressed.</li>
+      </ul>
+      <p><strong>Legitimate use case — timeout-driven / system-automated transitions:</strong></p>
+      <p>The engine's timeout monitor fires a <code>TimeoutExpired</code> event automatically. The monitor itself is the processor — there is no application-side consumer business logic to run. You still want outbound notification hooks to fire (<code>APP.NOTIFY.APPLICANT</code>, <code>APP.AUDIT.LOG</code>), but you don't need a consumer to "process" the transition itself. <code>AckRequired=false</code> is correct here.</p>
+      <pre style="margin:8px 0"><code><span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> LifeCycleTriggerRequest {
+    EnvCode    = envCode,
+    DefName    = defName,
+    EntityId   = entityId,
+    Event      = <span class="st">"9000"</span>,   <span class="cm">// TimeoutExpired</span>
+    Actor      = <span class="st">"engine.monitor"</span>,
+    AckRequired = <span class="nb">false</span>    <span class="cm">// monitor drives the transition; no consumer pickup needed</span>
+}, ct);</code><span class="lang-label">C#</span></pre>
+      <p><strong>When NOT to use it:</strong></p>
+      <ul style="margin:6px 0 10px;padding-left:20px;line-height:1.85">
+        <li>Any trigger that requires consumer-side business logic (approvals, validations, data enrichment). <code>AckRequired=false</code> means the consumer never sees the event.</li>
+        <li>Any workflow where hook ordering matters — the ordering guarantee is silently dropped.</li>
+        <li>Basically all business triggers. The default (<code>AckRequired=true</code>) is almost always correct.</li>
+      </ul>
+      <p><strong>Design insight — <code>AckRequired</code> vs <code>blocking</code>:</strong></p>
+      <p><code>AckRequired=false</code> is a coarse instrument: it suppresses everything. If your real need is "this hook should fire but not block the workflow if it fails", use <code>blocking: false</code> on the emit instead. That gives you per-hook fire-and-forget behaviour while keeping the consumer ACK pipeline intact for the hooks that do matter.</p>
+      <div class="table-wrap" style="margin-top:10px">
+        <table>
+          <thead><tr><th>Scenario</th><th>Right tool</th></tr></thead>
+          <tbody>
+            <tr><td>Timeout / system auto-transition, no consumer logic needed</td><td><code>AckRequired=false</code></td></tr>
+            <tr><td>Hook should fire but failure should not suspend instance</td><td><code>emit.blocking = false</code></td></tr>
+            <tr><td>Hook should notify external system, don't wait for it</td><td><code>emit.blocking = false</code></td></tr>
+            <tr><td>Normal business trigger with consumer processing</td><td><code>AckRequired=true</code> (default)</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
     <h4 class="mini-title">Example — sequential eligibility checks</h4>
     <pre><code><span class="jk">"emit"</span>: [

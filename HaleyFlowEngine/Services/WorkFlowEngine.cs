@@ -250,7 +250,7 @@ namespace Haley.Services {
                 RuleContext ctx = new RuleContext();
                 if (!string.IsNullOrWhiteSpace(pr.PolicyJson) && bp.StatesById.TryGetValue(transition.ToStateId, out var toState)) {
                     bp.EventsById.TryGetValue(transition.EventId, out var viaEvent);
-                    ctx = PolicyEnforcer.ResolveRuleContextFromJson(pr.PolicyJson!, toState, viaEvent, ct);
+                    ctx = PolicyEnforcer.ResolveRuleContextFromJson(pr.PolicyJson!, toState, viaEvent, ct, pr.PolicyId ?? 0);
                 }
 
                 // Build the base event object. This is cloned for every consumer (transition + hook).
@@ -291,7 +291,7 @@ namespace Haley.Services {
                 // It creates the hook rows in the DB and returns only the min-order hooks (dispatched=true).
                 // Higher-order hooks are created in the DB with dispatched=0 and will be activated later
                 // by AdvanceNextHookOrderAsync once the current order's blocking hooks are all Processed.
-                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr?.PolicyJson, req.AckRequired);
+                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr, req.AckRequired);
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                    if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
@@ -502,11 +502,11 @@ namespace Haley.Services {
             return await Care.GetSummaryAsync(envCode, ct);
         }
 
-        public Task ClearCacheAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Clear(); return Task.CompletedTask; }
+        public Task ClearCacheAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Clear(); PolicyEnforcer.ClearPolicyCache(); return Task.CompletedTask; }
 
-        public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(envCode, defName); return Task.CompletedTask; }
+        public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(envCode, defName); PolicyEnforcer.ClearPolicyCache(); return Task.CompletedTask; }
 
-        public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(defVersionId); return Task.CompletedTask; }
+        public Task InvalidateAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(defVersionId); PolicyEnforcer.ClearPolicyCache(); return Task.CompletedTask; }
 
         // Public entry point for a single monitor pass for ONE specific consumer.
         // Runs resend for both Pending rows (event never delivered) and Delivered rows (delivered but not ACKed).
@@ -582,20 +582,28 @@ namespace Haley.Services {
             if (string.IsNullOrWhiteSpace(req.Status)) throw new ArgumentNullException(nameof(req.Status));
             if (string.IsNullOrWhiteSpace(req.ActorId)) throw new ArgumentNullException(nameof(req.ActorId));
 
+            // Normalize at the API boundary: trim, lowercase, collapse repeated whitespace.
+            // Consumers send "Running", "APPROVED", "send approval" — we store the canonical form.
+            var activity = NormalizeRuntimeName(req.Activity);
+            var status   = NormalizeRuntimeName(req.Status);
+
             var load = new DbExecutionLoad(ct);
             var instanceRow = await ResolveInstanceRowByKeyAsync(req.Instance, load);
             if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleInstanceKey.");
 
-            var activityId = await Runtime.EnsureActivityAsync(req.Activity, ct);
-            var statusId   = await Runtime.EnsureActivityStatusAsync(req.Status, ct);
+            // StateId: derive from the instance's current state — consumer doesn't know the DB id.
+            var stateId    = instanceRow.GetLong(KEY_CURRENT_STATE_ID);
+
+            var activityId = await Runtime.EnsureActivityAsync(activity, ct);
+            var statusId   = await Runtime.EnsureActivityStatusAsync(status, ct);
 
             return await Runtime.UpsertAsync(new RuntimeLogByIdRequest {
                 InstanceGuid = instanceRow.GetString(KEY_GUID) ?? string.Empty,
                 ActivityId   = activityId,
-                StateId      = req.StateId,
+                StateId      = stateId,
                 ActorId      = req.ActorId,
                 StatusId     = statusId,
-                LcId         = req.LcId,
+                LcId         = 0,   // not available at public-API call time; stored as 0
                 Frozen       = req.Frozen,
                 Data         = req.Data ?? new { },
                 Payload      = req.Payload ?? new { }
@@ -605,7 +613,7 @@ namespace Haley.Services {
         public async Task<int> SetRuntimeStatusAsync(LifeCycleRuntimeRef runtimeRef, string status, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var runtimeId = await ResolveRuntimeIdAsync(runtimeRef, ct);
-            return await Runtime.SetStatusAsync(runtimeId, status, ct);
+            return await Runtime.SetStatusAsync(runtimeId, NormalizeRuntimeName(status), ct);
         }
 
         public async Task<int> FreezeRuntimeAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct = default) {
@@ -641,7 +649,8 @@ namespace Haley.Services {
         }
 
         // Resolves a LifeCycleRuntimeRef → internal runtime row id.
-        // Priority: Id (if caller already has it) → Instance+Activity+ActorId+StateId business-key lookup.
+        // Priority: Id (direct — fastest, no extra DB reads) → key-based lookup via Instance+Activity+ActorId.
+        // StateId is always derived from the instance's current_state_id — same as UpsertRuntimeAsync.
         async Task<long> ResolveRuntimeIdAsync(LifeCycleRuntimeRef runtimeRef, CancellationToken ct) {
             if (runtimeRef == null) throw new ArgumentNullException(nameof(runtimeRef));
 
@@ -653,15 +662,24 @@ namespace Haley.Services {
             var instanceRow = await ResolveInstanceRowByKeyAsync(runtimeRef.Instance, load);
             if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleRuntimeRef.");
             var instanceId = instanceRow.GetLong(KEY_ID);
+            var stateId    = instanceRow.GetLong(KEY_CURRENT_STATE_ID);
 
-            var activityRow = await _dal.Activity.GetByNameAsync(runtimeRef.Activity, load);
+            var activity   = NormalizeRuntimeName(runtimeRef.Activity);
+            var activityRow = await _dal.Activity.GetByNameAsync(activity, load);
             if (activityRow == null) throw new InvalidOperationException($"Activity '{runtimeRef.Activity}' not found.");
             var activityId = activityRow.GetLong(KEY_ID);
 
-            var runtimeRow = await _dal.Runtime.GetByKeyAsync(instanceId, activityId, runtimeRef.StateId, runtimeRef.ActorId, load);
-            if (runtimeRow == null) throw new InvalidOperationException($"Runtime entry not found for activity='{runtimeRef.Activity}' actor='{runtimeRef.ActorId}' state={runtimeRef.StateId}.");
+            var runtimeRow = await _dal.Runtime.GetByKeyAsync(instanceId, activityId, stateId, runtimeRef.ActorId, load);
+            if (runtimeRow == null) throw new InvalidOperationException($"Runtime entry not found for activity='{runtimeRef.Activity}' actor='{runtimeRef.ActorId}'.");
 
             return runtimeRow.GetLong(KEY_ID);
+        }
+
+        // Normalizes an activity or status name: trim, lowercase, collapse whitespace to single space.
+        // Applied at every public-API entry point so the DB always receives a consistent canonical form.
+        private static string NormalizeRuntimeName(string s) {
+            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+            return System.Text.RegularExpressions.Regex.Replace(s.Trim(), @"\s+", " ").ToLowerInvariant();
         }
 
 

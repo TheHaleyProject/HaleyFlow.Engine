@@ -1,25 +1,11 @@
 using Haley.Abstractions;
 using Haley.Enums;
-using Haley.Internal;
-using static Haley.Internal.KeyConstants;
 using Haley.Models;
 using Haley.Utils;
-using System;
-using System;
-using System;
-using System.Collections.Generic;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Threading.Tasks;
-using System.Xml;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services {
     // BlueprintImporter is the "write path" for definitions and policies.
@@ -39,10 +25,10 @@ namespace Haley.Services {
             using var doc = JsonDocument.Parse(definitionJson);
             var root = doc.RootElement;
 
-            var defNode = root.TryGetProperty("definition", out var d) ? d : root;
-            var defName = defNode.GetString("name") ?? defNode.GetString("displayName") ?? defNode.GetString("defName") ?? throw new InvalidOperationException("definition.name/displayName missing.");
-            var defDesc = defNode.GetString("description");
-            var requestedVer = defNode.GetInt("version") ?? 0;
+            var defNode = root.TryGetProperty(KEY_DEFINITION, out var d) ? d : root;
+            var defName = defNode.GetString(KEY_NAME) ?? defNode.GetString(KEY_DISPLAY_NAME_CAMEL) ?? defNode.GetString(KEY_DEF_NAME_CAMEL) ?? throw new InvalidOperationException("definition.name/displayName missing.");
+            var defDesc = defNode.GetString(KEY_DESCRIPTION);
+            var requestedVer = defNode.GetInt(KEY_VERSION) ?? 0;
 
 
 
@@ -59,7 +45,7 @@ namespace Haley.Services {
                 // If a def_version with this exact hash already exists, skip all writes and return the existing ID.
                 // This means re-deploying with the same definition JSON is truly zero-cost and zero-side-effect.
                 var defhashMaterial = root.BuildDefinitionHashMaterial();
-                var defHash = defhashMaterial.CreateGUID(HashMethod.Sha256).ToString();
+                var defHash = defhashMaterial.CreateGUID(HashMethod.Sha256).ToString(); //Determinisitic GUID
                 var existing = await _dal.Blueprint.GetDefVersionByParentAndHashAsync(defId, defHash, load);
                 if (existing != null) {
                     tx.Commit();
@@ -99,12 +85,12 @@ namespace Haley.Services {
             // Safe because we delete BY POLICY ID — other policies with different IDs are untouched.
             await _dal.BlueprintWrite.DeleteByPolicyIdAsync(policyId, load);
 
-            if (!root.TryGetProperty("timeouts", out var arr) || arr.ValueKind != JsonValueKind.Array) return;
+            if (!root.TryGetProperty(KEY_TIMEOUTS, out var arr) || arr.ValueKind != JsonValueKind.Array) return;
 
             foreach (var t in arr.EnumerateArray()) {
                 if (t.ValueKind != JsonValueKind.Object) continue;
 
-                var stateRaw = t.TryGetProperty("state", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+                var stateRaw = t.TryGetProperty(KEY_STATE, out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
                 if (string.IsNullOrWhiteSpace(stateRaw)) continue;
 
                 var stateName = stateRaw.Normalize(true);             
@@ -126,9 +112,9 @@ namespace Haley.Services {
             using var doc = JsonDocument.Parse(policyJson);
             var root = doc.RootElement;
 
-            string? defName = root.GetString("defName") ?? root.GetString("definitionName") ?? root.GetString("name") ?? root.GetString("displayName");
-            if (string.IsNullOrWhiteSpace(defName) && root.TryGetProperty("for", out var forEl) && forEl.ValueKind == JsonValueKind.Object)
-                defName = forEl.GetString("definition") ?? forEl.GetString("name");
+            string? defName = root.GetString(KEY_DEF_NAME_CAMEL) ?? root.GetString(KEY_DEFINITION_NAME) ?? root.GetString(KEY_NAME) ?? root.GetString(KEY_DISPLAY_NAME_CAMEL);
+            if (string.IsNullOrWhiteSpace(defName) && root.TryGetProperty(KEY_FOR, out var forEl) && forEl.ValueKind == JsonValueKind.Object)
+                defName = forEl.GetString(KEY_DEFINITION) ?? forEl.GetString(KEY_NAME);
             if (string.IsNullOrWhiteSpace(defName)) throw new InvalidOperationException("Policy JSON missing defName/definitionName/name/displayName/for.definition.");
 
             var transaction = _dal.CreateNewTransaction();
@@ -165,10 +151,10 @@ namespace Haley.Services {
 
         private async Task<Dictionary<string, int>> ImportCategoriesFromStatesAsync(JsonElement root, DbExecutionLoad load) {
             var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
+            if (!root.TryGetProperty(KEY_STATES, out var states) || states.ValueKind != JsonValueKind.Array) return map;
 
             foreach (var s in states.EnumerateArray()) {
-                var cat = s.GetString("category");
+                var cat = s.GetString(KEY_CATEGORY);
                 if (string.IsNullOrWhiteSpace(cat)) continue;
 
                 var key = cat.N();
@@ -183,11 +169,11 @@ namespace Haley.Services {
 
         private async Task<Dictionary<int, EventDef>> ImportEventsAsync(long defVersionId, JsonElement root, DbExecutionLoad load) {
             var byCode = new Dictionary<int, EventDef>();
-            if (!root.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array) return byCode;
+            if (!root.TryGetProperty(KEY_EVENTS, out var events) || events.ValueKind != JsonValueKind.Array) return byCode;
 
             foreach (var e in events.EnumerateArray()) {
-                var code = e.GetInt("code") ?? 0;
-                var name = e.GetString("name") ?? e.GetString("displayName");
+                var code = e.GetInt(KEY_CODE) ?? 0;
+                var name = e.GetString(KEY_NAME) ?? e.GetString(KEY_DISPLAY_NAME_CAMEL);
                 if (code <= 0 || string.IsNullOrWhiteSpace(name)) continue;
                 if (byCode.ContainsKey(code)) throw new InvalidOperationException($"Duplicate event code in JSON: {code}");
 
@@ -200,10 +186,10 @@ namespace Haley.Services {
 
         private async Task<Dictionary<string, StateDef>> ImportStatesAsync(long defVersionId, JsonElement root, Dictionary<string, int> categoryMap, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
             var map = new Dictionary<string, StateDef>(StringComparer.OrdinalIgnoreCase);
-            if (!root.TryGetProperty("states", out var states) || states.ValueKind != JsonValueKind.Array) return map;
+            if (!root.TryGetProperty(KEY_STATES, out var states) || states.ValueKind != JsonValueKind.Array) return map;
 
             foreach (var s in states.EnumerateArray()) {
-                var name = s.GetString("name") ?? s.GetString("displayName");
+                var name = s.GetString(KEY_NAME) ?? s.GetString(KEY_DISPLAY_NAME_CAMEL);
                 if (string.IsNullOrWhiteSpace(name)) continue;
 
                 var key = name!.N();
@@ -211,12 +197,12 @@ namespace Haley.Services {
 
                 // States carry flags for special lifecycle roles: IsInitial marks the starting state,
                 // IsFinal marks terminal states. The state machine enforces exactly one initial state per version.
-                var flags = (uint)(s.GetInt("flags") ?? 0);
-                if (s.GetBool("is_initial") == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
-                if (s.GetBool("is_final") == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
+                var flags = (uint)(s.GetInt(KEY_FLAGS) ?? 0);
+                if (s.GetBool(KEY_IS_INITIAL) == true) flags |= (uint)LifeCycleStateFlag.IsInitial;
+                if (s.GetBool(KEY_IS_FINAL) == true) flags |= (uint)LifeCycleStateFlag.IsFinal;
 
 
-                var catName = s.GetString("category");
+                var catName = s.GetString(KEY_CATEGORY);
                 var catId = (!string.IsNullOrWhiteSpace(catName) && categoryMap.TryGetValue(catName!.N(), out var cid)) ? cid : 0;
 
                 var id = await _dal.BlueprintWrite.InsertStateAsync(defVersionId, catId, name!, flags, load);
@@ -234,28 +220,28 @@ namespace Haley.Services {
         }
 
         private async Task ImportTransitionsAsync(long defVersionId, JsonElement root, Dictionary<string, StateDef> statesByName, Dictionary<int, EventDef> eventsByCode, DbExecutionLoad load) {
-            if (!root.TryGetProperty("transitions", out var trans) || trans.ValueKind != JsonValueKind.Array) return;
+            if (!root.TryGetProperty(KEY_TRANSITIONS, out var trans) || trans.ValueKind != JsonValueKind.Array) return;
 
             foreach (var t in trans.EnumerateArray()) {
-                var fromName = t.GetString("from") ?? t.GetString("fromState");
-                var toName = t.GetString("to") ?? t.GetString("toState");
-                var evCode = t.GetInt("event") ?? t.GetInt("eventCode");
+                var fromName = t.GetString(KEY_FROM) ?? t.GetString(KEY_FROM_STATE_CAMEL);
+                var toName = t.GetString(KEY_TO) ?? t.GetString(KEY_TO_STATE_CAMEL);
+                var evCode = t.GetInt(KEY_EVENT) ?? t.GetInt(KEY_EVENT_CODE_CAMEL);
                 if (string.IsNullOrWhiteSpace(fromName) || string.IsNullOrWhiteSpace(toName) || !evCode.HasValue) continue;
 
                 if (!statesByName.TryGetValue(fromName!.N(), out var from)) throw new InvalidOperationException($"Transition from-state not found: {fromName}");
                 if (!statesByName.TryGetValue(toName!.N(), out var to)) throw new InvalidOperationException($"Transition to-state not found: {toName}");
                 if (!eventsByCode.TryGetValue(evCode.Value, out var ev)) throw new InvalidOperationException($"Transition event code not found: {evCode}");
 
-                var flags = (uint)(t.GetInt("flags") ?? 0);
+                var flags = (uint)(t.GetInt(KEY_FLAGS) ?? 0);
                 await _dal.BlueprintWrite.InsertTransitionAsync(defVersionId, from.Id, to.Id, ev.Id, load);
             }
         }
 
         static int? ParseTimeoutMinutes(JsonElement stateNode) {
-            var tm = stateNode.GetInt("timeout_minutes") ?? stateNode.GetInt("timeoutMinutes");
+            var tm = stateNode.GetInt(KEY_TIMEOUT_MINUTES) ?? stateNode.GetInt(KEY_TIMEOUT_MINUTES_CAMEL);
             if (tm.HasValue) return tm;
 
-            var dur = stateNode.GetString("timeout");
+            var dur = stateNode.GetString(KEY_TIMEOUT);
             if (string.IsNullOrWhiteSpace(dur)) return null;
 
             // We support both raw minutes (timeout_minutes: 2880) and ISO 8601 duration strings (timeout: "P2D").
@@ -269,16 +255,16 @@ namespace Haley.Services {
         }
 
         static int ParseTimeoutMode(JsonElement stateNode) {
-            var n = stateNode.GetInt("timeout_mode") ?? stateNode.GetInt("timeoutMode");
+            var n = stateNode.GetInt(KEY_TIMEOUT_MODE) ?? stateNode.GetInt(KEY_TIMEOUT_MODE_CAMEL);
             if (n.HasValue) return n.Value;
 
-            var s = stateNode.GetString("timeout_mode") ?? stateNode.GetString("timeoutMode");
+            var s = stateNode.GetString(KEY_TIMEOUT_MODE) ?? stateNode.GetString(KEY_TIMEOUT_MODE_CAMEL);
             if (string.IsNullOrWhiteSpace(s)) return 0;
             return string.Equals(s.Trim(), "repeat", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         }
 
         static int? ParseTimeoutEventCode(JsonElement t) {
-            if (!t.TryGetProperty("timeout_event", out var e)) return null;
+            if (!t.TryGetProperty(KEY_TIMEOUT_EVENT, out var e)) return null;
             if (e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var c)) return c;
             if (e.ValueKind == JsonValueKind.String && int.TryParse(e.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cs)) return cs;
             return null;

@@ -16,7 +16,7 @@ namespace Haley.Services {
 
         public async Task<long> UpsertAsync(RuntimeLogByIdRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-
+            //We never know the activity id and status id.. we just know a string value of the activity and the string value for status.. for engine, this is dummy and opaque information.. that is why we have frozen.. if we consider a specific state as terminal, we can freeze it. 
             var transaction = _dal.CreateNewTransaction();
             using var tx = transaction.Begin(false);
             var load = new DbExecutionLoad(ct, transaction);

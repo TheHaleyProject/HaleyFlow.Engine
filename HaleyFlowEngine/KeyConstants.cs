@@ -56,5 +56,52 @@ namespace Haley.Internal {
         public const string KEY_STALE_SECONDS = "stale_seconds";
         public const string KEY_ORDER_SEQ = "order_seq";
         public const string KEY_HASH = "hash";
+
+        // blueprint structure keys
+        public const string KEY_DEFINITION = "definition";
+        public const string KEY_DESCRIPTION = "description";
+        public const string KEY_CATEGORY = "category";
+        public const string KEY_STATE = "state";
+        public const string KEY_STATES = "states";
+        public const string KEY_EVENTS = "events";
+        public const string KEY_TRANSITIONS = "transitions";
+        public const string KEY_FROM = "from";
+        public const string KEY_TO = "to";
+        public const string KEY_FOR = "for";
+        public const string KEY_IS_INITIAL = "is_initial";
+        public const string KEY_IS_FINAL = "is_final";
+        public const string KEY_PARAMS = "params";
+        public const string KEY_RULES = "rules";
+        public const string KEY_POLICY_NAME = "policy_name";
+
+        // timeout keys (singular property vs array property)
+        public const string KEY_TIMEOUT = "timeout";
+        public const string KEY_TIMEOUTS = "timeouts";
+        public const string KEY_TIMEOUT_MINUTES = "timeout_minutes";
+        public const string KEY_TIMEOUT_MODE = "timeout_mode";
+        public const string KEY_TIMEOUT_EVENT = "timeout_event";
+
+        // policy rule / emit keys
+        public const string KEY_DATA = "data";
+        public const string KEY_VIA = "via";
+        public const string KEY_EMIT = "emit";
+        public const string KEY_GROUP = "group";
+        public const string KEY_ORDER = "order";
+        public const string KEY_COMPLETE = "complete";
+        public const string KEY_SUCCESS = "success";
+        public const string KEY_FAILURE = "failure";
+        public const string KEY_NOT_BEFORE = "notBefore";
+        public const string KEY_DEADLINE = "deadline";
+
+        // camelCase aliases accepted in JSON input
+        public const string KEY_DISPLAY_NAME_CAMEL = "displayName";
+        public const string KEY_DEF_NAME_CAMEL = "defName";
+        public const string KEY_DEFINITION_NAME = "definitionName";
+        public const string KEY_FROM_STATE_CAMEL = "fromState";
+        public const string KEY_TO_STATE_CAMEL = "toState";
+        public const string KEY_EVENT_CODE_CAMEL = "eventCode";
+        public const string KEY_TIMEOUT_MINUTES_CAMEL = "timeoutMinutes";
+        public const string KEY_TIMEOUT_MODE_CAMEL = "timeoutMode";
+        public const string KEY_TIMEOUT_EVENT_CAMEL = "timeoutEventCode";
     }
 }

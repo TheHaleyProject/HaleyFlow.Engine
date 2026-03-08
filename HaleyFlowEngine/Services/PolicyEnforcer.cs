@@ -5,17 +5,49 @@ using static Haley.Internal.KeyConstants;
 using Haley.Models;
 using Haley.Utils;
 using System;
-using System.Collections.Generic;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
+    // Pre-materialized form of one emit entry inside a policy rule.
+    // Built once during ParseJsonToPolicy; immutable and thread-safe.
+    internal sealed class ParsedPolicyEmit {
+        public string Route { get; init; } = "";
+        public bool? Blocking { get; init; }        // null = inherit from rule
+        public string? Group { get; init; }
+        public int OrderSeq { get; init; } = 1;
+        public int AckMode { get; init; }           // 0 = all, 1 = any
+        public string? OnSuccess { get; init; }     // already collapsed from rule fallback
+        public string? OnFailure { get; init; }
+        public IReadOnlyList<string> ParamCodes { get; init; } = Array.Empty<string>();
+        public DateTimeOffset? NotBefore { get; init; }
+        public DateTimeOffset? Deadline { get; init; }
+    }
+
+    // Pre-materialized form of one policy rule.
+    internal sealed class ParsedPolicyRule {
+        public string State { get; init; } = "";
+        public int? Via { get; init; }              // null = match any triggering event
+        public bool? Blocking { get; init; }        // null = engine default (true)
+        public string? OnSuccess { get; init; }
+        public string? OnFailure { get; init; }
+        public IReadOnlyList<string> ParamCodes { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<ParsedPolicyEmit> Emits { get; init; } = Array.Empty<ParsedPolicyEmit>();
+    }
+
+    // Fully materialized in-memory representation of a policy JSON document.
+    // Built once per policyId (per process lifetime) and cached in PolicyEnforcer._policyCache.
+    // Immutable after construction — safe to share across threads without locking.
+    internal sealed class ParsedPolicy {
+        public IReadOnlyList<ParsedPolicyRule> Rules { get; init; } = Array.Empty<ParsedPolicyRule>();
+        public IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> ParamCatalog { get; init; }
+            = new Dictionary<string, IReadOnlyDictionary<string, object?>?>(StringComparer.OrdinalIgnoreCase);
+    }
+
     // PolicyEnforcer reads and evaluates the policy JSON to answer two questions:
     //   1. "Which hooks should fire for this transition?" → EmitHooksAsync
     //   2. "What params and completion event codes does the consumer need?" → ResolveRuleContextFromJson
@@ -27,19 +59,29 @@ namespace Haley.Services {
     // Each rule matches a (targetState, optionalEvent) pair. The emit[] array says which hooks fire.
     // The complete{} block tells the consumer what to trigger next on success/failure.
     // The params[] field specifies which param sets from the catalog to include in the event.
+    //
+    // Policy JSON is parsed ONCE per policyId and stored in _policyCache as a ParsedPolicy.
+    // Subsequent calls for the same policy hit only memory — no JSON parsing, no allocations.
+    // Call ClearPolicyCache() (wired into WorkFlowEngine.ClearCacheAsync / InvalidateAsync) to
+    // force a reload after a policy is re-imported.
     internal sealed class PolicyEnforcer : IPolicyEnforcer {
         private readonly IWorkFlowDAL _dal;
+        // Keyed by policyId. Values are immutable ParsedPolicy objects — no lock needed on reads.
+        private readonly ConcurrentDictionary<long, ParsedPolicy> _policyCache = new();
 
         public PolicyEnforcer(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
+
+        public void ClearPolicyCache() => _policyCache.Clear();
 
         // Fetches the LATEST policy for a definition. Used when creating a NEW instance —
         // the instance is stamped with this policy_id and will use it for its entire lifetime.
         public async Task<PolicyResolution> ResolvePolicyAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             var pr = new PolicyResolution();
-            if (!applied.Applied) return pr; //Applied is nothing but was policy already applied for this transition or not.. 
+            if (!applied.Applied) return pr;
             return await ResolvePolicyAsync(bp.DefinitionId, load);
         }
+
         // Fetches a SPECIFIC policy by ID. Used for EXISTING instances — they must be evaluated
         // against the policy that was active when they were created, not the current latest policy.
         // This is the key isolation guarantee: policy changes don't affect in-flight workflows.
@@ -56,16 +98,100 @@ namespace Haley.Services {
         PolicyResolution PreparePolicyResolution(DbRow? pol) {
             var pr = new PolicyResolution();
             if (pol == null) return pr;
-
             pr.PolicyId = pol.GetNullableLong(KEY_ID);
             pr.PolicyHash = pol.GetString(KEY_HASH);
             pr.PolicyJson = pol.GetString(KEY_CONTENT);
             return pr;
         }
 
+        // Returns a ParsedPolicy for the given json, using the policyId cache when possible.
+        // When policyId <= 0 (caller doesn't have an ID), we parse without caching.
+        private ParsedPolicy GetOrAddCached(long policyId, string json) {
+            if (policyId <= 0) return ParseJsonToPolicy(json);
+            return _policyCache.GetOrAdd(policyId, _ => ParseJsonToPolicy(json));
+        }
+
+        // Builds the fully materialized ParsedPolicy from a raw JSON string.
+        // This is the only place where JsonDocument.Parse is called for policy evaluation.
+        // All downstream methods work with the resulting C# object graph — no JSON parsing.
+        private static ParsedPolicy ParseJsonToPolicy(string json) {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Build param catalog: code → data dictionary.
+            // Lives at policy scope; multiple rules can share the same param set by referencing its code.
+            var catalog = new Dictionary<string, IReadOnlyDictionary<string, object?>?>(StringComparer.OrdinalIgnoreCase);
+            if (root.TryGetProperty(KEY_PARAMS, out var paramsEl) && paramsEl.ValueKind == JsonValueKind.Array) {
+                foreach (var p in paramsEl.EnumerateArray()) {
+                    var code = p.GetString(KEY_CODE);
+                    if (string.IsNullOrWhiteSpace(code)) continue;
+                    catalog[code!] = p.TryGetProperty(KEY_DATA, out var dataEl) && dataEl.ValueKind == JsonValueKind.Object
+                        ? p.GetDictionary(KEY_DATA) : null;
+                }
+            }
+
+            // Build rule list. Completion events are collapsed at parse time:
+            // emit.OnSuccess/OnFailure already fall back to rule-level values here so callers
+            // don't need to carry both and merge at evaluation time.
+            var rules = new List<ParsedPolicyRule>();
+            if (root.TryGetProperty(KEY_RULES, out var rulesEl) && rulesEl.ValueKind == JsonValueKind.Array) {
+                foreach (var ruleEl in rulesEl.EnumerateArray()) {
+                    var ruleState = ruleEl.GetString(KEY_STATE);
+                    if (string.IsNullOrWhiteSpace(ruleState)) continue;
+
+                    int? via = null;
+                    if (ruleEl.TryGetProperty(KEY_VIA, out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined)
+                        via = viaEl.GetInt();
+
+                    var (ruleSuccess, ruleFailure) = ReadCompletionEvents(ruleEl);
+                    var ruleParamCodes = ruleEl.ReadList(KEY_PARAMS);
+                    var ruleBlocking = ruleEl.ReadOptionalBool(KEY_BLOCKING);
+
+                    var emits = new List<ParsedPolicyEmit>();
+                    if (ruleEl.TryGetProperty(KEY_EMIT, out var emitArr) && emitArr.ValueKind == JsonValueKind.Array) {
+                        foreach (var e in emitArr.EnumerateArray()) {
+                            var hookRoute = e.GetString(KEY_ROUTE);
+                            if (string.IsNullOrWhiteSpace(hookRoute)) continue;
+
+                            var (emitSuccess, emitFailure) = ReadCompletionEvents(e);
+                            var orderSeq = e.TryGetProperty(KEY_ORDER, out var orderEl) && orderEl.TryGetInt32(out var oVal) && oVal > 0 ? oVal : 1;
+                            var ackModeStr = e.GetString(KEY_ACK_MODE);
+                            var groupRaw = e.GetString(KEY_GROUP);
+
+                            emits.Add(new ParsedPolicyEmit {
+                                Route = hookRoute!,
+                                Blocking = e.ReadOptionalBool(KEY_BLOCKING),
+                                Group = string.IsNullOrWhiteSpace(groupRaw) ? null : groupRaw,
+                                OrderSeq = orderSeq,
+                                AckMode = string.Equals(ackModeStr, "any", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
+                                // Collapse completion fallback at parse time: emit wins, else rule's value.
+                                OnSuccess = !string.IsNullOrWhiteSpace(emitSuccess) ? emitSuccess : ruleSuccess,
+                                OnFailure = !string.IsNullOrWhiteSpace(emitFailure) ? emitFailure : ruleFailure,
+                                ParamCodes = e.ReadList(KEY_PARAMS),
+                                NotBefore = e.GetDatetimeOffset(KEY_NOT_BEFORE),
+                                Deadline = e.GetDatetimeOffset(KEY_DEADLINE)
+                            });
+                        }
+                    }
+
+                    rules.Add(new ParsedPolicyRule {
+                        State = ruleState!,
+                        Via = via,
+                        Blocking = ruleBlocking,
+                        OnSuccess = ruleSuccess,
+                        OnFailure = ruleFailure,
+                        ParamCodes = ruleParamCodes,
+                        Emits = emits
+                    });
+                }
+            }
+
+            return new ParsedPolicy { Rules = rules, ParamCatalog = catalog };
+        }
+
         // This is the hook fan-out decision engine. After a state transition:
-        //   1. Parse all policy rules. For each rule: check if its state matches the target state
-        //      and (if "via" is set) the triggering event matches.
+        //   1. Get ParsedPolicy from cache (or parse once if not cached). For each rule: check if its
+        //      state matches the target state and (if "via" is set) the triggering event matches.
         //   2. For each matched rule's emit entries: collect hook specs — route, blocking, group,
         //      order_seq, ack_mode, on_success/failure event codes, params.
         //   3. Determine minOrder across ALL collected specs.
@@ -74,14 +200,18 @@ namespace Haley.Services {
         //      They wait for AdvanceNextHookOrderAsync to activate them after prior-order completion.
         //   4. If AckRequired=false, ordering is bypassed — all hooks dispatch immediately.
         //      (No consumer will ACK them, so ordering can never advance — fire-and-forget.)
-        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, string? resolvedPolicyJson = null, bool ackRequired = true) {
+        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, PolicyResolution? policy = null, bool ackRequired = true) {
             load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
 
-            string? policyJson = resolvedPolicyJson;
+            // Prefer caller-supplied policy (already loaded, has policyId for cache hit).
+            // Fall back to a fresh DB fetch if the caller didn't have it (cache by the fetched ID).
+            string? policyJson = policy?.PolicyJson;
+            long policyId = policy?.PolicyId ?? 0;
             if (string.IsNullOrWhiteSpace(policyJson)) {
                 var pol = await _dal.Blueprint.GetPolicyForDefinition(bp.DefinitionId, load);
                 policyJson = pol?.GetString(KEY_CONTENT);
+                if (policyId <= 0 && pol != null) policyId = pol.GetNullableLong(KEY_ID) ?? 0;
             }
             if (string.IsNullOrWhiteSpace(policyJson)) return Array.Empty<ILifeCycleHookEmission>();
 
@@ -90,77 +220,38 @@ namespace Haley.Services {
 
             var instanceId = instance.GetLong(KEY_ID);
 
-            using var doc = JsonDocument.Parse(policyJson);
-            if (!doc.RootElement.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
-                return Array.Empty<ILifeCycleHookEmission>();
+            // Get or build the parsed policy (cached by policyId — zero cost on repeated calls).
+            var parsed = GetOrAddCached(policyId, policyJson!);
+            if (parsed.Rules.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
 
-            // params catalog: code -> data dictionary
-            var paramCatalog = new Dictionary<string, IReadOnlyDictionary<string, object?>?>(StringComparer.OrdinalIgnoreCase);
-            if (doc.RootElement.TryGetProperty("params", out var paramsEl) && paramsEl.ValueKind == JsonValueKind.Array) {
-                foreach (var p in paramsEl.EnumerateArray()) {
-                    var code = p.GetString("code");
-                    if (string.IsNullOrWhiteSpace(code)) continue;
-                    IReadOnlyDictionary<string, object?>? data = null;
-                    if (p.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object)
-                        data = p.GetDictionary("data");
-                    paramCatalog[code!] = data;
-                }
-            }
-
-            // Collect all emit specs first so we can compute minOrder across all matched rules.
+            // Collect all emit specs so we can compute minOrder across all matched rules.
             var specs = new List<(string hookCode, bool emitBlocking, string? emitGroup, int orderSeq, int ackMode,
                                   string? onSuccess, string? onFailure,
                                   DateTimeOffset? notBefore, DateTimeOffset? deadline,
                                   IReadOnlyList<LifeCycleParamItem>? resolvedParams)>();
 
-            foreach (var rule in rules.EnumerateArray()) {
+            foreach (var rule in parsed.Rules) {
                 load.Ct.ThrowIfCancellationRequested();
 
-                var ruleState = rule.GetString("state");
-                if (string.IsNullOrWhiteSpace(ruleState)) continue;
-                if (!IsStateMatch(ruleState!, toState)) continue;
-
-                if (rule.TryGetProperty("via", out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined) {
-                    if (viaEvent == null) continue;
-                    var viaCode = viaEl.GetInt();
-                    if (!viaCode.HasValue || viaCode.Value != viaEvent.Code) continue;
+                if (!IsStateMatch(rule.State, toState)) continue;
+                if (rule.Via.HasValue) {
+                    if (viaEvent == null || rule.Via.Value != viaEvent.Code) continue;
                 }
 
-                var ruleParamCodes = ReadParamCodes(rule, "params");
-                var ruleBlocking = ReadOptionalBool(rule, "blocking") ?? true;
+                var ruleBlocking = rule.Blocking ?? true;   // default: blocking
+                var ruleParamCodes = rule.ParamCodes;
 
-                if (!rule.TryGetProperty("emit", out var emitEl) || emitEl.ValueKind != JsonValueKind.Array) continue;
-
-                var (ruleSuccess, ruleFailure) = ReadCompletionEvents(rule);
-
-                foreach (var e in emitEl.EnumerateArray()) {
+                foreach (var emit in rule.Emits) {
                     load.Ct.ThrowIfCancellationRequested();
 
-                    var hookCode = e.GetString("route");
-                    if (string.IsNullOrWhiteSpace(hookCode)) continue;
+                    var emitBlocking = emit.Blocking ?? ruleBlocking;
+                    // Emit.ParamCodes wins if non-empty; else rule.ParamCodes.
+                    var effectiveCodes = emit.ParamCodes.Count > 0 ? emit.ParamCodes : ruleParamCodes;
+                    var resolvedParams = ResolveParams(parsed.ParamCatalog, effectiveCodes);
 
-                    var emitBlocking = ReadOptionalBool(e, "blocking") ?? ruleBlocking;
-
-                    var emitGroup = e.GetString("group");
-                    if (string.IsNullOrWhiteSpace(emitGroup)) emitGroup = null;
-
-                    // order: positive integer, default 1
-                    var orderSeq = e.TryGetProperty("order", out var orderEl) && orderEl.TryGetInt32(out var oVal) && oVal > 0 ? oVal : 1;
-                    // ack_mode: "any" → 1, default 0 (all)
-                    var ackModeStr = e.GetString("ack_mode");
-                    var ackMode = string.Equals(ackModeStr, "any", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-
-                    var (emitSuccess, emitFailure) = ReadCompletionEvents(e);
-                    var onSuccess = !string.IsNullOrWhiteSpace(emitSuccess) ? emitSuccess : ruleSuccess;
-                    var onFailure = !string.IsNullOrWhiteSpace(emitFailure) ? emitFailure : ruleFailure;
-
-                    var emitParamCodes = ReadParamCodes(e, "params");
-                    var effectiveParamCodes = emitParamCodes.Count > 0 ? emitParamCodes : ruleParamCodes;
-                    var resolvedParams = ResolveParams(paramCatalog, effectiveParamCodes);
-
-                    specs.Add((hookCode!, emitBlocking, emitGroup, orderSeq, ackMode,
-                               onSuccess, onFailure,
-                               e.GetDatetimeOffset("notBefore"), e.GetDatetimeOffset("deadline"),
+                    specs.Add((emit.Route, emitBlocking, emit.Group, emit.OrderSeq, emit.AckMode,
+                               emit.OnSuccess, emit.OnFailure,
+                               emit.NotBefore, emit.Deadline,
                                resolvedParams));
                 }
             }
@@ -176,6 +267,7 @@ namespace Haley.Services {
                 load.Ct.ThrowIfCancellationRequested();
                 // Higher-order hooks get dispatched=false; they wait for prior-order blocking hooks to complete.
                 var dispatched = !ackRequired || s.orderSeq == minOrder;
+
                 var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
                     instanceId, applied.ToStateId, applied.EventId, true,
                     s.hookCode, s.emitBlocking, s.emitGroup,
@@ -203,24 +295,6 @@ namespace Haley.Services {
             return emissions;
         }
 
-        private static bool? ReadOptionalBool(JsonElement obj, string propName) {
-            if (!obj.TryGetProperty(propName, out var el)) return null;
-            if (el.ValueKind == JsonValueKind.True) return true;
-            if (el.ValueKind == JsonValueKind.False) return false;
-            return null;
-        }
-
-        private static IReadOnlyList<string> ReadParamCodes(JsonElement obj, string propName) {
-            if (!obj.TryGetProperty(propName, out var el) || el.ValueKind != JsonValueKind.Array) return Array.Empty<string>();
-            var list = new List<string>();
-            foreach (var x in el.EnumerateArray()) {
-                if (x.ValueKind != JsonValueKind.String) continue;
-                var s = x.GetString();
-                if (!string.IsNullOrWhiteSpace(s)) list.Add(s!);
-            }
-            return list;
-        }
-
         private static IReadOnlyList<LifeCycleParamItem>? ResolveParams(
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog,
             IReadOnlyList<string> codes) {
@@ -229,13 +303,11 @@ namespace Haley.Services {
 
             var list = new List<LifeCycleParamItem>(codes.Count);
             foreach (var c in codes) {
-                //  todo: If we need “fail fast”, throw here when missing
                 catalog.TryGetValue(c, out var data);
                 list.Add(new LifeCycleParamItem { Code = c, Data = data ?? new Dictionary<string, object?>() });
             }
             return list;
         }
-
 
         private static bool IsStateMatch(string routeState, StateDef toState) {
             if (string.Equals(routeState, toState.Name, StringComparison.OrdinalIgnoreCase)) return true;
@@ -243,154 +315,88 @@ namespace Haley.Services {
             return false;
         }
 
-        private static (string? onSuccess, string? onFailure) ReadCompletionEvents(JsonElement emitObj) {
-            if (!emitObj.TryGetProperty("complete", out var compEl) || compEl.ValueKind != JsonValueKind.Object) return (null, null);
+        private static (string? onSuccess, string? onFailure) ReadCompletionEvents(JsonElement el) {
+            if (!el.TryGetProperty(KEY_COMPLETE, out var compEl) || compEl.ValueKind != JsonValueKind.Object) return (null, null);
             string? onSuccess = null;
             string? onFailure = null;
-            if (compEl.TryGetProperty("success", out var sEl)) onSuccess = sEl.ValueKind == JsonValueKind.String ? sEl.GetString() : sEl.ToString();
-            if (compEl.TryGetProperty("failure", out var fEl)) onFailure = fEl.ValueKind == JsonValueKind.String ? fEl.GetString() : fEl.ToString();
+            if (compEl.TryGetProperty(KEY_SUCCESS, out var sEl)) onSuccess = sEl.ValueKind == JsonValueKind.String ? sEl.GetString() : sEl.ToString();
+            if (compEl.TryGetProperty(KEY_FAILURE, out var fEl)) onFailure = fEl.ValueKind == JsonValueKind.String ? fEl.GetString() : fEl.ToString();
             return (onSuccess, onFailure);
         }
 
-        public RuleContext ResolveRuleContextFromJson(string policyJson, StateDef toState, EventDef? viaEvent, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(policyJson)) return new RuleContext();
-
-            using var doc = JsonDocument.Parse(policyJson);
-            if (!TryGetRules(doc.RootElement, out var rules)) return new RuleContext();
-
-            var catalog = BuildParamCatalog(doc.RootElement);
-
-            if (!TrySelectBestRule(rules, toState, viaEvent, ct, out var rule)) return new RuleContext();
-
-            return BuildRuleContext(rule, catalog);
-        }
-
-        public HookContext ResolveHookContextFromJson(string policyJson, StateDef toState, EventDef? viaEvent, string hookCode, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(policyJson) || string.IsNullOrWhiteSpace(hookCode)) return new HookContext();
-
-            using var doc = JsonDocument.Parse(policyJson);
-            if (!TryGetRules(doc.RootElement, out var rules)) return new HookContext();
-
-            var catalog = BuildParamCatalog(doc.RootElement);
-
-            if (!TrySelectBestRule(rules, toState, viaEvent, ct, out var rule)) return new HookContext();
-
-            // Start from rule context
-            var hc = BuildHookContextFromRule(rule, catalog);
-
-            // If emit match exists, override with emit (params + complete + timing)
-            if (TryFindEmit(rule, hookCode, ct, out var emit)) ApplyEmitOverrides(hc, rule, emit, catalog);
-
-            return hc;
-        }
-        private static bool TryGetRules(JsonElement root, out JsonElement rules) {
-            rules = default;
-            return root.TryGetProperty("rules", out rules) && rules.ValueKind == JsonValueKind.Array;
-        }
-
-        // The params catalog is a top-level lookup: code → data dictionary.
-        // Rules and emits reference param sets by code ("credit-check-data", "approval-params").
-        // The catalog lives at the policy level so multiple rules can share the same param set.
-        // At emit time, we resolve codes → actual data dictionaries and include them in the event.
-        private static Dictionary<string, IReadOnlyDictionary<string, object?>?> BuildParamCatalog(JsonElement root) {
-            var catalog = new Dictionary<string, IReadOnlyDictionary<string, object?>?>(StringComparer.OrdinalIgnoreCase);
-
-            if (!root.TryGetProperty("params", out var paramsEl) || paramsEl.ValueKind != JsonValueKind.Array) return catalog;
-
-            foreach (var p in paramsEl.EnumerateArray()) {
-                var code = p.GetString("code");
-                if (string.IsNullOrWhiteSpace(code)) continue;
-                catalog[code!] = p.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object ? p.GetDictionary("data") : null;
-            }
-            return catalog;
-        }
-
-        // Rule selection: among all matching rules, prefer the one with a "via" clause (more specific)
-        // over a rule that matches any event (no "via"). If there are two equally specific rules,
-        // the first one in the array wins. This gives authors a predictable override mechanism:
-        // put the specific via-rule after the general rule — it will take priority.
-        private bool TrySelectBestRule(JsonElement rules, StateDef toState, EventDef? viaEvent, CancellationToken ct, out JsonElement best) {
-            best = default;
-            var found = false;
+        // Selects the best matching rule for a given (toState, viaEvent) pair.
+        // "Best" = prefers rules with a specific "via" clause over generic rules (no "via").
+        // First rule wins among equally-specific candidates.
+        private static ParsedPolicyRule? SelectBestRule(ParsedPolicy parsed, StateDef toState, EventDef? viaEvent) {
+            ParsedPolicyRule? best = null;
             var bestHasVia = false;
 
-            foreach (var rule in rules.EnumerateArray()) {
-                ct.ThrowIfCancellationRequested();
+            foreach (var rule in parsed.Rules) {
+                if (!IsStateMatch(rule.State, toState)) continue;
 
-                var ruleState = rule.GetString("state");
-                if (string.IsNullOrWhiteSpace(ruleState)) continue;
-                if (!IsStateMatch(ruleState!, toState)) continue;
-
-                var hasVia = rule.TryGetProperty("via", out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined;
+                var hasVia = rule.Via.HasValue;
                 if (hasVia) {
-                    if (viaEvent == null) continue;
-                    var viaCode = viaEl.GetInt();
-                    if (!viaCode.HasValue || viaCode.Value != viaEvent.Code) continue;
+                    if (viaEvent == null || rule.Via!.Value != viaEvent.Code) continue;
                 }
 
-                if (!found || (hasVia && !bestHasVia)) {
+                if (best == null || (hasVia && !bestHasVia)) {
                     best = rule;
-                    found = true;
                     bestHasVia = hasVia;
                 }
             }
 
-            return found;
+            return best;
         }
 
-        private RuleContext BuildRuleContext(JsonElement rule, IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog) {
-            var (succ, fail) = ReadCompletionEvents(rule);
-            var codes = ReadParamCodes(rule, "params");
+        // Returns the rule-level context (params + completion events) for the given transition.
+        // Pass policyId when available (e.g. from PolicyResolution) to get a cache hit.
+        // AckManager calls this without a policyId (passes 0 = no cache); WorkFlowEngine passes the ID.
+        public RuleContext ResolveRuleContextFromJson(string policyJson, StateDef toState, EventDef? viaEvent, CancellationToken ct = default, long policyId = 0) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(policyJson)) return new RuleContext();
+
+            var parsed = GetOrAddCached(policyId, policyJson);
+            var rule = SelectBestRule(parsed, toState, viaEvent);
+            if (rule == null) return new RuleContext();
 
             return new RuleContext {
-                OnSuccessEvent = succ,
-                OnFailureEvent = fail,
-                Params = ResolveParams(catalog, codes)
+                OnSuccessEvent = rule.OnSuccess,
+                OnFailureEvent = rule.OnFailure,
+                Params = ResolveParams(parsed.ParamCatalog, rule.ParamCodes)
             };
         }
 
-        private HookContext BuildHookContextFromRule(JsonElement rule, IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog) {
-            var rc = BuildRuleContext(rule, catalog);
-            return new HookContext { OnSuccessEvent = rc.OnSuccessEvent, OnFailureEvent = rc.OnFailureEvent, Params = rc.Params };
-        }
+        // Returns the hook-level context (params + completion events + timing) for a specific hook route.
+        // Emit-level settings override rule-level settings where specified (same inheritance as EmitHooksAsync).
+        // Pass policyId when available to get a cache hit; 0 = parse without caching.
+        public HookContext ResolveHookContextFromJson(string policyJson, StateDef toState, EventDef? viaEvent, string hookCode, CancellationToken ct = default, long policyId = 0) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(policyJson) || string.IsNullOrWhiteSpace(hookCode)) return new HookContext();
 
-        private static bool TryFindEmit(JsonElement rule, string hookCode, CancellationToken ct, out JsonElement emit) {
-            emit = default;
-            if (!rule.TryGetProperty("emit", out var emitEl) || emitEl.ValueKind != JsonValueKind.Array) return false;
+            var parsed = GetOrAddCached(policyId, policyJson);
+            var rule = SelectBestRule(parsed, toState, viaEvent);
+            if (rule == null) return new HookContext();
 
-            foreach (var e in emitEl.EnumerateArray()) {
-                ct.ThrowIfCancellationRequested();
-                var ev = e.GetString("route");
-                if (!string.IsNullOrWhiteSpace(ev) && string.Equals(ev, hookCode, StringComparison.OrdinalIgnoreCase)) { emit = e; return true; }
+            // Start from rule-level context.
+            var hc = new HookContext {
+                OnSuccessEvent = rule.OnSuccess,
+                OnFailureEvent = rule.OnFailure,
+                Params = ResolveParams(parsed.ParamCatalog, rule.ParamCodes)
+            };
+
+            // If a matching emit exists, override with emit-level settings.
+            // ParamCodes: emit wins (no merge); else falls back to rule.
+            var emit = rule.Emits.FirstOrDefault(e => string.Equals(e.Route, hookCode, StringComparison.OrdinalIgnoreCase));
+            if (emit != null) {
+                hc.OnSuccessEvent = emit.OnSuccess;     // already collapsed at parse time
+                hc.OnFailureEvent = emit.OnFailure;
+                var effectiveCodes = emit.ParamCodes.Count > 0 ? emit.ParamCodes : rule.ParamCodes;
+                hc.Params = ResolveParams(parsed.ParamCatalog, effectiveCodes);
+                hc.NotBefore = emit.NotBefore;
+                hc.Deadline = emit.Deadline;
             }
-            return false;
+
+            return hc;
         }
-
-        // Inheritance cascade: emit-level settings override rule-level settings where specified.
-        // Params: if the emit has its own params list, use that; otherwise fall back to rule params.
-        // Completion events: if the emit specifies on_success/on_failure, those win; else use rule's.
-        // This lets emits share the rule's params/completion by default, but override when needed.
-        private void ApplyEmitOverrides(HookContext hc, JsonElement rule, JsonElement emit, IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog) {
-            // completion: emit wins, missing filled from rule
-            var (ruleSuccess, ruleFailure) = ReadCompletionEvents(rule);
-            var (emitSuccess, emitFailure) = ReadCompletionEvents(emit);
-            hc.OnSuccessEvent = !string.IsNullOrWhiteSpace(emitSuccess) ? emitSuccess : ruleSuccess;
-            hc.OnFailureEvent = !string.IsNullOrWhiteSpace(emitFailure) ? emitFailure : ruleFailure;
-
-            // params: emit.params wins (no merge), else rule.params
-            var ruleCodes = ReadParamCodes(rule, "params");
-            var emitCodes = ReadParamCodes(emit, "params");
-            var effective = emitCodes.Count > 0 ? emitCodes : ruleCodes;
-            hc.Params = ResolveParams(catalog, effective);
-
-            // timing
-            hc.NotBefore = emit.GetDatetimeOffset("notBefore");
-            hc.Deadline = emit.GetDatetimeOffset("deadline");
-        }
-
     }
 }
-
-

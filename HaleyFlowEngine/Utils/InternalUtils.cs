@@ -1,4 +1,4 @@
-﻿using Haley.Abstractions;
+using Haley.Abstractions;
 using Haley.Models;
 using Haley.Utils;
 using Haley.Enums;
@@ -9,17 +9,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Text.Json.Nodes;
+using static Haley.Internal.KeyConstants;
 
 namespace Haley.Utils {
     internal static class InternalUtils {
-        internal const string KEY_STATES = "states";
-        internal const string KEY_EVENTS = "events";
-        internal const string KEY_TRANSITIONS = "transitions";
-        internal const string KEY_POLICYNAME = "policy_name";
-        internal const string KEY_PARAMS = "params";
-        internal const string KEY_RULES = "rules";
-        internal const string KEY_TIMEOUT = "timeouts";
-
 
         public static string BuildDefinitionHashMaterial(this JsonElement root) {
             // keep ONLY states/events/transitions
@@ -36,15 +29,16 @@ namespace Haley.Utils {
         public static string BuildPolicyHashMaterial(this JsonElement root) {
             // keep ONLY policy_name/rules/params/timeouts (ignore "for")
             var obj = new JsonObject {
-                [KEY_POLICYNAME] = root.TryGetProperty(KEY_POLICYNAME, out var pn) ? pn.GetString() : (string?)null,
+                [KEY_POLICY_NAME] = root.TryGetProperty(KEY_POLICY_NAME, out var pn) ? pn.GetString() : (string?)null,
                 [KEY_RULES] = root.TryGetProperty(KEY_RULES, out var p) ? JsonNode.Parse(p.GetRawText()) : new JsonArray(),
                 [KEY_PARAMS] = root.TryGetProperty(KEY_PARAMS, out var r) ? JsonNode.Parse(r.GetRawText()) : new JsonArray(),
-                [KEY_TIMEOUT] = root.TryGetProperty(KEY_TIMEOUT, out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
+                [KEY_TIMEOUTS] = root.TryGetProperty(KEY_TIMEOUTS, out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
             };
 
             var canon = obj.Canonicalize();
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
+
         static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
             if (!root.TryGetProperty(KEY_STATES, out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
                 return new JsonArray();
@@ -59,11 +53,13 @@ namespace Haley.Utils {
                 foreach (var p in s.EnumerateObject()) {
                     var k = p.Name;
 
-                    if (k.Equals("timeout", StringComparison.OrdinalIgnoreCase) ||
-                        k.Equals("timeout_minutes", StringComparison.OrdinalIgnoreCase) ||
-                        k.Equals("timeout_mode", StringComparison.OrdinalIgnoreCase) ||
-                        k.Equals("timeout_event", StringComparison.OrdinalIgnoreCase) ||
-                        k.Equals("timeoutEventCode", StringComparison.OrdinalIgnoreCase))
+                    if (k.Equals(KEY_TIMEOUT, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_TIMEOUT_MINUTES, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_TIMEOUT_MINUTES_CAMEL, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_TIMEOUT_MODE, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_TIMEOUT_MODE_CAMEL, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_TIMEOUT_EVENT, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_TIMEOUT_EVENT_CAMEL, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     o[k] = JsonNode.Parse(p.Value.GetRawText());

@@ -47,6 +47,7 @@ namespace Haley.Services {
         // Delegates to the _consumers callback injected at construction — the callback is owned by
         // WorkFlowEngine, which knows how to query the registered consumer list for a definition.
         // AckManager intentionally doesn't query consumers directly; this keeps DAL coupling out of here.
+        // The responsibility to maintain the consumer and definition subscription is for HaleyFlow.Hub. Engine should not maintain the subscriptions
         public Task<IReadOnlyList<long>> GetTransitionConsumersAsync(long defVersionId, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return _consumers(LifeCycleConsumerType.Transition, defVersionId, ct); }
 
         // Same as GetTransitionConsumersAsync but scoped to hook-type consumers.

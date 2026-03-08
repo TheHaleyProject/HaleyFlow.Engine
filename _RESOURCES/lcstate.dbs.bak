@@ -199,9 +199,6 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 				<column name="parent" />
 				<column name="version" />
 			</index>
-			<index name="fk_def_version_definition" unique="UNIQUE_KEY" >
-				<column name="parent" />
-			</index>
 			<index name="unq_def_version_0" unique="UNIQUE_KEY" >
 				<column name="guid" />
 			</index>
@@ -505,8 +502,8 @@ archive = 16]]></comment>
 			<fk name="fk_instance_def_version" to_schema="lcstate" to_table="def_version" >
 				<fk_column name="def_version" pk="id" />
 			</fk>
-			<fk name="fk_instance_def_version_0" to_schema="lcstate" to_table="def_version" >
-				<fk_column name="def_id" pk="parent" />
+			<fk name="fk_instance_definition" to_schema="lcstate" to_table="definition" >
+				<fk_column name="def_id" pk="id" />
 			</fk>
 			<options><![CDATA[engine=InnoDB
  AUTO_INCREMENT 1857  
