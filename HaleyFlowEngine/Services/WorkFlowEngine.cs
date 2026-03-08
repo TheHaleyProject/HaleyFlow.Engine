@@ -487,6 +487,21 @@ namespace Haley.Services {
             return result;
         }
 
+        public Task<DbRows> ListInstancesAsync(int envCode, string? defName, bool runningOnly, int skip, int take, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            return _dal.Instance.ListByEnvAndDefPagedAsync(envCode, defName, runningOnly, skip, take, new DbExecutionLoad(ct));
+        }
+
+        public Task<DbRows> ListPendingAcksAsync(int envCode, int skip, int take, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            return _dal.AckConsumer.ListPendingDetailPagedAsync(envCode, skip, take, new DbExecutionLoad(ct));
+        }
+
+        public async Task<WorkFlowEngineSummary> GetSummaryAsync(int envCode, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            return await Care.GetSummaryAsync(envCode, ct);
+        }
+
         public Task ClearCacheAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Clear(); return Task.CompletedTask; }
 
         public Task InvalidateAsync(int envCode, string defName, CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); BlueprintManager.Invalidate(envCode, defName); return Task.CompletedTask; }

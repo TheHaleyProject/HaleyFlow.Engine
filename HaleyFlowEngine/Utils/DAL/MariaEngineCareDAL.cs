@@ -20,5 +20,14 @@ namespace Haley.Internal {
                 (FLAGS, excludedFlags),
                 (ACK_STATUS, ackStatus),
                 (STALE_SECONDS, staleSeconds));
+
+        public Task<long> CountTotalInstancesByEnvAsync(int envCode, DbExecutionLoad load = default)
+            => Db.ScalarAsync<long>(QRY_ENGINE_HEALTH.COUNT_TOTAL_INSTANCES_BY_ENV, load, (CODE, envCode));
+
+        public Task<long> CountRunningInstancesByEnvAsync(int envCode, DbExecutionLoad load = default)
+            => Db.ScalarAsync<long>(QRY_ENGINE_HEALTH.COUNT_RUNNING_INSTANCES_BY_ENV, load, (CODE, envCode));
+
+        public Task<long> CountPendingAcksAsync(DbExecutionLoad load = default)
+            => Db.ScalarAsync<long>(QRY_ENGINE_HEALTH.COUNT_PENDING_ACKS, load);
     }
 }

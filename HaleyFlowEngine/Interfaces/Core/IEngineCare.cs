@@ -9,5 +9,6 @@ namespace Haley.Abstractions {
     // happens here, keeping WorkFlowEngine itself free of health-query logic.
     internal interface IEngineCare {
         Task<WorkFlowEngineHealth> GetHealthAsync(int ttlSeconds, TimeSpan defaultStateStaleDuration, CancellationToken ct = default);
+        Task<WorkFlowEngineSummary> GetSummaryAsync(int envCode, CancellationToken ct = default);
     }
 }

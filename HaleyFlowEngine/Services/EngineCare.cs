@@ -58,5 +58,19 @@ namespace Haley.Services {
                 DefaultStateStaleCount   = (int)staleCount
             };
         }
+
+        public async Task<WorkFlowEngineSummary> GetSummaryAsync(int envCode, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            var load = new DbExecutionLoad(ct);
+            var total   = await _dal.CountTotalInstancesByEnvAsync(envCode, load);
+            var running = await _dal.CountRunningInstancesByEnvAsync(envCode, load);
+            var pending = await _dal.CountPendingAcksAsync(load);
+            return new WorkFlowEngineSummary {
+                EnvCode          = envCode,
+                TotalInstances   = total,
+                RunningInstances = running,
+                PendingAcks      = pending
+            };
+        }
     }
 }

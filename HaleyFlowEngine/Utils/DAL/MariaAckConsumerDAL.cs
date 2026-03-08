@@ -40,5 +40,11 @@ namespace Haley.Internal {
 
         public Task<int> MarkAllProcessedByAckIdAsync(long ackId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_ACK_CONSUMER.MARK_ALL_PROCESSED_BY_ACK_ID, load, (ACK_ID, ackId));
+
+        public Task<DbRows> ListPendingDetailPagedAsync(int envCode, int skip, int take, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_ACK_CONSUMER.LIST_PENDING_DETAIL_PAGED, load,
+                (CODE, envCode),
+                (SKIP, skip),
+                (TAKE, take));
     }
 }

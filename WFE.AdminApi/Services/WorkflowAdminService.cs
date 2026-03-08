@@ -15,8 +15,10 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
     private readonly WorkflowAdminOptions _options;
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly SemaphoreSlim _consumerInitLock = new(1, 1);
 
     private IWorkFlowEngine? _engine;
+    private IConsumerAdminService? _consumerAdmin;
 
     public WorkflowAdminService(IOptions<WorkflowAdminOptions> options, IAdapterGateway agw) {
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
@@ -66,40 +68,7 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
         CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-
-        const string sql = @"
-SELECT
-    i.id,
-    i.guid,
-    i.entity_id,
-    d.name AS def_name,
-    i.def_version,
-    i.current_state,
-    s.name AS current_state_name,
-    s.flags AS state_flags,
-    i.flags AS instance_flags,
-    i.created,
-    i.modified
-FROM instance i
-JOIN definition d ON d.id = i.def_id
-JOIN environment e ON e.id = d.env
-JOIN state s ON s.id = i.current_state
-WHERE e.code = @envCode
-  AND (@defName = '' OR d.name = @defName)
-  AND (@runningOnly = 0 OR (s.flags & 2) = 0)
-ORDER BY i.id DESC
-LIMIT @take OFFSET @skip;";
-
-        var rows = await _agw.RowsAsync(
-            EngineAdapterKey,
-            sql,
-            new DbExecutionLoad(ct),
-            ("envCode", _options.EnvCode),
-            ("defName", defName?.Trim() ?? string.Empty),
-            ("runningOnly", runningOnly ? 1 : 0),
-            ("take", normalizedTake),
-            ("skip", normalizedSkip));
-
+        var rows = await _engine!.ListInstancesAsync(ResolveEnvCode(null), defName?.Trim(), runningOnly, normalizedSkip, normalizedTake, ct);
         return ToDictionaries(rows);
     }
 
@@ -109,48 +78,7 @@ LIMIT @take OFFSET @skip;";
         CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-
-        const string sql = @"
-SELECT
-    ac.ack_id,
-    a.guid AS ack_guid,
-    ac.consumer,
-    ac.status,
-    ac.next_due,
-    ac.trigger_count,
-    ac.last_trigger,
-    ac.created,
-    ac.modified,
-    a.created AS ack_created,
-    i.guid AS instance_guid,
-    i.entity_id,
-    d.name AS def_name,
-    hr.name AS hook_route
-FROM ack_consumer ac
-JOIN ack a ON a.id = ac.ack_id
-LEFT JOIN lc_ack la ON la.ack_id = ac.ack_id
-LEFT JOIN lifecycle lc ON lc.id = la.lc_id
-LEFT JOIN instance li ON li.id = lc.instance_id
-LEFT JOIN hook_ack ha ON ha.ack_id = ac.ack_id
-LEFT JOIN hook hk ON hk.id = ha.hook_id
-LEFT JOIN hook_route hr ON hr.id = hk.route_id
-LEFT JOIN instance hi ON hi.id = hk.instance_id
-LEFT JOIN instance i ON i.id = COALESCE(li.id, hi.id)
-LEFT JOIN definition d ON d.id = i.def_id
-LEFT JOIN environment e ON e.id = d.env
-WHERE ac.status IN (1, 2)
-  AND (e.code IS NULL OR e.code = @envCode)
-ORDER BY ac.next_due ASC, ac.ack_id DESC
-LIMIT @take OFFSET @skip;";
-
-        var rows = await _agw.RowsAsync(
-            EngineAdapterKey,
-            sql,
-            new DbExecutionLoad(ct),
-            ("envCode", _options.EnvCode),
-            ("take", normalizedTake),
-            ("skip", normalizedSkip));
-
+        var rows = await _engine!.ListPendingAcksAsync(ResolveEnvCode(null), normalizedSkip, normalizedTake, ct);
         return ToDictionaries(rows);
     }
 
@@ -160,39 +88,7 @@ LIMIT @take OFFSET @skip;";
         CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-
-        const string sql = @"
-SELECT
-    w.id,
-    w.ack_guid,
-    w.entity_id,
-    w.kind,
-    w.consumer_id,
-    w.def_id,
-    w.def_version_id,
-    w.instance_guid,
-    w.event_code,
-    w.route,
-    w.occurred,
-    w.created,
-    i.status AS inbox_status,
-    i.attempt_count,
-    o.status AS outbox_status,
-    o.current_outcome,
-    o.next_retry_at
-FROM workflow w
-LEFT JOIN inbox i ON i.wf_id = w.id
-LEFT JOIN outbox o ON o.wf_id = w.id
-ORDER BY w.id DESC
-LIMIT @take OFFSET @skip;";
-
-        var rows = await _agw.RowsAsync(
-            ConsumerAdapterKey,
-            sql,
-            new DbExecutionLoad(ct),
-            ("take", normalizedTake),
-            ("skip", normalizedSkip));
-
+        var rows = await (await EnsureConsumerAdminAsync(ct)).ListWorkflowsAsync(normalizedSkip, normalizedTake, ct);
         return ToDictionaries(rows);
     }
 
@@ -203,34 +99,7 @@ LIMIT @take OFFSET @skip;";
         CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-
-        const string sql = @"
-SELECT
-    i.wf_id,
-    i.status,
-    i.attempt_count,
-    i.last_error,
-    i.received_at,
-    i.modified,
-    w.entity_id,
-    w.instance_guid,
-    w.kind,
-    w.route,
-    w.event_code
-FROM inbox i
-JOIN workflow w ON w.id = i.wf_id
-WHERE (@status < 0 OR i.status = @status)
-ORDER BY i.modified DESC
-LIMIT @take OFFSET @skip;";
-
-        var rows = await _agw.RowsAsync(
-            ConsumerAdapterKey,
-            sql,
-            new DbExecutionLoad(ct),
-            ("status", status ?? -1),
-            ("take", normalizedTake),
-            ("skip", normalizedSkip));
-
+        var rows = await (await EnsureConsumerAdminAsync(ct)).ListInboxAsync(status, normalizedSkip, normalizedTake, ct);
         return ToDictionaries(rows);
     }
 
@@ -241,77 +110,23 @@ LIMIT @take OFFSET @skip;";
         CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-
-        const string sql = @"
-SELECT
-    o.wf_id,
-    o.current_outcome,
-    o.status,
-    o.next_retry_at,
-    o.last_error,
-    o.modified,
-    w.entity_id,
-    w.instance_guid,
-    w.kind,
-    w.route,
-    w.event_code
-FROM outbox o
-JOIN workflow w ON w.id = o.wf_id
-WHERE (@status < 0 OR o.status = @status)
-ORDER BY o.modified DESC
-LIMIT @take OFFSET @skip;";
-
-        var rows = await _agw.RowsAsync(
-            ConsumerAdapterKey,
-            sql,
-            new DbExecutionLoad(ct),
-            ("status", status ?? -1),
-            ("take", normalizedTake),
-            ("skip", normalizedSkip));
-
+        var rows = await (await EnsureConsumerAdminAsync(ct)).ListOutboxAsync(status, normalizedSkip, normalizedTake, ct);
         return ToDictionaries(rows);
     }
 
     public async Task<Dictionary<string, object?>> GetSummaryAsync(CancellationToken ct) {
         await EnsureInitializedAsync(ct);
-
-        const string engineTotalSql = @"
-SELECT COUNT(1)
-FROM instance i
-JOIN definition d ON d.id = i.def_id
-JOIN environment e ON e.id = d.env
-WHERE e.code = @envCode;";
-
-        const string engineRunningSql = @"
-SELECT COUNT(1)
-FROM instance i
-JOIN definition d ON d.id = i.def_id
-JOIN environment e ON e.id = d.env
-JOIN state s ON s.id = i.current_state
-WHERE e.code = @envCode
-  AND (s.flags & 2) = 0;";
-
-        const string pendingAckSql = @"
-SELECT COUNT(1)
-FROM ack_consumer
-WHERE status IN (1, 2);";
-
-        const string inboxPendingSql = @"SELECT COUNT(1) FROM inbox WHERE status IN (1, 2);";
-        const string outboxPendingSql = @"SELECT COUNT(1) FROM outbox WHERE status = 1;";
-
-        var engineTotal = await _agw.ScalarAsync<long>(EngineAdapterKey, engineTotalSql, new DbExecutionLoad(ct), ("envCode", _options.EnvCode));
-        var engineRunning = await _agw.ScalarAsync<long>(EngineAdapterKey, engineRunningSql, new DbExecutionLoad(ct), ("envCode", _options.EnvCode));
-        var enginePendingAcks = await _agw.ScalarAsync<long>(EngineAdapterKey, pendingAckSql, new DbExecutionLoad(ct));
-        var consumerInboxPending = await _agw.ScalarAsync<long>(ConsumerAdapterKey, inboxPendingSql, new DbExecutionLoad(ct));
-        var consumerOutboxPending = await _agw.ScalarAsync<long>(ConsumerAdapterKey, outboxPendingSql, new DbExecutionLoad(ct));
-
+        var s = await _engine!.GetSummaryAsync(ResolveEnvCode(null), ct);
+        var ca = await EnsureConsumerAdminAsync(ct);
+        var inboxPending = await ca.CountPendingInboxAsync(ct);
+        var outboxPending = await ca.CountPendingOutboxAsync(ct);
         return new Dictionary<string, object?> {
             ["envCode"] = _options.EnvCode,
-            ["engineTotalInstances"] = engineTotal ,
-            ["engineRunningInstances"] = engineRunning ,
-            ["enginePendingAcks"] = enginePendingAcks ,
-            ["consumerPendingInbox"] = consumerInboxPending ,
-            ["consumerPendingOutbox"] = consumerOutboxPending 
+            ["engineTotalInstances"] = s.TotalInstances,
+            ["engineRunningInstances"] = s.RunningInstances,
+            ["enginePendingAcks"] = s.PendingAcks,
+            ["consumerPendingInbox"] = inboxPending,
+            ["consumerPendingOutbox"] = outboxPending
         };
     }
 
@@ -390,6 +205,7 @@ WHERE status IN (1, 2);";
             try { await disposableEngine.DisposeAsync(); } catch { }
         }
         _initLock.Dispose();
+        _consumerInitLock.Dispose();
     }
 
     private async Task EnsureInitializedAsync(CancellationToken ct) {
@@ -402,6 +218,19 @@ WHERE status IN (1, 2);";
             _engine = await engineMaker.Build(_agw);
         } finally {
             _initLock.Release();
+        }
+    }
+
+    private async Task<IConsumerAdminService> EnsureConsumerAdminAsync(CancellationToken ct) {
+        if (_consumerAdmin != null) return _consumerAdmin;
+        await _consumerInitLock.WaitAsync(ct);
+        try {
+            if (_consumerAdmin != null) return _consumerAdmin;
+            var maker = new WorkFlowConsumerMaker().WithAdapterKey(ConsumerAdapterKey);
+            _consumerAdmin = await maker.BuildAdmin(_agw);
+            return _consumerAdmin;
+        } finally {
+            _consumerInitLock.Release();
         }
     }
 

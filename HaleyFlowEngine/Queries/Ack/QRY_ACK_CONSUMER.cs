@@ -36,5 +36,26 @@ namespace Haley.Internal {
 
         public const string DELETE = $@"DELETE FROM ack_consumer WHERE id = {ID};";
         public const string DELETE_BY_ACK_ID = $@"DELETE FROM ack_consumer WHERE ack_id = {ACK_ID};";
+
+        public const string LIST_PENDING_DETAIL_PAGED =
+            $@"SELECT ac.ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.next_due,
+              ac.trigger_count, ac.last_trigger, ac.created, ac.modified, a.created AS ack_created,
+              i.guid AS instance_guid, i.entity_id, d.name AS def_name, hr.name AS hook_route
+       FROM ack_consumer ac
+       JOIN ack a ON a.id = ac.ack_id
+       LEFT JOIN lc_ack la ON la.ack_id = ac.ack_id
+       LEFT JOIN lifecycle lc ON lc.id = la.lc_id
+       LEFT JOIN instance li ON li.id = lc.instance_id
+       LEFT JOIN hook_ack ha ON ha.ack_id = ac.ack_id
+       LEFT JOIN hook hk ON hk.id = ha.hook_id
+       LEFT JOIN hook_route hr ON hr.id = hk.route_id
+       LEFT JOIN instance hi ON hi.id = hk.instance_id
+       LEFT JOIN instance i ON i.id = COALESCE(li.id, hi.id)
+       LEFT JOIN definition d ON d.id = i.def_id
+       LEFT JOIN environment e ON e.id = d.env
+       WHERE ac.status IN (1, 2)
+         AND (e.code IS NULL OR e.code = {CODE})
+       ORDER BY ac.next_due ASC, ac.ack_id DESC
+       LIMIT {TAKE} OFFSET {SKIP};";
     }
 }

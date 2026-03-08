@@ -81,5 +81,6 @@ namespace Haley.Internal {
 
         public const string TAKE = "@TAKE";
         public const string SKIP = "@SKIP";
+        public const string RUNNING_ONLY = "@RUNNING_ONLY";
     }
 }

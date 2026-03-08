@@ -61,5 +61,19 @@ namespace Haley.Internal {
         public const string LIST_BY_FLAGS_AND_DEF_VERSION_PAGED = $@"SELECT i.entity_id, i.guid AS instance_guid, i.created FROM instance i WHERE i.def_version = {PARENT_ID} AND (i.flags & {FLAGS}) <> 0 ORDER BY i.created ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
 
         public const string LIST_STALE_BY_DEFAULT_STATE_DURATION_PAGED = $@"SELECT i.id AS instance_id, i.guid AS instance_guid, i.entity_id AS entity_id, i.def_version AS def_version_id, i.current_state AS current_state_id, s.display_name AS state_name, l.id AS lc_id, l.created AS entered_at, TIMESTAMPDIFF(SECOND, l.created, UTC_TIMESTAMP()) AS stale_seconds FROM instance i JOIN state s ON s.id = i.current_state AND s.def_version = i.def_version JOIN lifecycle l ON l.id = (SELECT l2.id FROM lifecycle l2 WHERE l2.instance_id = i.id AND l2.to_state = i.current_state ORDER BY l2.id DESC LIMIT 1) WHERE (i.flags & {FLAGS}) = 0 AND NOT EXISTS (SELECT 1 FROM timeouts tm WHERE tm.policy_id = i.policy_id AND tm.state_name = s.name AND tm.event_code IS NOT NULL) AND l.created <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL {STALE_SECONDS} SECOND) AND NOT EXISTS (SELECT 1 FROM lc_ack la JOIN ack_consumer ac ON ac.ack_id = la.ack_id WHERE la.lc_id = l.id AND ac.status <> {ACK_STATUS}) AND NOT EXISTS (SELECT 1 FROM hook h JOIN hook_ack ha ON ha.hook_id = h.id JOIN ack_consumer ac2 ON ac2.ack_id = ha.ack_id WHERE h.instance_id = i.id AND h.state_id = i.current_state AND ac2.status <> {ACK_STATUS}) ORDER BY l.created ASC, i.id ASC LIMIT {TAKE} OFFSET {SKIP};";
+
+        public const string LIST_BY_ENV_AND_DEF_PAGED =
+            $@"SELECT i.id, i.guid, i.entity_id, d.name AS def_name, i.def_version,
+              i.current_state, s.display_name AS current_state_name, s.flags AS state_flags,
+              i.flags AS instance_flags, i.created, i.modified
+       FROM instance i
+       JOIN definition d ON d.id = i.def_id
+       JOIN environment e ON e.id = d.env
+       JOIN state s ON s.id = i.current_state
+       WHERE e.code = {CODE}
+         AND ({DEF_NAME} = '' OR d.name = {DEF_NAME})
+         AND ({RUNNING_ONLY} = 0 OR (s.flags & 2) = 0)
+       ORDER BY i.id DESC
+       LIMIT {TAKE} OFFSET {SKIP};";
     }
 }

@@ -14,7 +14,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             var agw = new AdapterGateway();
             long resolvedConsumerId = 0;
 
-            var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(agw.GetDefaultKey()); //Use default adapter for engine
+            var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(settings.ENGINE_DBNAME); //Use default adapter for engine
             engineMaker.Options = new WorkFlowEngineOptions {
                 MonitorInterval = settings.MonitorInterval,
                 AckPendingResendAfter = settings.AckPendingResendAfter,
@@ -45,7 +45,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 var serviceProvider = serviceCollection.BuildServiceProvider();
 
                 var consumerMaker = new WorkFlowConsumerMaker()
-                    .WithAdapterKey(agw.GetDefaultKey())
+                    .WithAdapterKey(settings.CONSUMER_DBNAME)
                     .WithProvider(serviceProvider);
 
                 consumerMaker.EngineProxy = feed;
@@ -81,8 +81,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 Console.WriteLine($"Definition imported. defVersionId={defVersionId}");
                 Console.WriteLine($"Policy imported. policyId={policyId}");
 
-                await engine.StartMonitorAsync(ct);
-                await consumer.StartAsync(ct);
+                await engine.StartMonitorAsync(ct);  //Start the monitor  so that it can send the notices
+                await consumer.StartAsync(ct); //For starting the consumer service itself
 
                 var wrapperDriver = serviceProvider.GetRequiredService<ChangeRequestWrapper>();
                 var createdEntities = new List<string>();

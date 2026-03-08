@@ -27,6 +27,7 @@ namespace Haley.Abstractions {
         Task<int> PushNextDueForDownAsync(long consumerId, int ackStatus, int ttlSeconds, int recheckSeconds, DbExecutionLoad load = default);
         // Mark all sibling ack_consumer rows for an ack as Processed (used for ack_mode=Any).
         Task<int> MarkAllProcessedByAckIdAsync(long ackId, DbExecutionLoad load = default);
+        Task<DbRows> ListPendingDetailPagedAsync(int envCode, int skip, int take, DbExecutionLoad load = default);
     }
 
     internal interface IAckDispatchDAL {

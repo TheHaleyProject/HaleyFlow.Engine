@@ -5,8 +5,10 @@ namespace WFE.Test {
         public int EnvCode { get; set; } = 1000;
         public string EnvDisplayName { get; set; } = "dev";
         public string ConsumerGuid { get; set; } = "89c52807-5054-47fc-9dee-dbb8b42218cb";
-          // Number of timed entity creation attempts (0 = disabled).
-        public int RandomEntityCount { get; set; } = 10;
+        public string CONSUMER_DBNAME { get; set; } = "lcc_usecase";
+        public string ENGINE_DBNAME { get; set; } = "lce_usecase";
+        // Number of timed entity creation attempts (0 = disabled).
+        public int RandomEntityCount { get; set; } = 0;
 
         // Delay between each creation attempt.
         public TimeSpan RandomEntityInterval { get; set; } = TimeSpan.FromSeconds(10);
