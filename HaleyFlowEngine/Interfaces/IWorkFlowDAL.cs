@@ -24,5 +24,6 @@ namespace Haley.Abstractions {
         IActivityStatusDAL ActivityStatus { get; }
         IRuntimeDAL Runtime { get; }
         IRuntimeDataDAL RuntimeData { get; }
+        IEngineCareDAL EngineCare { get; }
     }
 }

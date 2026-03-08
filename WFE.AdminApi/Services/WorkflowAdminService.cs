@@ -316,7 +316,42 @@ WHERE status IN (1, 2);";
     }
 
     public async Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct) {
-        var engineCheck = await PingAdapterAsync(EngineAdapterKey, "engine_db", ct);
+        await EnsureInitializedAsync(ct);
+
+        // Engine health — delegated to WorkFlowEngine.GetHealthAsync → EngineCare + AckManager DAL.
+        // No raw SQL here; EngineCareDAL owns all engine-side health queries.
+        Dictionary<string, object?> engineCheck;
+        var sw = Stopwatch.StartNew();
+        try {
+            var h = await _engine!.GetHealthAsync(ct);
+            sw.Stop();
+            engineCheck = new Dictionary<string, object?> {
+                ["name"] = "engine",
+                ["status"] = "healthy",
+                ["responseTimeMs"] = sw.ElapsedMilliseconds,
+                ["isMonitorRunning"] = h.IsMonitorRunning,
+                ["monitorIntervalSeconds"] = h.MonitorInterval.TotalSeconds,
+                ["consumerTtlSeconds"] = h.ConsumerTtlSeconds,
+                ["totalConsumers"] = h.TotalConsumers,
+                ["aliveConsumers"] = h.AliveConsumers,
+                ["downConsumers"] = h.DownConsumers,
+                ["dueLifecyclePending"] = h.DueLifecyclePendingCount,
+                ["dueLifecycleDelivered"] = h.DueLifecycleDeliveredCount,
+                ["dueHookPending"] = h.DueHookPendingCount,
+                ["dueHookDelivered"] = h.DueHookDeliveredCount,
+                ["staleInstances"] = h.DefaultStateStaleCount
+            };
+        } catch (Exception ex) {
+            sw.Stop();
+            engineCheck = new Dictionary<string, object?> {
+                ["name"] = "engine",
+                ["status"] = "unhealthy",
+                ["responseTimeMs"] = sw.ElapsedMilliseconds,
+                ["error"] = ex.Message
+            };
+        }
+
+        // Consumer DB ping — admin-side concern only (no consumer-side service here).
         var consumerCheck = await PingAdapterAsync(ConsumerAdapterKey, "consumer_db", ct);
 
         var allHealthy = (string?)engineCheck["status"] == "healthy"
