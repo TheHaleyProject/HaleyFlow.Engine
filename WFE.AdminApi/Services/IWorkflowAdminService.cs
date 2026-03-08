@@ -63,6 +63,12 @@ public interface IWorkflowAdminService {
     /// </summary>
     Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct);
 
+    /// <summary>
+    /// Ensures engine host/runtime is initialized and running.
+    /// Does not create any test entities or fire workflow triggers.
+    /// </summary>
+    Task<Dictionary<string, object?>> EnsureHostInitializedAsync(CancellationToken ct);
+
     Task<IReadOnlyList<string>> GetTestUseCasesAsync(CancellationToken ct);
 
     Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(

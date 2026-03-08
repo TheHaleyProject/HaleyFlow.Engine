@@ -114,6 +114,12 @@ public sealed class WorkflowAdminController : ControllerBase {
         return StatusCode(isHealthy ? 200 : 503, health);
     }
 
+    [HttpPost("runtime/ensure-started")]
+    public async Task<IActionResult> EnsureRuntimeStarted(CancellationToken ct) {
+        var result = await _service.EnsureHostInitializedAsync(ct);
+        return Ok(result);
+    }
+
     [HttpGet("test/usecases")]
     public async Task<IActionResult> GetTestUseCases(CancellationToken ct) {
         var useCases = await _service.GetTestUseCasesAsync(ct);

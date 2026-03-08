@@ -226,6 +226,21 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
         };
     }
 
+    public async Task<Dictionary<string, object?>> EnsureHostInitializedAsync(CancellationToken ct) {
+        var wasRuntimeStarted = _runtimeStarted;
+        await EnsureInitializedAsync(ct);
+
+        return new Dictionary<string, object?> {
+            ["status"] = "ok",
+            ["checkedAt"] = DateTimeOffset.UtcNow,
+            ["engineInitialized"] = _engine != null,
+            ["runtimeStarted"] = _runtimeStarted,
+            ["alreadyRunning"] = wasRuntimeStarted,
+            ["envCode"] = _options.EnvCode,
+            ["consumerId"] = _resolvedConsumerId > 0 ? _resolvedConsumerId : null
+        };
+    }
+
     public Task<IReadOnlyList<string>> GetTestUseCasesAsync(CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
         var keys = UseCaseProfiles.Keys
