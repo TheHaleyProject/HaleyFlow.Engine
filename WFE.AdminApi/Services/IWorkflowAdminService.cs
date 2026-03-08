@@ -56,4 +56,10 @@ public interface IWorkflowAdminService {
         CancellationToken ct);
 
     Task<Dictionary<string, object?>> GetSummaryAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Pings both the engine and consumer databases.
+    /// Returns status "healthy" when all checks pass, "unhealthy" when any fail.
+    /// </summary>
+    Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct);
 }

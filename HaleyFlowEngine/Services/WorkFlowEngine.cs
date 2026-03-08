@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using static Haley.Internal.KeyConstants;
+using static Haley.Internal.QueryFields;
 
 namespace Haley.Services {
     // WorkFlowEngine is the central brain of the lifecycle system.
@@ -102,6 +103,51 @@ namespace Haley.Services {
         public Task StartMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StartAsync(ct); }
 
         public Task StopMonitorAsync(CancellationToken ct = default) { ct.ThrowIfCancellationRequested(); return Monitor.StopAsync(ct); }
+
+        public async Task<WorkFlowEngineHealth> GetHealthAsync(CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+
+            var load = new DbExecutionLoad(ct);
+            var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30;
+
+            var dueLifecyclePending = await AckManager.CountDueLifecycleDispatchAsync((int)AckStatus.Pending, load);
+            var dueLifecycleDelivered = await AckManager.CountDueLifecycleDispatchAsync((int)AckStatus.Delivered, load);
+            var dueHookPending = await AckManager.CountDueHookDispatchAsync((int)AckStatus.Pending, load);
+            var dueHookDelivered = await AckManager.CountDueHookDispatchAsync((int)AckStatus.Delivered, load);
+
+            var totalConsumers = await _dal.ScalarAsync<int>(QRY_ENGINE_HEALTH.COUNT_CONSUMERS_TOTAL, load);
+            var aliveConsumers = await _dal.ScalarAsync<int>(QRY_ENGINE_HEALTH.COUNT_CONSUMERS_ALIVE, load, (TTL_SECONDS, ttlSeconds));
+            var downConsumers = await _dal.ScalarAsync<int>(QRY_ENGINE_HEALTH.COUNT_CONSUMERS_DOWN, load, (TTL_SECONDS, ttlSeconds));
+
+            var staleCount = 0;
+            if (_opt.DefaultStateStaleDuration > TimeSpan.Zero) {
+                var staleSeconds = (int)Math.Max(1, _opt.DefaultStateStaleDuration.TotalSeconds);
+                var processed = (int)AckStatus.Processed;
+                var excluded = (uint)(LifeCycleInstanceFlag.Suspended | LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived);
+
+                staleCount = await _dal.ScalarAsync<int>(
+                    QRY_ENGINE_HEALTH.COUNT_STALE_DEFAULT_STATE,
+                    load,
+                    (STALE_SECONDS, staleSeconds),
+                    (ACK_STATUS, processed),
+                    (FLAGS, excluded));
+            }
+
+            return new WorkFlowEngineHealth {
+                UtcNow = DateTimeOffset.UtcNow,
+                IsMonitorRunning = Monitor.IsRunning,
+                MonitorInterval = _opt.MonitorInterval,
+                ConsumerTtlSeconds = ttlSeconds,
+                DueLifecyclePendingCount = dueLifecyclePending,
+                DueLifecycleDeliveredCount = dueLifecycleDelivered,
+                DueHookPendingCount = dueHookPending,
+                DueHookDeliveredCount = dueHookDelivered,
+                TotalConsumers = totalConsumers,
+                AliveConsumers = aliveConsumers,
+                DownConsumers = downConsumers,
+                DefaultStateStaleCount = staleCount
+            };
+        }
 
         public async ValueTask DisposeAsync() { try { await StopMonitorAsync(CancellationToken.None); } catch { } await Monitor.DisposeAsync(); await _dal.DisposeAsync(); }
 

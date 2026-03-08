@@ -6,7 +6,7 @@ namespace WFE.Test {
         public string EnvDisplayName { get; set; } = "dev";
         public string ConsumerGuid { get; set; } = "89c52807-5054-47fc-9dee-dbb8b42218cb";
           // Number of timed entity creation attempts (0 = disabled).
-        public int RandomEntityCount { get; set; } = 0;
+        public int RandomEntityCount { get; set; } = 10;
 
         // Delay between each creation attempt.
         public TimeSpan RandomEntityInterval { get; set; } = TimeSpan.FromSeconds(10);

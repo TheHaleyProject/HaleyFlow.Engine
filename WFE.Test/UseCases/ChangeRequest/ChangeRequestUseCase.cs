@@ -60,8 +60,11 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 consumer = await consumerMaker.Build(agw);
                 consumer.RegisterAssembly(typeof(ChangeRequestWrapper).Assembly); //only for in memory cache loading.
 
-                engine.NoticeRaised += n => {
-                    Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}");
+                // Engine notices are relayed through InProcessEventFeed → consumer.NoticeRaised,
+                // so a single subscription here captures both engine and consumer failures.
+                consumer.NoticeRaised += n => {
+                    Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}" +
+                        (n.Exception != null ? $" ex={n.Exception.GetType().Name}: {n.Exception.Message}" : string.Empty));
                     return Task.CompletedTask;
                 };
 

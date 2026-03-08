@@ -107,6 +107,13 @@ public sealed class WorkflowAdminController : ControllerBase {
         return Ok(summary);
     }
 
+    [HttpGet("health")]
+    public async Task<IActionResult> GetHealth(CancellationToken ct) {
+        var health = await _service.GetHealthAsync(ct);
+        var isHealthy = health.TryGetValue("status", out var s) && s is string str && str == "healthy";
+        return StatusCode(isHealthy ? 200 : 503, health);
+    }
+
     private static LifeCycleInstanceFlag ParseFlags(string? flags) {
         if (string.IsNullOrWhiteSpace(flags)) return LifeCycleInstanceFlag.Active;
 

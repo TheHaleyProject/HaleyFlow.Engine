@@ -3,6 +3,7 @@ using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using WFE.AdminApi.Configuration;
 
 namespace WFE.AdminApi.Services;
@@ -312,6 +313,41 @@ WHERE status IN (1, 2);";
             ["consumerPendingInbox"] = consumerInboxPending ,
             ["consumerPendingOutbox"] = consumerOutboxPending 
         };
+    }
+
+    public async Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct) {
+        var engineCheck = await PingAdapterAsync(EngineAdapterKey, "engine_db", ct);
+        var consumerCheck = await PingAdapterAsync(ConsumerAdapterKey, "consumer_db", ct);
+
+        var allHealthy = (string?)engineCheck["status"] == "healthy"
+                      && (string?)consumerCheck["status"] == "healthy";
+
+        return new Dictionary<string, object?> {
+            ["status"] = allHealthy ? "healthy" : "unhealthy",
+            ["checkedAt"] = DateTimeOffset.UtcNow,
+            ["checks"] = new[] { engineCheck, consumerCheck }
+        };
+    }
+
+    private async Task<Dictionary<string, object?>> PingAdapterAsync(string adapterKey, string checkName, CancellationToken ct) {
+        var sw = Stopwatch.StartNew();
+        try {
+            await _agw.ScalarAsync<int>(adapterKey, "SELECT 1", new DbExecutionLoad(ct));
+            sw.Stop();
+            return new Dictionary<string, object?> {
+                ["name"] = checkName,
+                ["status"] = "healthy",
+                ["responseTimeMs"] = sw.ElapsedMilliseconds
+            };
+        } catch (Exception ex) {
+            sw.Stop();
+            return new Dictionary<string, object?> {
+                ["name"] = checkName,
+                ["status"] = "unhealthy",
+                ["responseTimeMs"] = sw.ElapsedMilliseconds,
+                ["error"] = ex.Message
+            };
+        }
     }
 
     public async ValueTask DisposeAsync() {
