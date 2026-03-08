@@ -354,6 +354,7 @@
         <button class="nav-item" onclick="gotoSection('schema-hook')">Hook Tables <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
         <button class="nav-item" onclick="gotoSection('schema-instance-data')">Instance Data Columns <span class="badge-new" style="background:#e05252;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">NEW</span></button>
         <button class="nav-item" onclick="gotoSection('schema-ack')">ACK Tables</button>
+        <button class="nav-item" onclick="gotoSection('schema-unique')">Required Unique Constraints <span class="badge-new" style="background:#d97706;color:#fff;font-size:9px;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700;">ACTION</span></button>
       </div>
     </div>
 
@@ -923,7 +924,36 @@
 
   <section class="doc-section" id="chore-dup">
     <h3 class="sub-title">5.4 Duplicate Transitions Prevented by the Engine</h3>
-    <p>Multiple consumers may receive the same event. The engine prevents chaos via CAS update on <code>instance.current_state</code> + transition validation. If a consumer triggers an event that no longer matches, the transition does not apply.</p>
+    <p>Multiple consumers may receive the same transition event. The engine prevents duplicate state changes via a <strong>Compare-And-Swap (CAS)</strong> update on <code>instance.current_state</code> — not via a unique constraint on the <code>lifecycle</code> table.</p>
+
+    <h3 class="sub-title" style="margin-top:1.4rem">5.4a The CAS Mechanism</h3>
+    <p>When <code>TriggerAsync</code> applies a transition it executes:</p>
+    <pre><code><span class="sql-kw">UPDATE</span> instance
+   <span class="sql-kw">SET</span>   current_state = <span class="jv">toState</span>,
+         last_event    = <span class="jv">eventId</span>
+ <span class="sql-kw">WHERE</span> id            = <span class="jv">instanceId</span>
+   <span class="sql-kw">AND</span>   current_state = <span class="jv">fromState</span>;   <span class="sql-cm">-- ← the guard</span></code><span class="lang-label">SQL</span></pre>
+    <p>If two concurrent triggers race, only the first wins (1 row affected). The second gets 0 rows — the engine returns <code>ConcurrencyConflict</code> and inserts no <code>lifecycle</code> row. A retry after success also returns 0 rows (the <code>current_state</code> has already moved), so no duplicate history entry is ever created.</p>
+
+    <h3 class="sub-title" style="margin-top:1.4rem">5.4b Why <code>lifecycle</code> Has No Unique Constraint</h3>
+    <p>The <code>lifecycle</code> table is a <strong>history log</strong> — every row is one distinct state-transition event. A unique constraint on <code>(instance_id, from_state, to_state, event)</code> would be <em>wrong</em> for workflows with loops:</p>
+    <div class="callout warn">
+      <div class="callout-title">Loops make tuple-level uniqueness impossible</div>
+      A workflow can legitimately do <strong>A → B → A → B</strong>. The row <code>(instance, from=A, to=B, event=X)</code> must exist twice — once for each loop iteration. A unique constraint would silently block the second transition and corrupt the workflow.
+    </div>
+    <p>The CAS on <code>instance.current_state</code> <em>is</em> the idempotency guard. The <code>lifecycle</code> INSERT only runs after the CAS succeeds, so duplicates are structurally impossible without a DB-level unique constraint.</p>
+
+    <div class="table-wrap" style="margin-top:1rem">
+      <table>
+        <thead><tr><th>Scenario</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>Two concurrent <code>TriggerAsync</code> calls for the same transition</td><td>CAS: only one succeeds → one <code>lifecycle</code> row inserted</td></tr>
+          <tr><td>Network retry after a successful trigger</td><td>CAS: <code>current_state</code> already moved → 0 rows → no second insert</td></tr>
+          <tr><td>Workflow loops back to a previously-visited state</td><td>CAS: <code>current_state</code> is the correct from-state again → new row correctly inserted</td></tr>
+          <tr><td>Consumer triggers an event that doesn't match current state</td><td>Blueprint lookup: <code>InvalidTransition</code> returned before CAS even runs</td></tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="doc-section" id="chore-hb">
@@ -1313,6 +1343,79 @@
       </table>
     </div>
     <p>ACK status values: <code>Pending=1</code>, <code>Delivered=2</code>, <code>Processed=3</code>, <code>Failed=4</code>. Terminal = 3 or 4 (no more re-dispatch).</p>
+  </section>
+
+  <section class="doc-section" id="schema-unique">
+    <h3 class="sub-title">Required Unique Constraints <span class="badge warn">ACTION REQUIRED</span></h3>
+
+    <p>Several engine subsystems rely on <code>ON DUPLICATE KEY UPDATE</code> (MariaDB/MySQL upsert) to be idempotent. If the matching <code>UNIQUE</code> index is absent, the duplicate-key path never fires and each call creates a new row instead of updating the existing one. The migrations below must be applied once to a fresh or existing schema.</p>
+
+    <div class="callout warn">
+      <div class="callout-title">The <code>lifecycle</code> table intentionally has NO unique constraint</div>
+      <code>lifecycle</code> is an append-only history log. A workflow may loop through the same <code>(from_state, to_state, event)</code> pair multiple times — a unique constraint would silently break loop transitions. Idempotency for lifecycle rows is guaranteed by the CAS on <code>instance.current_state</code> (see §5.4b).
+    </div>
+
+    <div class="table-wrap" style="margin-top:1rem">
+      <table>
+        <thead><tr><th>Table</th><th>Required unique index</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>instance</code></td>
+            <td><code>UNIQUE(def_id, entity_id)</code></td>
+            <td><code>UPSERT_BY_DEF_ID_AND_ENTITY_ID</code> relies on this to either return the existing instance or create a new one atomically. Without it, duplicate instances can be created for the same entity.</td>
+          </tr>
+          <tr>
+            <td><code>hook</code></td>
+            <td><code>UNIQUE(instance_id, state_id, via_event, on_entry, route_id)</code></td>
+            <td><code>UpsertByKeyReturnIdAsync</code> must find-or-create a single hook row per emission slot. Without this constraint, every <code>TriggerAsync</code> re-dispatch creates an additional hook row, causing an ever-growing set of duplicate hook dispatch entries and ACK rows.</td>
+          </tr>
+          <tr>
+            <td><code>runtime</code></td>
+            <td><code>UNIQUE(instance_id, activity, state_id, actor_id)</code></td>
+            <td><code>UPSERT_BY_KEY_RETURN_ID</code> updates the existing runtime log entry rather than duplicating it. Without it, every <code>UpsertRuntimeAsync</code> call appends a new row. Status updates via <code>SetRuntimeStatusAsync</code> then target the correct single row.</td>
+          </tr>
+          <tr>
+            <td><code>activity</code></td>
+            <td><code>UNIQUE(name)</code> on the generated column</td>
+            <td>Race-condition protection in <code>EnsureActivityAsync</code>. The DB already generates <code>name = lower(trim(display_name))</code> — a unique index on <code>name</code> ensures concurrent inserts of the same activity name collapse to one row.</td>
+          </tr>
+          <tr>
+            <td><code>activity_status</code></td>
+            <td><code>UNIQUE(name)</code> on the generated column</td>
+            <td>Same as <code>activity</code>.</td>
+          </tr>
+          <tr>
+            <td><code>lifecycle</code></td>
+            <td><strong>None</strong></td>
+            <td>History log. Loops make tuple-level uniqueness impossible. CAS on <code>instance.current_state</code> is the guard (§5.4b).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub-title" style="margin-top:1.4rem">Migration SQL</h3>
+    <pre><code><span class="sql-cm">-- instance: one active lifecycle per (definition, entity)</span>
+<span class="sql-kw">ALTER TABLE</span> instance
+  <span class="sql-kw">ADD UNIQUE INDEX</span> uq_instance_def_entity (def_id, entity_id);
+
+<span class="sql-cm">-- hook: one hook row per emission slot per instance</span>
+<span class="sql-kw">ALTER TABLE</span> hook
+  <span class="sql-kw">ADD UNIQUE INDEX</span> uq_hook_key (instance_id, state_id, via_event, on_entry, route_id);
+
+<span class="sql-cm">-- runtime: one activity log entry per (instance, activity, state, actor)</span>
+<span class="sql-kw">ALTER TABLE</span> runtime
+  <span class="sql-kw">ADD UNIQUE INDEX</span> uq_runtime_key (instance_id, activity, state_id, actor_id);
+
+<span class="sql-cm">-- activity / activity_status: generated name column must be unique</span>
+<span class="sql-cm">-- (skip if the generated column already carries a UNIQUE constraint in your DDL)</span>
+<span class="sql-kw">ALTER TABLE</span> activity        <span class="sql-kw">ADD UNIQUE INDEX</span> uq_activity_name        (name);
+<span class="sql-kw">ALTER TABLE</span> activity_status <span class="sql-kw">ADD UNIQUE INDEX</span> uq_activity_status_name (name);</code><span class="lang-label">SQL</span></pre>
+
+    <div class="callout tip">
+      <div class="callout-title">Running these on an existing DB with duplicates</div>
+      If the schema already has data, resolve duplicates before applying. For <code>runtime</code> you can identify them with:<br><br>
+      <code>SELECT instance_id, activity, state_id, actor_id, COUNT(*) FROM runtime GROUP BY 1,2,3,4 HAVING COUNT(*) &gt; 1;</code>
+    </div>
   </section>
 
   <!-- ──────────────── INSTANCE DATA MODEL ──────────────── -->

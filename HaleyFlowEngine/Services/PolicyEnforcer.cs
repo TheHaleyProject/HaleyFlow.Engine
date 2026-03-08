@@ -13,40 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Haley.Services {
-    // Pre-materialized form of one emit entry inside a policy rule.
-    // Built once during ParseJsonToPolicy; immutable and thread-safe.
-    internal sealed class ParsedPolicyEmit {
-        public string Route { get; init; } = "";
-        public bool? Blocking { get; init; }        // null = inherit from rule
-        public string? Group { get; init; }
-        public int OrderSeq { get; init; } = 1;
-        public int AckMode { get; init; }           // 0 = all, 1 = any
-        public string? OnSuccess { get; init; }     // already collapsed from rule fallback
-        public string? OnFailure { get; init; }
-        public IReadOnlyList<string> ParamCodes { get; init; } = Array.Empty<string>();
-        public DateTimeOffset? NotBefore { get; init; }
-        public DateTimeOffset? Deadline { get; init; }
-    }
-
-    // Pre-materialized form of one policy rule.
-    internal sealed class ParsedPolicyRule {
-        public string State { get; init; } = "";
-        public int? Via { get; init; }              // null = match any triggering event
-        public bool? Blocking { get; init; }        // null = engine default (true)
-        public string? OnSuccess { get; init; }
-        public string? OnFailure { get; init; }
-        public IReadOnlyList<string> ParamCodes { get; init; } = Array.Empty<string>();
-        public IReadOnlyList<ParsedPolicyEmit> Emits { get; init; } = Array.Empty<ParsedPolicyEmit>();
-    }
-
-    // Fully materialized in-memory representation of a policy JSON document.
-    // Built once per policyId (per process lifetime) and cached in PolicyEnforcer._policyCache.
-    // Immutable after construction — safe to share across threads without locking.
-    internal sealed class ParsedPolicy {
-        public IReadOnlyList<ParsedPolicyRule> Rules { get; init; } = Array.Empty<ParsedPolicyRule>();
-        public IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> ParamCatalog { get; init; }
-            = new Dictionary<string, IReadOnlyDictionary<string, object?>?>(StringComparer.OrdinalIgnoreCase);
-    }
 
     // PolicyEnforcer reads and evaluates the policy JSON to answer two questions:
     //   1. "Which hooks should fire for this transition?" → EmitHooksAsync
