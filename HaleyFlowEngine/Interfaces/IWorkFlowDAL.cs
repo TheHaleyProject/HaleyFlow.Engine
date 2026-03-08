@@ -14,6 +14,7 @@ namespace Haley.Abstractions {
         IHookRouteDAL HookRoute { get; }
         IHookGroupDAL HookGroup { get; }
         IHookDAL Hook { get; }
+        IHookLcDAL HookLc { get; }
         IConsumerDAL Consumer { get; }
         IAckDAL Ack { get; }
         IAckConsumerDAL AckConsumer { get; }

@@ -17,6 +17,7 @@ namespace Haley.Abstractions {
         Task<int> SetPolicyAsync(long instanceId, long policyId, DbExecutionLoad load = default);
         Task<int> AddFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
         Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default);
+        Task<int> ForceResetToStateAsync(long instanceId, long stateId, uint clearFlagsMask, DbExecutionLoad load = default);
 
         Task<int> SetMessageAsync(long instanceId, string? message, DbExecutionLoad load = default);
         Task<int> ClearMessageAsync(long instanceId, DbExecutionLoad load = default);
@@ -41,24 +42,33 @@ namespace Haley.Abstractions {
         Task<long?> GetIdByNameAsync(string name, DbExecutionLoad load = default);
         Task<long> UpsertByNameReturnIdAsync(string name, DbExecutionLoad load = default);
         Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
-        Task<int> CountUnresolvedInGroupAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long groupId, DbExecutionLoad load = default);
+        Task<int> CountUnresolvedInGroupAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, long groupId, DbExecutionLoad load = default);
     }
 
     internal interface IHookDAL {
         Task<DbRow?> GetByIdAsync(long hookId, DbExecutionLoad load = default);
         Task<DbRow?> GetByKeyAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, DbExecutionLoad load = default);
-        Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, int orderSeq = 1, int ackMode = 0, bool dispatched = true, DbExecutionLoad load = default);
+        // dispatched param removed — dispatch state now lives on hook_lc rows.
+        Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, int orderSeq = 1, int ackMode = 0, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAndStateAsync(long instanceId, long stateId, DbExecutionLoad load = default);
         Task<int> DeleteAsync(long hookId, DbExecutionLoad load = default);
         Task<int> DeleteByInstanceAsync(long instanceId, DbExecutionLoad load = default);
 
-        // Ordered emission support
+        // Ordered emission support — all order queries now require lcId to scope to the current lifecycle entry.
         Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
-        Task<int>    CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, int orderSeq, DbExecutionLoad load = default);
-        Task<int?>   GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, DbExecutionLoad load = default);
-        Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, int orderSeq, DbExecutionLoad load = default);
-        Task         MarkDispatchedAsync(long hookId, DbExecutionLoad load = default);
+        Task<int>    CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
+        Task<int?>   GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default);
+        Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
+    }
+
+    internal interface IHookLcDAL {
+        /// <summary>Creates a hook_lc row linking a hook definition to a lifecycle entry. Idempotent.</summary>
+        Task<long> InsertReturnIdAsync(long hookId, long lcId, DbExecutionLoad load = default);
+        /// <summary>Marks a hook_lc row as dispatched (ACK rows created, event fired).</summary>
+        Task MarkDispatchedAsync(long hookLcId, DbExecutionLoad load = default);
+        /// <summary>Returns how many times this hook has been fully dispatched (run count across all lifecycle entries).</summary>
+        Task<int> CountDispatchedByHookIdAsync(long hookId, DbExecutionLoad load = default);
     }
 
     internal interface ILifeCycleDAL {

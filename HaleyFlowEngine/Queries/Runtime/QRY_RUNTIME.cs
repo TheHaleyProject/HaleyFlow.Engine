@@ -24,6 +24,9 @@ namespace Haley.Internal {
 
         public const string SET_STATUS = $@"UPDATE runtime SET status = {STATUS_ID}, modified = CURRENT_TIMESTAMP() WHERE id = {ID} AND frozen = 0;";
         public const string SET_LC_ID = $@"UPDATE runtime SET lc_id = {LC_ID}, modified = CURRENT_TIMESTAMP() WHERE id = {ID} AND frozen = 0;";
+        // After a transition succeeds, stamp lc_id on all runtime rows for the state that was just closed.
+        // Only updates rows where lc_id = 0 so already-linked rows are never overwritten.
+        public const string STAMP_LC_ID_BY_INSTANCE_AND_STATE = $@"UPDATE runtime SET lc_id = {LC_ID} WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND lc_id = 0;";
 
         public const string FREEZE = $@"UPDATE runtime SET frozen = 1, modified = CURRENT_TIMESTAMP() WHERE id = {ID};";
         public const string UNFREEZE = $@"UPDATE runtime SET frozen = 0, modified = CURRENT_TIMESTAMP() WHERE id = {ID};";

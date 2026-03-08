@@ -38,11 +38,12 @@ namespace Haley.Abstractions {
     }
 
     internal interface IHookAckDAL {
-        Task<long?> GetAckIdByHookIdAsync(long hookId, DbExecutionLoad load = default);
-        // Resolves state_id from an ack guid via hook_ack → hook. Returns null if the guid is not a hook ack.
+        // hook_ack.hook_id now references hook_lc.id — all params named hookLcId for clarity.
+        Task<long?> GetAckIdByHookLcIdAsync(long hookLcId, DbExecutionLoad load = default);
+        // Resolves state_id from an ack guid via hook_ack → hook_lc → hook. Returns null if not a hook ack.
         Task<long?> GetStateIdByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
-        Task<int> AttachAsync(long ackId, long hookId, DbExecutionLoad load = default);
-        Task<int> DeleteByHookIdAsync(long hookId, DbExecutionLoad load = default);
+        Task<int> AttachAsync(long ackId, long hookLcId, DbExecutionLoad load = default);
+        Task<int> DeleteByHookLcIdAsync(long hookLcId, DbExecutionLoad load = default);
     }
 
     internal interface ILcAckDAL {

@@ -13,6 +13,7 @@ namespace Haley.Utils {
         public IHookRouteDAL HookRoute { get; }
         public IHookGroupDAL HookGroup { get; }
         public IHookDAL Hook { get; }
+        public IHookLcDAL HookLc { get; }
         public IAckDAL Ack { get; }
         public IAckConsumerDAL AckConsumer { get; }
         public ILcAckDAL LcAck { get; }
@@ -33,6 +34,7 @@ namespace Haley.Utils {
             HookRoute = new MariaHookRouteDAL(this);
             HookGroup = new MariaHookGroupDAL(this);
             Hook = new MariaHookDAL(this);
+            HookLc = new MariaHookLcDAL(this);
 
             Ack = new MariaAckDAL(this);
             AckConsumer = new MariaAckConsumerDAL(this);

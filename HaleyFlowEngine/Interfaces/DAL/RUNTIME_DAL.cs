@@ -12,6 +12,7 @@ namespace Haley.Abstractions {
         Task<int> SetStatusAsync(long runtimeId, long statusId, DbExecutionLoad load = default);
         Task<int> SetFrozenAsync(long runtimeId, bool frozen, DbExecutionLoad load = default);
         Task<int> SetLcIdAsync(long runtimeId, long lcId, DbExecutionLoad load = default);
+        Task<int> StampLcIdByInstanceAndStateAsync(long instanceId, long stateId, long lcId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAndStateAsync(long instanceId, long stateId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceStateActivityAsync(long instanceId, long stateId, long activityId, DbExecutionLoad load = default);

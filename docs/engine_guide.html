@@ -772,13 +772,19 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
     <p><code>LifeCycleMonitor</code> runs on a <code>PeriodicTimer</code>. Single active execution guaranteed via <code>Interlocked</code> gate. Each tick runs three jobs:</p>
 
     <h4 class="mini-title">A) Default Staleness "OverDue" — runs first</h4>
-    <ul>
-      <li>Scans instances in the same state longer than <code>WorkFlowEngineOptions.DefaultStateStaleDuration</code></li>
-      <li>Only applies to states where no policy timeout is configured</li>
-      <li>Only raises notice when there are <strong>no open ACKs</strong> — Pending/Delivered ACKs mean the ACK monitor already covers it</li>
-      <li>Excludes Suspended, Completed, Failed, Archived instances</li>
-      <li>No DB writes. In-memory throttle prevents spamming same notice every tick</li>
-    </ul>
+    <p>An instance is returned by the stale scan <strong>only when all five conditions hold simultaneously:</strong></p>
+    <ol>
+      <li>Instance status is <strong>not</strong> Suspended, Completed, Failed, or Archived</li>
+      <li><strong>No policy timeout is configured for the current state</strong> — if a timeout exists, the timeout job owns that state; the stale scan skips it entirely</li>
+      <li>The instance has been in its current state longer than <code>WorkFlowEngineOptions.DefaultStateStaleDuration</code></li>
+      <li><strong>No lifecycle ACK</strong> consumer row exists with <code>status ≠ Processed</code> (i.e. all lifecycle ACKs are terminal)</li>
+      <li><strong>No hook ACK</strong> consumer row exists for this instance+state with <code>status ≠ Processed</code> (i.e. all hook ACKs are terminal)</li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">What conditions 4 &amp; 5 mean in practice</div>
+      If there is <em>any</em> open ACK (lifecycle or hook, Pending or Delivered) the stale scan silently skips the instance. The ACK re-dispatch job (section B below) is already handling it. <code>STATE_STALE</code> fires <strong>only</strong> when the instance is genuinely stuck with nothing outstanding.
+    </div>
+    <p>No DB writes occur during the stale scan. An in-memory throttle prevents the same notice from firing on every monitor tick.</p>
 
     <h4 class="mini-title">B) ACK Re-dispatch — per consumer</h4>
     <p><strong>Step 1:</strong> <code>PushNextDueForDownAsync</code> — pushes <code>next_due</code> forward for consumers with stale heartbeat, without incrementing <code>trigger_count</code>. Dead services don't burn max retries.</p>

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 namespace Haley.Models {
     internal sealed class LifeCycleHookEmission : ILifeCycleHookEmission {
         public long HookId { get; set; }
+        public long HookLcId { get; set; }   // hook_lc.id for this emission
         public long StateId { get; set; }
         public bool OnEntry { get; set; }
         public string Route { get; set; }

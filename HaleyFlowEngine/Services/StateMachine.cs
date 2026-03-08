@@ -93,6 +93,20 @@ namespace Haley.Services {
             res.Applied = true;
             res.LifeCycleId = lcId;
 
+            // Instance lifecycle flag alignment:
+            // - entering a final state => Completed ON, Active OFF
+            // - entering a non-final state => Active ON, Completed OFF (supports reopen flows)
+            if (bp.StatesById.TryGetValue(res.ToStateId, out var toState)) {
+                var isFinalState = (toState.Flags & (uint)LifeCycleStateFlag.IsFinal) != 0;
+                if (isFinalState) {
+                    await _dal.Instance.AddFlagsAsync(instanceId, (uint)LifeCycleInstanceFlag.Completed, load);
+                    await _dal.Instance.RemoveFlagsAsync(instanceId, (uint)LifeCycleInstanceFlag.Active, load);
+                } else {
+                    await _dal.Instance.AddFlagsAsync(instanceId, (uint)LifeCycleInstanceFlag.Active, load);
+                    await _dal.Instance.RemoveFlagsAsync(instanceId, (uint)LifeCycleInstanceFlag.Completed, load);
+                }
+            }
+
             var payloadJson = payload != null && payload.Count > 0 ? JsonSerializer.Serialize(payload) : null;
             await _dal.LifeCycleData.UpsertAsync(lcId, actor, payloadJson, load);
 

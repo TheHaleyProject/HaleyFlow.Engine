@@ -62,6 +62,7 @@ namespace Haley.Internal {
         public const string LC_ID = "@LC_ID";
         public const string ENV_ID = "@ENV_ID";
         public const string HOOK_ID = "@HOOK_ID";
+        public const string HOOK_LC_ID = "@HOOK_LC_ID";
         public const string TTL_SECONDS = "@TTL_SECONDS";
         public const string CONSUMER_ID = "@CONSUMER_ID";
         public const string CONSUMER_GUID = "@CONSUMER_GUID";

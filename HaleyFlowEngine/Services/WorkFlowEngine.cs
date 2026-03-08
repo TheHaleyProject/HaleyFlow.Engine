@@ -228,6 +228,13 @@ namespace Haley.Services {
                 var normHookConsumers = NormalizeConsumers(hookConsumers);
 
                 var instanceId = result.InstanceId;
+
+                // Stamp lc_id on all runtime rows for the state that was just closed.
+                // This links activities logged during from_state to the lifecycle entry that closed it,
+                // so they appear nested inside the timeline entry rather than as "Other Activities".
+                if (transition.LifeCycleId.HasValue && transition.FromStateId > 0) {
+                    await _dal.Runtime.StampLcIdByInstanceAndStateAsync(instanceId, transition.FromStateId, transition.LifeCycleId.Value, load);
+                }
                 // Now reload the policy that is ACTUALLY attached to this instance, not the latest one.
                 // The instance might have been created months ago when a different policy was active.
                 // We need the right policy to evaluate hooks and resolve params for the target state.
@@ -286,10 +293,8 @@ namespace Haley.Services {
                     toDispatch.Add(transitionEvent);
                 }
 
-                // Hooks: PolicyEnforcer looks at the policy JSON and decides which hooks should fire
-                // for this transition (based on target state, via-event, on_entry/on_exit rules).
-                // It creates the hook rows in the DB and returns only the min-order hooks (dispatched=true).
-                // Higher-order hooks are created in the DB with dispatched=0 and will be activated later
+                // Hooks: PolicyEnforcer creates hook + hook_lc rows and returns only the min-order emissions.
+                // Higher-order hook_lc rows exist with dispatched=0 and are activated later
                 // by AdvanceNextHookOrderAsync once the current order's blocking hooks are all Processed.
                 var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr, req.AckRequired);
                 for (var h = 0; h < hookEmissions.Count; h++) {
@@ -298,11 +303,13 @@ namespace Haley.Services {
 
                     var hookAckGuid = string.Empty;
                     if (req.AckRequired) {
-                        var hookAck = await AckManager.CreateHookAckAsync(he.HookId, normHookConsumers, (int)AckStatus.Pending, load);
+                        var hookAck = await AckManager.CreateHookAckAsync(he.HookLcId, normHookConsumers, (int)AckStatus.Pending, load);
                         hookAckGuid = hookAck.AckGuid ?? string.Empty;
                         hookAckGuids.Add(hookAckGuid);
+                        await _dal.HookLc.MarkDispatchedAsync(he.HookLcId, load);
                     }
 
+                    var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(he.HookId, load);
                     for (var i = 0; i < normHookConsumers.Count; i++) {
 
                         var consumerId = normHookConsumers[i];
@@ -319,7 +326,8 @@ namespace Haley.Services {
                             IsBlocking = he.IsBlocking,
                             GroupName = he.GroupName,
                             OrderSeq = he.OrderSeq,
-                            AckMode = he.AckMode
+                            AckMode = he.AckMode,
+                            RunCount = runCount
                         };
                         toDispatch.Add(hookEvent);
                     }
@@ -400,7 +408,7 @@ namespace Haley.Services {
                     if (ctx != null) {
                         var pending = await _dal.HookGroup.CountUnresolvedInGroupAsync(
                             ctx.GetLong(KEY_INSTANCE_ID), ctx.GetLong(KEY_STATE_ID), ctx.GetLong(KEY_VIA_EVENT),
-                            ctx.GetBool(KEY_ON_ENTRY), ctx.GetLong(KEY_GROUP_ID), load);
+                            ctx.GetBool(KEY_ON_ENTRY), ctx.GetLong(KEY_LC_ID), ctx.GetLong(KEY_GROUP_ID), load);
                         if (pending == 0) {
                             var groupName = ctx.GetString(KEY_GROUP_NAME) ?? string.Empty;
                             var instanceGuid = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
@@ -420,7 +428,7 @@ namespace Haley.Services {
                         var incomplete = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
                             hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
                             hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
-                            hookCtx.GetInt(KEY_ORDER_SEQ), load);
+                            hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
                         if (incomplete == 0)
                             await AdvanceNextHookOrderAsync(hookCtx, ct);
                     } catch (Exception ex) {
@@ -592,12 +600,15 @@ namespace Haley.Services {
             if (instanceRow == null) throw new InvalidOperationException("Instance not found for the provided LifeCycleInstanceKey.");
 
             // StateId resolution:
+            //   0. IsGeneral=true → state_id=0, lc_id=0. Entry is permanently "Other Activities".
+            //      Use for instance-level side-effects that don't belong to any specific state.
             //   1. AckGuid provided → resolve via hook_ack → hook.state_id.
-            //      This anchors the runtime entry to the state the hook originally fired for,
-            //      which is correct even during replay or when the instance has already moved on.
+            //      Anchors the entry to the state the hook originally fired for — correct during replay.
             //   2. No AckGuid → fall back to instance.current_state_id (safe for direct/non-hook calls).
             long stateId;
-            if (!string.IsNullOrWhiteSpace(req.AckGuid)) {
+            if (req.IsGeneral) {
+                stateId = 0;
+            } else if (!string.IsNullOrWhiteSpace(req.AckGuid)) {
                 var resolvedStateId = await _dal.HookAck.GetStateIdByAckGuidAsync(req.AckGuid, load);
                 stateId = resolvedStateId ?? instanceRow.GetLong(KEY_CURRENT_STATE_ID);
             } else {
@@ -615,6 +626,85 @@ namespace Haley.Services {
                 StatusId     = statusId,
                 Data         = req.Data ?? new { },
                 Payload      = req.Payload ?? new { }
+            }, ct);
+        }
+
+        // Resets a terminal instance back to its initial state and immediately fires the auto-start event.
+        // Terminal = Completed, Failed, or Archived. Suspended-only instances are NOT treated as terminal.
+        //
+        // Flow:
+        //   1. Resolve instance by guid.
+        //   2. Check that at least one terminal flag (Completed | Failed | Archived) is set.
+        //   3. Load blueprint → read InitialStateId.
+        //   4. ForceReset: single atomic UPDATE — sets current_state=initial, clears Suspended|Completed|Failed|Archived, sets Active, NULLs last_event and message.
+        //   5. Find the auto-start event: the first defined transition out of the initial state.
+        //   6. Call TriggerAsync with that event — creates the lifecycle row, fires hooks, fans out ACKs.
+        public async Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
+            if (string.IsNullOrWhiteSpace(actor)) throw new ArgumentNullException(nameof(actor));
+
+            var load = new DbExecutionLoad(ct);
+            var instanceRow = await _dal.Instance.GetByGuidAsync(instanceGuid, load);
+            if (instanceRow == null) throw new InvalidOperationException($"Instance not found: {instanceGuid}");
+
+            var instanceId   = instanceRow.GetLong(KEY_ID);
+            var currentFlags = (uint)instanceRow.GetLong(KEY_FLAGS);
+            var entityId     = instanceRow.GetString(KEY_ENTITY_ID) ?? string.Empty;
+            var defVersionId = instanceRow.GetLong(KEY_DEF_VERSION);
+
+            // Only Completed / Failed / Archived qualify as "terminal" for reopen.
+            // Suspended alone is handled by UnsuspendAsync — not by ReopenAsync.
+            const uint terminalCheck = (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived);
+            if ((currentFlags & terminalCheck) == 0) {
+                return new LifeCycleTriggerResult {
+                    Applied           = false,
+                    InstanceGuid      = instanceGuid,
+                    InstanceId        = instanceId,
+                    Reason            = "NotTerminal",
+                    LifecycleAckGuids = Array.Empty<string>(),
+                    HookAckGuids      = Array.Empty<string>()
+                };
+            }
+
+            var bp = await BlueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
+            if (bp == null) throw new InvalidOperationException($"Blueprint not found for def_version {defVersionId}.");
+
+            // Clear all terminal + suspended flags; Active (1) is set by the query.
+            const uint clearMask = (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed
+                                        | LifeCycleInstanceFlag.Archived  | LifeCycleInstanceFlag.Suspended);
+            await _dal.Instance.ForceResetToStateAsync(instanceId, bp.InitialStateId, clearMask, load);
+
+            // No need to delete hooks on reopen. With the hook_lc schema, each lifecycle entry gets
+            // its own hook_lc rows (dispatched=0 initially). Re-entering a state creates fresh hook_lc
+            // rows via EmitHooksAsync → PolicyEnforcer → HookLc.InsertReturnIdAsync, giving new ack_guids
+            // per run. Prior runs' acks remain intact as history — monitor ignores Processed/Failed rows.
+
+            // Find the auto-start event: first transition out of the initial state.
+            var autoStart = bp.Transitions.FirstOrDefault(kv => kv.Key.Item1 == bp.InitialStateId);
+            if (autoStart.Value == null) {
+                // Definition has no outgoing transition from the initial state — instance is reset but stays.
+                return new LifeCycleTriggerResult {
+                    Applied           = true,
+                    InstanceGuid      = instanceGuid,
+                    InstanceId        = instanceId,
+                    ToState           = bp.StatesById.TryGetValue(bp.InitialStateId, out var init) ? (init.Name ?? string.Empty) : string.Empty,
+                    Reason            = "ResetToInitial",
+                    LifecycleAckGuids = Array.Empty<string>(),
+                    HookAckGuids      = Array.Empty<string>()
+                };
+            }
+
+            bp.EventsById.TryGetValue(autoStart.Value.EventId, out var autoStartEvent);
+
+            return await TriggerAsync(new LifeCycleTriggerRequest {
+                DefName     = bp.DefName,
+                EnvCode     = bp.EnvCode,
+                EntityId    = entityId,
+                Event       = autoStartEvent?.Name ?? string.Empty,
+                Actor       = actor,
+                AckRequired = false,
+                SkipAckGate = true   // instance was just reset; no pending ACKs from prior run
             }, ct);
         }
 
@@ -655,6 +745,7 @@ namespace Haley.Services {
             var stateId      = hookCtx.GetLong(KEY_STATE_ID);
             var viaEvent     = hookCtx.GetLong(KEY_VIA_EVENT);
             var onEntry      = hookCtx.GetBool(KEY_ON_ENTRY);
+            var lcId         = hookCtx.GetLong(KEY_LC_ID);
             var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
             var instanceGuid = hookCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
             var entityId     = hookCtx.GetString(KEY_ENTITY_ID) ?? string.Empty;
@@ -677,14 +768,14 @@ namespace Haley.Services {
             while (!ct.IsCancellationRequested) {
                 var scanLoad = new DbExecutionLoad(ct);
 
-                var nextOrderRaw = await _dal.Hook.GetMinUndispatchedOrderAsync(instanceId, stateId, viaEvent, onEntry, scanLoad);
+                var nextOrderRaw = await _dal.Hook.GetMinUndispatchedOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, scanLoad);
                 if (nextOrderRaw == null) return;
                 var nextOrder = nextOrderRaw.Value;
 
-                var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, nextOrder, scanLoad);
+                var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, scanLoad);
                 if (nextHooks.Count == 0) return;
 
-                // Create ACK rows + mark hooks dispatched atomically in a transaction.
+                // Create ACK rows + mark hook_lc dispatched atomically in a transaction.
                 // Fire events only after commit — same pattern as TriggerAsync.
                 var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * (normConsumers.Count > 0 ? normConsumers.Count : 1));
                 var transaction = _dal.CreateNewTransaction();
@@ -694,18 +785,20 @@ namespace Haley.Services {
 
                 try {
                     for (var j = 0; j < nextHooks.Count; j++) {
-                        var hookRow   = nextHooks[j];
-                        var hookId    = hookRow.GetLong(KEY_ID);
+                        var hookRow    = nextHooks[j];
+                        var hookId     = hookRow.GetLong(KEY_ID);
+                        var hookLcId   = hookRow.GetLong(KEY_HOOK_LC_ID);
                         var isBlocking = hookRow.GetBool(KEY_BLOCKING);
-                        var ackMode   = hookRow.GetInt(KEY_ACK_MODE);
-                        var route     = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
-                        var groupName = hookRow.GetString(KEY_GROUP_NAME);
+                        var ackMode    = hookRow.GetInt(KEY_ACK_MODE);
+                        var route      = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
+                        var groupName  = hookRow.GetString(KEY_GROUP_NAME);
                         var hookOnEntry = hookRow.GetBool(KEY_ON_ENTRY);
 
-                        var hookAck     = await AckManager.CreateHookAckAsync(hookId, normConsumers, (int)AckStatus.Pending, txLoad);
+                        var hookAck     = await AckManager.CreateHookAckAsync(hookLcId, normConsumers, (int)AckStatus.Pending, txLoad);
                         var hookAckGuid = hookAck.AckGuid ?? string.Empty;
-                        await _dal.Hook.MarkDispatchedAsync(hookId, txLoad);
+                        await _dal.HookLc.MarkDispatchedAsync(hookLcId, txLoad);
 
+                        var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(hookId, txLoad);
                         for (var i = 0; i < normConsumers.Count; i++) {
                             toDispatch.Add(new LifeCycleHookEvent(baseLcEvent) {
                                 ConsumerId = normConsumers[i],
@@ -716,6 +809,7 @@ namespace Haley.Services {
                                 GroupName  = groupName,
                                 OrderSeq   = nextOrder,
                                 AckMode    = ackMode,
+                                RunCount   = runCount,
                                 AckRequired = true
                             });
                         }

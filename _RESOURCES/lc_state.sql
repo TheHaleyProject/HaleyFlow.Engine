@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS `ack_consumer` (
 CREATE TABLE IF NOT EXISTS `activity` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(140) NOT NULL,
-  `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are minor applicatoin managed activies which the statemachine doens''t have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..';
 
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS `activity` (
 CREATE TABLE IF NOT EXISTS `activity_status` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(120) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are all execution or activity status, which WorkFlow engine has no visibility about.  Like, ''Pending''''Completed''"approved'',"Rejected''"Returned''.. Reason is, we dont know what kind of state each runtime activity might follow.. For instance, one of the runtime activity can have ''Approved'',''Rejected'' state.. another can only have ''Sent''"Pendin'' (like, email delivery)';
 
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS `activity_status` (
 CREATE TABLE IF NOT EXISTS `category` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(120) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_category` (`name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1999 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS `definition` (
   `env` int(11) NOT NULL DEFAULT 0,
   `guid` char(36) NOT NULL DEFAULT uuid(),
   `display_name` varchar(200) NOT NULL,
-  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   `description` text DEFAULT NULL,
   `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'it should be a code provided by the user.',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS `def_version` (
 CREATE TABLE IF NOT EXISTS `environment` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(120) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   `code` int(11) NOT NULL,
   `guid` varchar(42) NOT NULL DEFAULT uuid(),
   PRIMARY KEY (`id`),
@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS `events` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(120) NOT NULL,
   `code` int(11) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   `def_version` int(11) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_events_0` (`def_version`,`code`),
@@ -182,14 +182,13 @@ CREATE TABLE IF NOT EXISTS `hook` (
   `state_id` int(11) NOT NULL,
   `via_event` int(11) NOT NULL,
   `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'by default, the hooks are for entry.. we can also, setup on leave.\n0 - on leaving\n1 - on entry',
-  `route_id` bigint(20) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `instance_id` bigint(20) NOT NULL,
   `blocking` bit(1) NOT NULL DEFAULT b'1' COMMENT 'should the instance be allowed to move to next state in case this hook is failed or not? If blocking, this is crucial for next step.',
-  `group_id` bigint(20) DEFAULT NULL,
   `order_seq` smallint(6) NOT NULL DEFAULT 1 COMMENT 'emission order; lower fires first; same order = parallel dispatch',
-  `dispatched` bit(1) NOT NULL DEFAULT b'1' COMMENT '0 = hook row created but ACK rows not yet emitted (waiting for prior order to complete); 1 = dispatched',
   `ack_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=All consumers must ACK Processed; 1=Any one consumer ACK Processed satisfies the hook',
+  `route_id` bigint(20) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
+  `group_id` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hooks` (`instance_id`,`state_id`,`via_event`,`on_entry`,`route_id`),
   KEY `fk_hook_hook_route` (`route_id`),
@@ -208,7 +207,7 @@ CREATE TABLE IF NOT EXISTS `hook_ack` (
   PRIMARY KEY (`hook_id`),
   UNIQUE KEY `unq_hook_ack` (`ack_id`),
   CONSTRAINT `fk_hook_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fk_hook_ack_hook` FOREIGN KEY (`hook_id`) REFERENCES `hook` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `fk_hook_ack_hook_lc` FOREIGN KEY (`hook_id`) REFERENCES `hook_lc` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
@@ -219,6 +218,22 @@ CREATE TABLE IF NOT EXISTS `hook_group` (
   `name` varchar(140) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hook_group` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.hook_lc
+CREATE TABLE IF NOT EXISTS `hook_lc` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `dispatched` bit(1) NOT NULL DEFAULT b'0',
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `hook_id` bigint(20) NOT NULL,
+  `lc_id` bigint(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unq_hook_lc` (`hook_id`,`lc_id`),
+  KEY `fk_hook_lc_lifecycle` (`lc_id`),
+  CONSTRAINT `fk_hook_lc_hook` FOREIGN KEY (`hook_id`) REFERENCES `hook` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_hook_lc_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
@@ -235,18 +250,18 @@ CREATE TABLE IF NOT EXISTS `hook_route` (
 
 -- Dumping structure for table lcstate.instance
 CREATE TABLE IF NOT EXISTS `instance` (
+  `def_version` int(11) NOT NULL,
   `current_state` int(11) NOT NULL DEFAULT 0,
   `last_event` int(11) DEFAULT NULL,
   `guid` char(36) NOT NULL DEFAULT uuid(),
-  `policy_id` int(11) DEFAULT 0,
   `entity_id` varchar(36) NOT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
+  `def_id` int(11) NOT NULL,
+  `policy_id` int(11) DEFAULT 0,
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'active =1,\nsuspended =2 ,\ncompleted = 4,\nfailed = 8, \narchive = 16',
   `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `def_version` int(11) NOT NULL,
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `message` text DEFAULT NULL COMMENT 'any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..',
-  `def_id` int(11) NOT NULL,
   `metadata` longtext DEFAULT NULL COMMENT 'Immutable.. Set during the initiation.. Doesn''t change during runtime.. Contains information like environment tags, test flags, or opaque config, which is important for the consumer.. may be to avoid side effects.',
   `context` longtext DEFAULT NULL COMMENT 'Mutable information bag. Each event can add or stamp their result here.. ( if needed).. and other calls can make use of it if required.',
   PRIMARY KEY (`id`),
@@ -361,7 +376,7 @@ CREATE TABLE IF NOT EXISTS `runtime_data` (
 CREATE TABLE IF NOT EXISTS `state` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `display_name` varchar(200) NOT NULL,
-  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) STORED,
+  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
   `category` int(11) NOT NULL DEFAULT 0,
   `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'none = 0\nis_initial = 1\nis_final = 2\nis_system = 4\nis_error = 8',
   `created` datetime NOT NULL DEFAULT current_timestamp(),

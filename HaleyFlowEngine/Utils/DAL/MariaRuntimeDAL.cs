@@ -30,6 +30,9 @@ namespace Haley.Internal {
         public Task<int> SetLcIdAsync(long runtimeId, long lcId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_RUNTIME.SET_LC_ID, load, (ID, runtimeId), (LC_ID, lcId));
 
+        public Task<int> StampLcIdByInstanceAndStateAsync(long instanceId, long stateId, long lcId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_RUNTIME.STAMP_LC_ID_BY_INSTANCE_AND_STATE, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (LC_ID, lcId));
+
         public Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_RUNTIME.LIST_BY_INSTANCE, load, (INSTANCE_ID, instanceId));
 

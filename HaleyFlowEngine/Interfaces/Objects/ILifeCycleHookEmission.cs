@@ -7,6 +7,7 @@ using Haley.Models;
 namespace Haley.Abstractions {
     internal interface ILifeCycleHookEmission {
         long HookId { get; }
+        long HookLcId { get; }   // hook_lc.id for this emission (used to create hook_ack + mark dispatched)
         long StateId { get; }
         bool OnEntry { get; }
         string Route { get; }

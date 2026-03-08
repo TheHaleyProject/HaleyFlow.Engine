@@ -36,6 +36,9 @@ namespace Haley.Internal {
         public Task<int> RemoveFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.REMOVE_FLAGS, load, (ID, instanceId), (FLAGS, flags));
 
+        public Task<int> ForceResetToStateAsync(long instanceId, long stateId, uint clearFlagsMask, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_INSTANCE.FORCE_RESET_TO_STATE, load, (ID, instanceId), (STATE_ID, stateId), (FLAGS, clearFlagsMask));
+
         public Task<int> SetMessageAsync(long instanceId, string? message, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_INSTANCE.SET_MESSAGE_BY_ID, load, (INSTANCE_ID, instanceId), (MESSAGE, message));
 

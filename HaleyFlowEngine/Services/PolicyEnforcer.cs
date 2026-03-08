@@ -228,21 +228,31 @@ namespace Haley.Services {
             // There's no mechanism to advance orders without ACKs, so ordering would freeze indefinitely.
             var minOrder = ackRequired ? specs.Min(s => s.orderSeq) : 1;
 
+            // applied.LifeCycleId is always set when EmitHooksAsync is called after a successful transition.
+            var lcId = applied.LifeCycleId ?? 0;
+
             var emissions = new List<ILifeCycleHookEmission>(specs.Count);
             foreach (var s in specs) {
                 load.Ct.ThrowIfCancellationRequested();
-                // Higher-order hooks get dispatched=false; they wait for prior-order blocking hooks to complete.
-                var dispatched = !ackRequired || s.orderSeq == minOrder;
 
                 var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
                     instanceId, applied.ToStateId, applied.EventId, true,
                     s.hookCode, s.emitBlocking, s.emitGroup,
-                    s.orderSeq, s.ackMode, dispatched, load);
+                    s.orderSeq, s.ackMode, load);
 
-                if (!dispatched) continue;  // Higher-order hooks: row created, not returned for ACK/dispatch yet.
+                // Create a hook_lc row for this hook + lifecycle entry (dispatched=0 initially).
+                // All hooks (min-order and higher-order) get a hook_lc row so the order-advance
+                // queries can find undispatched hooks for this lifecycle entry.
+                var hookLcId = await _dal.HookLc.InsertReturnIdAsync(hookId, lcId, load);
+
+                // Higher-order hooks: hook_lc row created with dispatched=0, not returned yet.
+                // They will be dispatched by AdvanceNextHookOrderAsync once prior orders complete.
+                var minOrderHook = !ackRequired || s.orderSeq == minOrder;
+                if (!minOrderHook) continue;
 
                 emissions.Add(new LifeCycleHookEmission {
                     HookId = hookId,
+                    HookLcId = hookLcId,
                     StateId = applied.ToStateId,
                     OnEntry = true,
                     Route = s.hookCode,

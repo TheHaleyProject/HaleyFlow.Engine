@@ -83,15 +83,14 @@ namespace Haley.Services {
             return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
         }
 
-        // Same pattern as CreateLifecycleAckAsync but for hook rows instead of lifecycle rows.
-        // Idempotent on the ack itself; only inserts missing consumer rows — never overwrites
-        // existing status or next_due. Safe to call on every trigger even if the hook has already
-        // been partially delivered to some consumers.
-        public async Task<IWorkFlowAckRef> CreateHookAckAsync(long hookId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+        // Same pattern as CreateLifecycleAckAsync but for hook_lc rows (one ack per hook per lifecycle entry).
+        // hookLcId is hook_lc.id — hook_ack.hook_id FKs to hook_lc.id in the new schema.
+        // Idempotent on the ack itself; only inserts missing consumer rows.
+        public async Task<IWorkFlowAckRef> CreateHookAckAsync(long hookLcId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-            if (hookId <= 0) throw new ArgumentOutOfRangeException(nameof(hookId));
+            if (hookLcId <= 0) throw new ArgumentOutOfRangeException(nameof(hookLcId));
 
-            var existingAckId = await _dal.HookAck.GetAckIdByHookIdAsync(hookId, load);
+            var existingAckId = await _dal.HookAck.GetAckIdByHookLcIdAsync(hookLcId, load);
             if (existingAckId.HasValue && existingAckId.Value > 0) {
                 // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
                 await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
@@ -105,7 +104,7 @@ namespace Haley.Services {
             var ackGuid = ack.GetString(KEY_GUID);
             if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
 
-            await _dal.HookAck.AttachAsync(ackId, hookId, load);
+            await _dal.HookAck.AttachAsync(ackId, hookLcId, load);
             await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
 
             return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
@@ -241,6 +240,7 @@ namespace Haley.Services {
                     Route = r.GetString(KEY_ROUTE) ?? string.Empty,
                     IsBlocking = r.GetBool(KEY_BLOCKING),
                     GroupName = r.GetString(KEY_GROUP_NAME),
+                    RunCount = r.GetInt(KEY_RUN_COUNT),
                     OnSuccessEvent = null,
                     OnFailureEvent = null,
                     NotBefore = null,

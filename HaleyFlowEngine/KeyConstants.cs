@@ -56,6 +56,8 @@ namespace Haley.Internal {
         public const string KEY_STALE_SECONDS = "stale_seconds";
         public const string KEY_ORDER_SEQ = "order_seq";
         public const string KEY_HASH = "hash";
+        public const string KEY_HOOK_LC_ID = "hook_lc_id";
+        public const string KEY_RUN_COUNT = "run_count";
 
         // blueprint structure keys
         public const string KEY_DEFINITION = "definition";

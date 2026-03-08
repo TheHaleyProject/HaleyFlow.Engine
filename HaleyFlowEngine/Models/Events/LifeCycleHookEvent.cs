@@ -17,6 +17,7 @@ namespace Haley.Models {
         public string? GroupName { get; set; }
         public int OrderSeq { get; set; } = 1;
         public int AckMode  { get; set; } = 0;
+        public int RunCount { get; set; } = 1;
         public LifeCycleHookEvent() { }
         public LifeCycleHookEvent(LifeCycleEvent evt) : base(evt) { }
     }
