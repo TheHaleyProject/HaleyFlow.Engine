@@ -144,7 +144,29 @@ namespace WFE.Test.UseCases.PaperlessReview {
             var timeout = _settings.ConfirmationTimeout;
             var timeoutText = timeout > TimeSpan.Zero ? $", auto-yes in {timeout.TotalSeconds:0}s" : string.Empty;
             var prompt = $"[CONSUMER] {decisionMessage} entity={evt.EntityId} route={evt.Route} (Y/N, Enter=Y{timeoutText})";
-            var yes = await AskConfirmationAsync(prompt, ConsoleKey.Y, timeout, ctx.CancellationToken);
+            bool yes;
+            if (!string.IsNullOrWhiteSpace(noEventCode) && int.TryParse(yesEventCode, out var actionCode)) {
+                var decision = false;
+                var execution = await ExecuteBusinessActionAsync(ctx, evt.DefinitionId, evt.EntityId, actionCode,
+                    async token => {
+                        decision = await AskConfirmationAsync(prompt, ConsoleKey.Y, timeout, token);
+                        return new {
+                            decision = decision ? "yes" : "no",
+                            route = evt.Route,
+                            entity = evt.EntityId,
+                            question = decisionMessage
+                        };
+                    });
+
+                yes = execution.Executed
+                    ? decision
+                    : ReadDecisionFromResultJson(execution.ResultJson, defaultValue: true);
+                if (!execution.Executed) {
+                    Console.WriteLine($"[CONSUMER] route={evt.Route} -> business action already completed; reusing prior decision {(yes ? "YES" : "NO")}.");
+                }
+            } else {
+                yes = await AskConfirmationAsync(prompt, ConsoleKey.Y, timeout, ctx.CancellationToken);
+            }
 
             if (yes) {
                 return await TriggerNextAsync(evt, ctx, yesEventCode);
