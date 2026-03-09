@@ -1,21 +1,19 @@
 using Haley.Enums;
 using Microsoft.AspNetCore.Mvc;
-using WFE.AdminApi.Services;
+using Haley.Services;
+using Haley.Abstractions;
+using Haley.Services;
 
-namespace WFE.AdminApi.Controllers;
+namespace Haley.Models;
+public class WorkflowAdminController : ControllerBase {
+    private readonly IWorkFlowEngineAdminService _service;
 
-[ApiController]
-[Route("api/admin/workflow")]
-public sealed class WorkflowAdminController : ControllerBase {
-    private readonly IWorkflowAdminService _service;
-
-    public WorkflowAdminController(IWorkflowAdminService service) {
-        _service = service;
+    public WorkflowAdminController() {
+        _service = new WorkflowAdminService(;
     }
 
     [HttpGet("instance")]
-    public async Task<IActionResult> GetInstance(
-        [FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, CancellationToken ct) {
+    public async Task<IActionResult> GetInstance([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, CancellationToken ct) {
         var data = await _service.GetInstanceAsync(envCode, defName, entityId, instanceGuid, ct);
         if (data == null) return NotFound();
         return Ok(data);
@@ -29,8 +27,7 @@ public sealed class WorkflowAdminController : ControllerBase {
     }
 
     [HttpGet("timeline/html")]
-    public async Task<IActionResult> GetTimelineHtml(
-        [FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] string? name, CancellationToken ct) {
+    public async Task<IActionResult> GetTimelineHtml([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] string? name, CancellationToken ct) {
         var html = await _service.GetTimelineHtmlAsync(envCode, defName, entityId, instanceGuid, name, ct);
         if (string.IsNullOrWhiteSpace(html)) return NotFound();
         return Content(html, "text/html");
@@ -46,8 +43,7 @@ public sealed class WorkflowAdminController : ControllerBase {
     }
 
     [HttpGet("entities")]
-    public async Task<IActionResult> GetEngineEntities(
-        [FromQuery] string? defName, [FromQuery] bool runningOnly = false, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+    public async Task<IActionResult> GetEngineEntities([FromQuery] string? defName, [FromQuery] bool runningOnly = false, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
         var rows = await _service.GetEngineEntitiesAsync(defName, runningOnly, skip, take, ct);
         return Ok(rows);
     }
@@ -103,9 +99,7 @@ public sealed class WorkflowAdminController : ControllerBase {
     }
 
     [HttpPost("instance/reopen")]
-    public async Task<IActionResult> ReopenInstance(
-        [FromBody] ReopenInstanceRequest request,
-        CancellationToken ct) {
+    public async Task<IActionResult> ReopenInstance([FromBody] ReopenInstanceRequest request, CancellationToken ct) {
         if (request == null) return BadRequest("Request body is required.");
         if (string.IsNullOrWhiteSpace(request.InstanceGuid)) return BadRequest("instanceGuid is required.");
 
@@ -115,9 +109,7 @@ public sealed class WorkflowAdminController : ControllerBase {
     }
 
     [HttpPost("test/entities")]
-    public async Task<IActionResult> CreateTestEntities(
-        [FromBody] CreateTestEntitiesRequest request,
-        CancellationToken ct) {
+    public async Task<IActionResult> CreateTestEntities([FromBody] CreateTestEntitiesRequest request, CancellationToken ct) {
         if (request == null) return BadRequest("Request body is required.");
         if (string.IsNullOrWhiteSpace(request.UseCase)) return BadRequest("useCase is required.");
         if (request.Count < 1) return BadRequest("count must be greater than 0.");

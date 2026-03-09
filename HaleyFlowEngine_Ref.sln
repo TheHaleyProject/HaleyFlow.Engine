@@ -39,6 +39,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WFE.AdminApi", "WFE.AdminAp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WFE.Lib", "WFE.Lib\WFE.Lib.csproj", "{468F6455-88B6-442F-B862-3A90D1D3577D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaleyFlowEngineAPI", "HaleyFlowEngineAPI\HaleyFlowEngineAPI.csproj", "{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -217,6 +219,18 @@ Global
 		{468F6455-88B6-442F-B862-3A90D1D3577D}.Release|x64.Build.0 = Release|Any CPU
 		{468F6455-88B6-442F-B862-3A90D1D3577D}.Release|x86.ActiveCfg = Release|Any CPU
 		{468F6455-88B6-442F-B862-3A90D1D3577D}.Release|x86.Build.0 = Release|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Debug|x64.Build.0 = Debug|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Debug|x86.Build.0 = Debug|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Release|x64.ActiveCfg = Release|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Release|x64.Build.0 = Release|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Release|x86.ActiveCfg = Release|Any CPU
+		{D11F2FA2-9FCF-4C13-94CB-885CBF3BC6BF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

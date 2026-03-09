@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <Import Project="..\..\HaleyProject\HaleyVersion.Props" />
+  <PropertyGroup>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Haley</RootNamespace>
+    <AssemblyName>Haley.Flow.EngineAPI</AssemblyName>
+    <SignAssembly>True</SignAssembly>
+    <IsPackable>true</IsPackable>
+    <AssemblyOriginatorKeyFile>..\..\HaleyProject\HaleyProject.snk</AssemblyOriginatorKeyFile>
+    <PackageIcon>Haley.png</PackageIcon>
+    <Version>$(HaleyFlowEngineAPIVersion)</Version>
+    <IncludeSymbols>True</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageReleaseNotes>Web api helpers to ease the setup</PackageReleaseNotes>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/TheHaleyProject/HaleyFlow.Engine</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/TheHaleyProject/HaleyFlow.Engine</RepositoryUrl>
+    <OpenApiGenerateDocuments>false</OpenApiGenerateDocuments>
+    <Description>Tiny tool to wrap Haley Flow Engine.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <WarningLevel>2</WarningLevel>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\HaleyProject\Haley.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.4" />
+  </ItemGroup>
+
+  <Import Project="$(SolutionDir)ProjectReferences_$(SolutionName).txt" Condition="Exists('$(SolutionDir)ProjectReferences_$(SolutionName).txt')" />
+  <Choose>
+    <When Condition="Exists($(HaleyFlowEngine))">
+      <ItemGroup>
+        <ProjectReference Include="$(HaleyFlowEngine)\HaleyFlowEngine.csproj">
+          <Name>HaleyFlowEngine</Name>
+        </ProjectReference>
+      </ItemGroup>
+    </When>
+    <Otherwise>
+      <ItemGroup>
+        <PackageReference Include="Haley.Flow.Engine" Version="0.0.1" />
+      </ItemGroup>
+    </Otherwise>
+  </Choose>
+</Project>
