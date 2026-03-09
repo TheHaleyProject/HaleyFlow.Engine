@@ -25,13 +25,21 @@ internal static class TimelineHtmlRenderer {
 
         var sb = new StringBuilder(12_000);
         WriteHead(sb);
-        sb.Append("<div class=\"max-w-3xl mx-auto px-4 py-10\">\n");
+
+        // Outer shell: flex column filling the full viewport
+        sb.Append("<div class=\"max-w-3xl w-full mx-auto px-4\" style=\"height:100vh;display:flex;flex-direction:column;padding-top:2.5rem\">\n");
 
         if (root.TryGetProperty("instance", out var inst) &&
             root.TryGetProperty("timeline", out var tl) &&
             tl.ValueKind == JsonValueKind.Array) {
+            // Header — fixed height, never scrolls
+            sb.Append("  <div style=\"flex-shrink:0\">\n");
             WriteHeader(sb, inst, tl.GetArrayLength(), displayName);
+            sb.Append("  </div>\n");
+            // Timeline — fills remaining space, scrolls independently
+            sb.Append("  <div id=\"timeline-scroll\" style=\"flex:1;overflow-y:auto;padding-bottom:2rem\">\n");
             WriteTimeline(sb, tl);
+            sb.Append("  </div>\n");
         }
 
         sb.Append("</div>\n</body>\n</html>");
@@ -50,7 +58,7 @@ internal static class TimelineHtmlRenderer {
   <title>Workflow Timeline</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
+    html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
     .tl-item:not(:last-child) .tl-left::after {
       content: '';
       position: absolute;
@@ -59,17 +67,20 @@ internal static class TimelineHtmlRenderer {
       bottom: -32px;
       width: 2px;
       transform: translateX(-50%);
-      background: linear-gradient(to bottom, #fca5a5, #fee2e2);
+      background: linear-gradient(to bottom, #90c4e8, #d0e8f7);
     }
-    .act-row:hover { background: #fff5f5; }
+    .act-row:hover { background: #f0f7fd; }
     @keyframes slideIn {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
     .tl-item { animation: slideIn .3s ease both; }
+    #timeline-scroll::-webkit-scrollbar { width: 6px; }
+    #timeline-scroll::-webkit-scrollbar-track { background: transparent; }
+    #timeline-scroll::-webkit-scrollbar-thumb { background: #90c4e8; border-radius: 3px; }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-800">
+<body class="bg-slate-100 text-slate-800" style="display:flex;flex-direction:column">
 
 """);
     }
@@ -89,27 +100,27 @@ internal static class TimelineHtmlRenderer {
         var totalDur   = Dur(S(inst, "created"), S(inst, "modified"));
 
         sb.Append($"""
-  <div class="rounded-2xl overflow-hidden shadow-md mb-8" style="border:1px solid #4a0f0f">
-    <div class="px-6 pt-5 pb-5" style="background:linear-gradient(135deg,#1a0404 0%,#4a0f0f 100%)">
+  <div class="rounded-2xl overflow-hidden shadow-sm mb-8" style="border:1px solid #b3d0eb;background:#f0f7fd">
+    <div class="px-6 pt-5 pb-5">
       <div class="flex items-start justify-between gap-4 flex-wrap">
         <div class="min-w-0">
           <div class="flex items-center gap-2 mb-2 flex-wrap">
-            <span class="text-xs uppercase tracking-widest font-bold" style="color:#f4a0a0">{E(defName)}</span>
-            <span class="text-xs px-2 py-0.5 rounded border" style="color:#f4c0c0;border-color:rgba(200,80,80,0.4);background:rgba(180,40,40,0.2)">v{E(defVersion)}</span>
+            <span class="text-xs uppercase tracking-widest font-bold" style="color:#0078d4">{E(defName)}</span>
+            <span class="text-xs px-2 py-0.5 rounded border font-medium" style="color:#0078d4;border-color:#b3d0eb;background:#e1f0fa">v{E(defVersion)}</span>
           </div>
-          <p class="text-white font-bold text-base tracking-tight break-all">{E(label)}</p>
-          <p class="text-xs mt-0.5 font-mono break-all" style="color:rgba(240,160,160,0.5)">{E(entityId)}</p>
-          <p class="text-xs mt-0.5 font-mono" style="color:#6b4040">{E(guid)}</p>
+          <p class="font-bold text-lg tracking-tight break-all" style="color:#1a1a1a">{E(label)}</p>
+          <p class="text-xs mt-0.5 font-mono break-all" style="color:#5a9dc0">{E(entityId)}</p>
+          <p class="text-xs mt-0.5 font-mono" style="color:#8ab8d8">{E(guid)}</p>
         </div>
         <div class="flex-shrink-0 text-right">
-          <div class="text-xs mb-1 uppercase tracking-wide" style="color:#f4a0a0">Current State</div>
-          <div class="inline-block px-3 py-1.5 rounded-lg" style="background:rgba(180,40,40,0.25);border:1px solid rgba(200,80,80,0.35)">
-            <span class="font-semibold text-sm" style="color:#ffd0d0">{E(curState)}</span>
+          <div class="text-xs mb-1.5 uppercase tracking-wide font-medium" style="color:#0078d4">Current State</div>
+          <div class="inline-block px-3 py-1.5 rounded-lg" style="background:#0078d4">
+            <span class="font-semibold text-sm text-white">{E(curState)}</span>
           </div>
         </div>
       </div>
     </div>
-    <div class="bg-white px-6 py-3 flex flex-wrap gap-5 text-xs" style="border-top:1px solid #fecaca">
+    <div class="px-6 py-3 flex flex-wrap gap-5 text-xs" style="border-top:1px solid #b3d0eb;background:#f0f7fd">
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Last Event</span>{E(lastEvent)}</div>
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Started</span>{E(created)}</div>
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Completed</span>{E(modified)}</div>
@@ -155,18 +166,18 @@ internal static class TimelineHtmlRenderer {
         // Badge shown inside the banner — only when there's something to say
         var bannerBadge = (isInitial, isTerminal, isReopen) switch {
             (true, _, _) =>
-                """<span class="text-xs font-semibold px-2.5 py-0.5 rounded-full" style="background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.35);color:#a7f3d0">Workflow Started</span>""",
+                """<span class="text-xs font-semibold px-2.5 py-1 rounded text-white" style="background:#0f766e">Workflow Started</span>""",
             (_, true, _) =>
-                """<span class="text-xs font-semibold px-2.5 py-0.5 rounded-full" style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.35);color:#fca5a5">Workflow Ended</span>""",
+                """<span class="text-xs font-semibold px-2.5 py-1 rounded text-white" style="background:#1d4ed8">Workflow Ended</span>""",
             (_, _, true) =>
-                """<span class="text-xs font-semibold px-2.5 py-0.5 rounded-full" style="background:rgba(245,158,11,0.2);border:1px solid rgba(245,158,11,0.35);color:#fde68a">Reopened</span>""",
+                """<span class="text-xs font-semibold px-2.5 py-1 rounded text-white" style="background:#92400e">Reopened</span>""",
             _ => string.Empty
         };
 
         sb.Append($"""
     <div class="tl-item flex gap-4" style="animation-delay:{delay}s">
       <div class="tl-left relative flex flex-col items-center flex-shrink-0 w-10">
-        <div class="w-10 h-10 rounded-full shadow-sm flex items-center justify-center z-10 flex-shrink-0 text-white font-semibold text-sm" style="background:#9b1c1c;ring:4px solid #fff5f5">
+        <div class="w-10 h-10 rounded-full shadow-sm flex items-center justify-center z-10 flex-shrink-0 text-white font-semibold text-sm" style="background:#0078d4">
           {idx + 1}
         </div>
       </div>
@@ -174,21 +185,21 @@ internal static class TimelineHtmlRenderer {
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
 
           <!-- Transition banner -->
-          <div class="px-4 py-3" style="background:linear-gradient(135deg,#3a0a0a 0%,#7a1a1a 100%)">
+          <div class="px-4 py-3" style="background:#fefce8;border-bottom:1px solid #fde68a">
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
-                <div class="text-xs uppercase tracking-wider mb-0.5" style="color:#f4a0a0">From</div>
-                <div class="text-white font-medium text-sm leading-tight">{E(fromState)}</div>
+                <div class="text-xs uppercase tracking-wider mb-0.5" style="color:#92400e">From</div>
+                <div class="font-semibold text-sm leading-tight" style="color:#1c1917">{E(fromState)}</div>
               </div>
-              <svg class="w-4 h-4 flex-shrink-0" style="color:#e07070" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 flex-shrink-0" style="color:#d97706" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5-5 5M6 12h12"/>
               </svg>
               <div class="flex-1 min-w-0 text-right">
-                <div class="text-xs uppercase tracking-wider mb-0.5" style="color:#f4a0a0">To</div>
-                <div class="text-white font-medium text-sm leading-tight">{E(toState)}</div>
+                <div class="text-xs uppercase tracking-wider mb-0.5" style="color:#92400e">To</div>
+                <div class="font-semibold text-sm leading-tight" style="color:#1c1917">{E(toState)}</div>
               </div>
             </div>
-            {(bannerBadge.Length > 0 ? $"            <div class=\"mt-2 pt-2 flex\" style=\"border-top:1px solid rgba(255,255,255,0.1)\">{bannerBadge}</div>" : "")}
+            {(bannerBadge.Length > 0 ? $"            <div class=\"mt-2 pt-2 flex\">{bannerBadge}</div>" : "")}
           </div>
 
           <!-- Event meta -->
@@ -197,7 +208,7 @@ internal static class TimelineHtmlRenderer {
               <div>
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-semibold text-slate-800 text-sm">{E(evtName)}</span>
-                  <span class="text-xs px-1.5 py-0.5 rounded font-mono" style="background:#fff1f2;color:#be123c;border:1px solid #fecdd3">evt:{E(evtCode)}</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded font-mono" style="background:#e1f0fa;color:#0078d4;border:1px solid #b3d0eb">evt:{E(evtCode)}</span>
                   <span class="text-xs bg-slate-50 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded font-mono">lc:{E(lcId)}</span>
                 </div>
                 <code class="text-xs text-slate-400 mt-1.5 block">{E(actor)}</code>
@@ -208,7 +219,7 @@ internal static class TimelineHtmlRenderer {
 """);
 
         if (actCount > 0) {
-            sb.Append($"                <div class=\"text-xs mt-0.5\" style=\"color:#be123c\">{actCount} activit{(actCount > 1 ? "ies" : "y")}</div>\n");
+            sb.Append($"                <div class=\"text-xs mt-0.5\" style=\"color:#0078d4\">{actCount} activit{(actCount > 1 ? "ies" : "y")}</div>\n");
         }
 
         sb.Append("""

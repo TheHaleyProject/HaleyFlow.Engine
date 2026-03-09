@@ -47,7 +47,8 @@ namespace Haley.Internal {
        LEFT JOIN lifecycle lc ON lc.id = la.lc_id
        LEFT JOIN instance li ON li.id = lc.instance_id
        LEFT JOIN hook_ack ha ON ha.ack_id = ac.ack_id
-       LEFT JOIN hook hk ON hk.id = ha.hook_id
+       LEFT JOIN hook_lc hl ON hl.id = ha.hook_id
+       LEFT JOIN hook hk ON hk.id = hl.hook_id
        LEFT JOIN hook_route hr ON hr.id = hk.route_id
        LEFT JOIN instance hi ON hi.id = hk.instance_id
        LEFT JOIN instance i ON i.id = COALESCE(li.id, hi.id)
