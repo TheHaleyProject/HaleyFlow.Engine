@@ -6,7 +6,7 @@ using System.Diagnostics;
 
 namespace Haley.Services;
 
-public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
+public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAccessor, IAsyncDisposable {
 
     private readonly EngineServiceOptions _options;
     private readonly AdapterGateway _agw;
@@ -14,7 +14,6 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
     private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
 
     private IWorkFlowEngine? _engine;
-    private IServiceProvider? _runtimeProvider;
     private long _resolvedConsumerId;
     private bool _runtimeStarted;
 
@@ -140,15 +139,14 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         return await _engine!.ReopenAsync(instanceGuid.Trim(), normalizedActor, ct);
     }
 
+    public async Task<IWorkFlowEngine> GetEngineAsync(CancellationToken ct = default) {
+        await EnsureInitializedAsync(ct);
+        return _engine!;
+    }
+
     public async ValueTask DisposeAsync() {
         if (_engine != null) {
             try { await _engine.StopMonitorAsync(CancellationToken.None); } catch { }
-        }
-
-        if (_runtimeProvider is IAsyncDisposable asyncProvider) {
-            try { await asyncProvider.DisposeAsync(); } catch { }
-        } else if (_runtimeProvider is IDisposable provider) {
-            try { provider.Dispose(); } catch { }
         }
 
         if (_engine is IAsyncDisposable disposableEngine) {
