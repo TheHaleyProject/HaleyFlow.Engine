@@ -1,6 +1,7 @@
-namespace Haley.Models;
+using Microsoft.Extensions.Configuration;
 
-public sealed class WFEngineAdminOptions : WorkFlowEngineOptions {
+namespace Haley.Models;
+public sealed class EngineServiceOptions : WorkFlowEngineOptions {
     [ConfigurationKeyName("env_code")]
     public int EnvCode { get; set; } = 1000;
     [ConfigurationKeyName("env_name")]

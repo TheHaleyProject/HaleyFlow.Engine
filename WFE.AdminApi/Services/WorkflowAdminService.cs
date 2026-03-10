@@ -6,7 +6,6 @@ using Haley.Utils;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Diagnostics;
-using WFE.AdminApi.Configuration;
 using WFE.Test;
 using WFE.Test.UseCases.ChangeRequest;
 using WFE.Test.UseCases.LoanApproval;
@@ -15,7 +14,7 @@ using WFE.Test.UseCases.VendorRegistration;
 
 namespace WFE.AdminApi.Services;
 
-internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDisposable {
+internal sealed class WorkflowAdminService :  IAsyncDisposable {
     private sealed record UseCaseProfile(
         string Key,
         string DefName,
@@ -74,202 +73,12 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
         _agw = agw as AdapterGateway ?? throw new ArgumentException("AdapterGateway implementation is required.", nameof(agw));
     }
 
-    public async Task<LifeCycleInstanceData?> GetInstanceAsync(
-        int? envCode,
-        string? defName,
-        string? entityId,
-        string? instanceGuid,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var key = BuildInstanceKey(envCode, defName, entityId, instanceGuid);
-        return await _engine!.GetInstanceDataAsync(key, ct);
-    }
-
-    public async Task<string?> GetTimelineJsonAsync(
-        int? envCode,
-        string? defName,
-        string? entityId,
-        string? instanceGuid,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var key = BuildInstanceKey(envCode, defName, entityId, instanceGuid);
-        return await _engine!.GetTimelineJsonAsync(key, ct);
-    }
-
-    public async Task<string?> GetTimelineHtmlAsync(
-        int? envCode,
-        string? defName,
-        string? entityId,
-        string? instanceGuid,
-        string? displayName,
-        CancellationToken ct) {
-        var json = await GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, ct);
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        return TimelineHtmlRenderer.Render(json, displayName?.Trim());
-    }
-
-    public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(
-        int? envCode,
-        string defName,
-        LifeCycleInstanceFlag flags,
-        int skip,
-        int take,
-        CancellationToken ct) {
-        if (string.IsNullOrWhiteSpace(defName)) throw new ArgumentException("Definition name is required.", nameof(defName));
-        await EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        return await _engine!.GetInstanceRefsAsync(ResolveEnvCode(envCode), defName.Trim(), flags, normalizedSkip, normalizedTake, ct);
-    }
-
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetEngineEntitiesAsync(
-        string? defName,
-        bool runningOnly,
-        int skip,
-        int take,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _engine!.ListInstancesAsync(ResolveEnvCode(null), defName?.Trim(), runningOnly, normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
-    }
-
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetPendingAcksAsync(
-        int skip,
-        int take,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _engine!.ListPendingAcksAsync(ResolveEnvCode(null), normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
-    }
-
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetConsumerWorkflowsAsync(
-        int skip,
-        int take,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await (await EnsureConsumerAdminAsync(ct)).ListWorkflowsAsync(normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
-    }
-
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetConsumerInboxAsync(
-        int? status,
-        int skip,
-        int take,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await (await EnsureConsumerAdminAsync(ct)).ListInboxAsync(status, normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
-    }
-
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetConsumerOutboxAsync(
-        int? status,
-        int skip,
-        int take,
-        CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await (await EnsureConsumerAdminAsync(ct)).ListOutboxAsync(status, normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
-    }
-
-    public async Task<Dictionary<string, object?>> GetSummaryAsync(CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-        var s = await _engine!.GetSummaryAsync(ResolveEnvCode(null), ct);
-        var ca = await EnsureConsumerAdminAsync(ct);
-        var inboxPending = await ca.CountPendingInboxAsync(ct);
-        var outboxPending = await ca.CountPendingOutboxAsync(ct);
-        return new Dictionary<string, object?> {
-            ["envCode"] = _options.EnvCode,
-            ["engineTotalInstances"] = s.TotalInstances,
-            ["engineRunningInstances"] = s.RunningInstances,
-            ["enginePendingAcks"] = s.PendingAcks,
-            ["consumerPendingInbox"] = inboxPending,
-            ["consumerPendingOutbox"] = outboxPending
-        };
-    }
-
-    public async Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct) {
-        await EnsureInitializedAsync(ct);
-
-        Dictionary<string, object?> engineCheck;
-        var sw = Stopwatch.StartNew();
-        try {
-            var h = await _engine!.GetHealthAsync(ct);
-            sw.Stop();
-            engineCheck = new Dictionary<string, object?> {
-                ["name"] = "engine",
-                ["status"] = "healthy",
-                ["responseTimeMs"] = sw.ElapsedMilliseconds,
-                ["isMonitorRunning"] = h.IsMonitorRunning,
-                ["monitorIntervalSeconds"] = h.MonitorInterval.TotalSeconds,
-                ["consumerTtlSeconds"] = h.ConsumerTtlSeconds,
-                ["totalConsumers"] = h.TotalConsumers,
-                ["aliveConsumers"] = h.AliveConsumers,
-                ["downConsumers"] = h.DownConsumers,
-                ["dueLifecyclePending"] = h.DueLifecyclePendingCount,
-                ["dueLifecycleDelivered"] = h.DueLifecycleDeliveredCount,
-                ["dueHookPending"] = h.DueHookPendingCount,
-                ["dueHookDelivered"] = h.DueHookDeliveredCount,
-                ["staleInstances"] = h.DefaultStateStaleCount,
-                ["runtimeStarted"] = _runtimeStarted
-            };
-        } catch (Exception ex) {
-            sw.Stop();
-            engineCheck = new Dictionary<string, object?> {
-                ["name"] = "engine",
-                ["status"] = "unhealthy",
-                ["responseTimeMs"] = sw.ElapsedMilliseconds,
-                ["error"] = ex.Message
-            };
-        }
-
-        var consumerCheck = await PingAdapterAsync(_options.ConsumerAdapterKey, "consumer_db", ct);
-
-        var allHealthy = (string?)engineCheck["status"] == "healthy"
-                      && (string?)consumerCheck["status"] == "healthy";
-
-        return new Dictionary<string, object?> {
-            ["status"] = allHealthy ? "healthy" : "unhealthy",
-            ["checkedAt"] = DateTimeOffset.UtcNow,
-            ["checks"] = new[] { engineCheck, consumerCheck }
-        };
-    }
-
-    public async Task<Dictionary<string, object?>> EnsureHostInitializedAsync(CancellationToken ct) {
-        var wasRuntimeStarted = _runtimeStarted;
-        await EnsureInitializedAsync(ct);
-
-        return new Dictionary<string, object?> {
-            ["status"] = "ok",
-            ["checkedAt"] = DateTimeOffset.UtcNow,
-            ["engineInitialized"] = _engine != null,
-            ["runtimeStarted"] = _runtimeStarted,
-            ["alreadyRunning"] = wasRuntimeStarted,
-            ["envCode"] = _options.EnvCode,
-            ["consumerId"] = _resolvedConsumerId > 0 ? _resolvedConsumerId : null
-        };
-    }
-
     public Task<IReadOnlyList<string>> GetTestUseCasesAsync(CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
         var keys = UseCaseProfiles.Keys
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return Task.FromResult<IReadOnlyList<string>>(keys);
-    }
-
-    public async Task<LifeCycleTriggerResult> ReopenInstanceAsync(
-        string instanceGuid,
-        string actor,
-        CancellationToken ct) {
-        if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
-
-        await EnsureInitializedAsync(ct);
-        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.adminapi.reopen" : actor.Trim();
-        return await _engine!.ReopenAsync(instanceGuid.Trim(), normalizedActor, ct);
     }
 
     public async Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(

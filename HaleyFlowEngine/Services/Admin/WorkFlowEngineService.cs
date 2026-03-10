@@ -1,17 +1,14 @@
 using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
-using Haley.Services;
 using Haley.Utils;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using System.Diagnostics;
 
 namespace Haley.Services;
 
-public class WFEngineAdminService : IWFEngineAdminService, IAsyncDisposable {
+public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
 
-    private readonly WFEngineAdminOptions _options;
+    private readonly EngineServiceOptions _options;
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
@@ -21,7 +18,7 @@ public class WFEngineAdminService : IWFEngineAdminService, IAsyncDisposable {
     private long _resolvedConsumerId;
     private bool _runtimeStarted;
 
-    public WFEngineAdminService(WFEngineAdminOptions options, IAdapterGateway agw) {
+    public WorkFlowEngineService(EngineServiceOptions options, IAdapterGateway agw) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _agw = agw as AdapterGateway ?? throw new ArgumentException("AdapterGateway implementation is required.", nameof(agw));
     }
@@ -139,7 +136,7 @@ public class WFEngineAdminService : IWFEngineAdminService, IAsyncDisposable {
         if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
 
         await EnsureInitializedAsync(ct);
-        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.adminapi.reopen" : actor.Trim();
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.service" : actor.Trim();
         return await _engine!.ReopenAsync(instanceGuid.Trim(), normalizedActor, ct);
     }
 

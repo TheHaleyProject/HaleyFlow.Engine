@@ -1,14 +1,12 @@
+using Haley.Abstractions;
 using Haley.Enums;
 using Microsoft.AspNetCore.Mvc;
-using Haley.Services;
-using Haley.Abstractions;
-using Haley.Services;
 
 namespace Haley.Models;
-public class WorkflowAdminController : ControllerBase {
-    private readonly IWFEngineAdminService _service;
+public class WorkFlowEngineControllerBase : ControllerBase {
+    private readonly IWorkFlowEngineService _service;
 
-    public WorkflowAdminController(IWFEngineAdminService service) {
+    public WorkFlowEngineControllerBase(IWorkFlowEngineService service) {
         _service = service;
     }
 

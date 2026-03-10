@@ -3,7 +3,7 @@ using Haley.Models;
 
 namespace Haley.Abstractions;
 
-public interface IWFEngineAdminService {
+public interface IWorkFlowEngineService {
     Task<LifeCycleInstanceData?> GetInstanceAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, CancellationToken ct);
     Task<string?> GetTimelineJsonAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, CancellationToken ct);
     Task<string?> GetTimelineHtmlAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, string? displayName, CancellationToken ct);
