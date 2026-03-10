@@ -9,9 +9,9 @@ using System.Diagnostics;
 
 namespace Haley.Services;
 
-internal sealed class WorkFlowEngineAdminService : IWorkFlowEngineAdminService, IAsyncDisposable {
+public class WFEngineAdminService : IWFEngineAdminService, IAsyncDisposable {
 
-    private readonly WorkflowAdminOptions _options;
+    private readonly WFEngineAdminOptions _options;
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
@@ -21,7 +21,7 @@ internal sealed class WorkFlowEngineAdminService : IWorkFlowEngineAdminService, 
     private long _resolvedConsumerId;
     private bool _runtimeStarted;
 
-    public WorkFlowEngineAdminService(WorkflowAdminOptions options, IAdapterGateway agw) {
+    public WFEngineAdminService(WFEngineAdminOptions options, IAdapterGateway agw) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _agw = agw as AdapterGateway ?? throw new ArgumentException("AdapterGateway implementation is required.", nameof(agw));
     }
@@ -167,23 +167,17 @@ internal sealed class WorkFlowEngineAdminService : IWorkFlowEngineAdminService, 
             await _initLock.WaitAsync(ct);
             try {
                 if (_engine == null) {
-                    var defaults = new UseSettingsBase();
                     var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(_options.EngineAdapterKey);
-                    engineMaker.Options = new WorkFlowEngineOptions {
-                        MonitorInterval = defaults.MonitorInterval,
-                        AckPendingResendAfter = defaults.AckPendingResendAfter,
-                        AckDeliveredResendAfter = defaults.AckDeliveredResendAfter,
-                        MaxRetryCount = defaults.MaxRetryCount,
-                        ConsumerTtlSeconds = defaults.ConsumerTtlSeconds,
-                        ConsumerDownRecheckSeconds = defaults.ConsumerDownRecheckSeconds,
-                        ResolveConsumers = (ty, defVersionId, token) => {
-                            token.ThrowIfCancellationRequested();
-                            if (_resolvedConsumerId <= 0) return Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>());
-                            return Task.FromResult<IReadOnlyList<long>>(new[] { _resolvedConsumerId });
-                        }
+                    engineMaker.Options = _options;
+                    engineMaker.Options.ResolveConsumers = (ty, defVersionId, token) => {
+                        token.ThrowIfCancellationRequested();
+                        if (_resolvedConsumerId <= 0) return Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>());
+                        return Task.FromResult<IReadOnlyList<long>>(new[] { _resolvedConsumerId });
                     };
                     _engine = await engineMaker.Build(_agw);
                 }
+            } catch (Exception) {
+                throw; //Very important.. because without this, the engine might silently be failing and we will never know the issue..
             } finally {
                 _initLock.Release();
             }
@@ -205,29 +199,10 @@ internal sealed class WorkFlowEngineAdminService : IWorkFlowEngineAdminService, 
 
             await _engine.StartMonitorAsync(ct);
             _runtimeStarted = true;
+        } catch (Exception) {
+            throw; //Very important.. because without this, the engine might silently be failing and we will never know the issue..
         } finally {
             _runtimeInitLock.Release();
-        }
-    }
-
-    private async Task<Dictionary<string, object?>> PingAdapterAsync(string adapterKey, string checkName, CancellationToken ct) {
-        var sw = Stopwatch.StartNew();
-        try {
-            await _agw.ScalarAsync<int>(adapterKey, "SELECT 1", new DbExecutionLoad(ct));
-            sw.Stop();
-            return new Dictionary<string, object?> {
-                ["name"] = checkName,
-                ["status"] = "healthy",
-                ["responseTimeMs"] = sw.ElapsedMilliseconds
-            };
-        } catch (Exception ex) {
-            sw.Stop();
-            return new Dictionary<string, object?> {
-                ["name"] = checkName,
-                ["status"] = "unhealthy",
-                ["responseTimeMs"] = sw.ElapsedMilliseconds,
-                ["error"] = ex.Message
-            };
         }
     }
 

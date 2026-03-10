@@ -6,10 +6,10 @@ using Haley.Services;
 
 namespace Haley.Models;
 public class WorkflowAdminController : ControllerBase {
-    private readonly IWorkFlowEngineAdminService _service;
+    private readonly IWFEngineAdminService _service;
 
-    public WorkflowAdminController() {
-        _service = new WorkflowAdminService(;
+    public WorkflowAdminController(IWFEngineAdminService service) {
+        _service = service;
     }
 
     [HttpGet("instance")]
@@ -54,25 +54,6 @@ public class WorkflowAdminController : ControllerBase {
         return Ok(rows);
     }
 
-    [HttpGet("consumer/workflows")]
-    public async Task<IActionResult> GetConsumerWorkflows([FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
-        var rows = await _service.GetConsumerWorkflowsAsync(skip, take, ct);
-        return Ok(rows);
-    }
-
-    [HttpGet("consumer/inbox")]
-    public async Task<IActionResult> GetConsumerInbox(
-        [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
-        var rows = await _service.GetConsumerInboxAsync(status, skip, take, ct);
-        return Ok(rows);
-    }
-
-    [HttpGet("consumer/outbox")]
-    public async Task<IActionResult> GetConsumerOutbox([FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
-        var rows = await _service.GetConsumerOutboxAsync(status, skip, take, ct);
-        return Ok(rows);
-    }
-
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken ct) {
         var summary = await _service.GetSummaryAsync(ct);
@@ -92,12 +73,6 @@ public class WorkflowAdminController : ControllerBase {
         return Ok(result);
     }
 
-    [HttpGet("test/usecases")]
-    public async Task<IActionResult> GetTestUseCases(CancellationToken ct) {
-        var useCases = await _service.GetTestUseCasesAsync(ct);
-        return Ok(useCases);
-    }
-
     [HttpPost("instance/reopen")]
     public async Task<IActionResult> ReopenInstance([FromBody] ReopenInstanceRequest request, CancellationToken ct) {
         if (request == null) return BadRequest("Request body is required.");
@@ -106,21 +81,6 @@ public class WorkflowAdminController : ControllerBase {
         var actor = string.IsNullOrWhiteSpace(request.Actor) ? "wfe.adminapi.reopen" : request.Actor.Trim();
         var result = await _service.ReopenInstanceAsync(request.InstanceGuid.Trim(), actor, ct);
         return Ok(result);
-    }
-
-    [HttpPost("test/entities")]
-    public async Task<IActionResult> CreateTestEntities([FromBody] CreateTestEntitiesRequest request, CancellationToken ct) {
-        if (request == null) return BadRequest("Request body is required.");
-        if (string.IsNullOrWhiteSpace(request.UseCase)) return BadRequest("useCase is required.");
-        if (request.Count < 1) return BadRequest("count must be greater than 0.");
-
-        var results = await _service.CreateTestEntitiesAsync(request.UseCase, request.Count, ct);
-        return Ok(new {
-            useCase = request.UseCase,
-            requested = request.Count,
-            created = results.Count,
-            results
-        });
     }
 
     private static LifeCycleInstanceFlag ParseFlags(string? flags) {
@@ -135,15 +95,5 @@ public class WorkflowAdminController : ControllerBase {
         }
 
         return parsed == LifeCycleInstanceFlag.None ? LifeCycleInstanceFlag.Active : parsed;
-    }
-
-    public sealed class CreateTestEntitiesRequest {
-        public string UseCase { get; set; } = "change-request";
-        public int Count { get; set; } = 1;
-    }
-
-    public sealed class ReopenInstanceRequest {
-        public string InstanceGuid { get; set; } = string.Empty;
-        public string? Actor { get; set; }
     }
 }
