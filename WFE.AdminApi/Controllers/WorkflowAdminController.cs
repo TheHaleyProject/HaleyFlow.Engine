@@ -1,3 +1,4 @@
+using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ namespace WFE.AdminApi.Controllers;
 public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
     private readonly IWorkflowAdminService _service;
 
-    public WorkflowAdminController(IWorkflowAdminService service) {
+    public WorkflowAdminController(IWorkFlowEngineService engineService, IWorkflowAdminService service) : base(engineService) {
         _service = service;
     }
 

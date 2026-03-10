@@ -1,12 +1,9 @@
 using Haley.Abstractions;
-using Haley.Enums;
 using Haley.Models;
 using Haley.Services;
 using Haley.Utils;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using System.Diagnostics;
-using WFE.Test;
+using WFE.AdminApi.Configuration;
 using WFE.Test.UseCases.ChangeRequest;
 using WFE.Test.UseCases.LoanApproval;
 using WFE.Test.UseCases.PaperlessReview;
@@ -14,7 +11,7 @@ using WFE.Test.UseCases.VendorRegistration;
 
 namespace WFE.AdminApi.Services;
 
-internal sealed class WorkflowAdminService :  IAsyncDisposable {
+internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDisposable {
     private sealed record UseCaseProfile(
         string Key,
         string DefName,
@@ -56,21 +53,49 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
         };
 
     private readonly WorkflowAdminOptions _options;
+    private readonly IWorkFlowEngineService _engineService;
+    private readonly IWorkFlowEngineAccessor _engineAccessor;
+    private readonly IWorkFlowConsumerInitiatorService _consumerInitiator;
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly SemaphoreSlim _consumerInitLock = new(1, 1);
-    private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
 
     private IWorkFlowEngine? _engine;
     private IConsumerAdminService? _consumerAdmin;
-    private IWorkFlowConsumerService? _runtimeConsumer;
-    private IServiceProvider? _runtimeProvider;
-    private long _resolvedConsumerId;
     private bool _runtimeStarted;
 
-    public WorkflowAdminService(IOptions<WorkflowAdminOptions> options, IAdapterGateway agw) {
+    public WorkflowAdminService(
+        IOptions<WorkflowAdminOptions> options,
+        IWorkFlowEngineService engineService,
+        IWorkFlowEngineAccessor engineAccessor,
+        IWorkFlowConsumerInitiatorService consumerInitiator,
+        IAdapterGateway agw) {
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _engineService = engineService ?? throw new ArgumentNullException(nameof(engineService));
+        _engineAccessor = engineAccessor ?? throw new ArgumentNullException(nameof(engineAccessor));
+        _consumerInitiator = consumerInitiator ?? throw new ArgumentNullException(nameof(consumerInitiator));
         _agw = agw as AdapterGateway ?? throw new ArgumentException("AdapterGateway implementation is required.", nameof(agw));
+    }
+
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetConsumerWorkflowsAsync(int skip, int take, CancellationToken ct) {
+        await EnsureInitializedAsync(ct);
+        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
+        var rows = await (await EnsureConsumerAdminAsync(ct)).ListWorkflowsAsync(normalizedSkip, normalizedTake, ct);
+        return ToDictionaries(rows);
+    }
+
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetConsumerInboxAsync(int? status, int skip, int take, CancellationToken ct) {
+        await EnsureInitializedAsync(ct);
+        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
+        var rows = await (await EnsureConsumerAdminAsync(ct)).ListInboxAsync(status, normalizedSkip, normalizedTake, ct);
+        return ToDictionaries(rows);
+    }
+
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetConsumerOutboxAsync(int? status, int skip, int take, CancellationToken ct) {
+        await EnsureInitializedAsync(ct);
+        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
+        var rows = await (await EnsureConsumerAdminAsync(ct)).ListOutboxAsync(status, normalizedSkip, normalizedTake, ct);
+        return ToDictionaries(rows);
     }
 
     public Task<IReadOnlyList<string>> GetTestUseCasesAsync(CancellationToken ct) {
@@ -81,15 +106,17 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
         return Task.FromResult<IReadOnlyList<string>>(keys);
     }
 
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(
-        string useCase,
-        int count,
-        CancellationToken ct) {
+    public Task EnsureHostInitializedAsync(CancellationToken ct)
+        => EnsureInitializedAsync(ct);
+
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(string useCase, int count, CancellationToken ct) {
         if (string.IsNullOrWhiteSpace(useCase)) throw new ArgumentException("useCase is required.", nameof(useCase));
         if (count < 1) return Array.Empty<Dictionary<string, object?>>();
         if (count > 1000) throw new ArgumentException("count is too high. max=1000", nameof(count));
 
         await EnsureInitializedAsync(ct);
+        if (_engine == null) throw new InvalidOperationException("Engine runtime is not initialized.");
+
         if (!UseCaseProfiles.TryGetValue(useCase.Trim(), out var profile))
             throw new ArgumentException($"Unknown use-case '{useCase}'.", nameof(useCase));
 
@@ -97,7 +124,7 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
         for (var i = 0; i < count; i++) {
             ct.ThrowIfCancellationRequested();
             var entityId = Guid.NewGuid().ToString("N");
-            var trigger = await _engine!.TriggerAsync(new LifeCycleTriggerRequest {
+            var trigger = await _engine.TriggerAsync(new LifeCycleTriggerRequest {
                 EnvCode = _options.EnvCode,
                 DefName = profile.DefName,
                 EntityId = entityId,
@@ -127,121 +154,34 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
     }
 
     public async ValueTask DisposeAsync() {
-        if (_runtimeConsumer != null) {
-            try { await _runtimeConsumer.StopAsync(CancellationToken.None); } catch { }
-        }
-
-        if (_engine != null) {
-            try { await _engine.StopMonitorAsync(CancellationToken.None); } catch { }
-        }
-
-        if (_runtimeProvider is IAsyncDisposable asyncProvider) {
-            try { await asyncProvider.DisposeAsync(); } catch { }
-        } else if (_runtimeProvider is IDisposable provider) {
-            try { provider.Dispose(); } catch { }
-        }
-
-        if (_engine is IAsyncDisposable disposableEngine) {
-            try { await disposableEngine.DisposeAsync(); } catch { }
-        }
-
+        try { await _consumerInitiator.StopAsync(CancellationToken.None); } catch { }
         _initLock.Dispose();
         _consumerInitLock.Dispose();
-        _runtimeInitLock.Dispose();
     }
 
     private async Task EnsureInitializedAsync(CancellationToken ct) {
-        if (_engine == null) {
-            await _initLock.WaitAsync(ct);
-            try {
-                if (_engine == null) {
-                    var defaults = new UseSettingsBase();
-                    var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(_options.EngineAdapterKey);
-                    engineMaker.Options = new WorkFlowEngineOptions {
-                        MonitorInterval = defaults.MonitorInterval,
-                        AckPendingResendAfter = defaults.AckPendingResendAfter,
-                        AckDeliveredResendAfter = defaults.AckDeliveredResendAfter,
-                        MaxRetryCount = defaults.MaxRetryCount,
-                        ConsumerTtlSeconds = defaults.ConsumerTtlSeconds,
-                        ConsumerDownRecheckSeconds = defaults.ConsumerDownRecheckSeconds,
-                        ResolveConsumers = (ty, defVersionId, token) => {
-                            token.ThrowIfCancellationRequested();
-                            if (_resolvedConsumerId <= 0) return Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>());
-                            return Task.FromResult<IReadOnlyList<long>>(new[] { _resolvedConsumerId });
-                        }
-                    };
-                    _engine = await engineMaker.Build(_agw);
-                }
-            } finally {
-                _initLock.Release();
-            }
-        }
-
-        await EnsureRuntimeStartedAsync(ct);
-    }
-
-    private async Task EnsureRuntimeStartedAsync(CancellationToken ct) {
         if (_runtimeStarted) return;
 
-        await _runtimeInitLock.WaitAsync(ct);
+        await _initLock.WaitAsync(ct);
         try {
             if (_runtimeStarted) return;
-            if (_engine == null) throw new InvalidOperationException("Engine is not initialized.");
 
-            await _engine.RegisterEnvironmentAsync(_options.EnvCode, _options.EnvDisplayName, ct);
-            _resolvedConsumerId = await _engine.RegisterConsumerAsync(_options.EnvCode, _options.ConsumerGuid, ct);
-
-            var changeSettings = BuildSettings(new ChangeRequestUseCaseSettings());
-            var loanSettings = BuildSettings(new LoanApprovalUseCaseSettings());
-            var paperlessSettings = BuildSettings(new PaperlessReviewUseCaseSettings());
-            var vendorSettings = BuildSettings(new VendorRegistrationUseCaseSettings());
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddSingleton<IWorkFlowEngine>(_engine);
-            serviceCollection.AddSingleton(changeSettings);
-            serviceCollection.AddSingleton(loanSettings);
-            serviceCollection.AddSingleton(paperlessSettings);
-            serviceCollection.AddSingleton(vendorSettings);
-            serviceCollection.AddTransient<ChangeRequestWrapper>();
-            serviceCollection.AddTransient<LoanApprovalWrapper>();
-            serviceCollection.AddTransient<PaperlessReviewWrapper>();
-            serviceCollection.AddTransient<VendorRegistrationWrapper>();
-
-            _runtimeProvider = serviceCollection.BuildServiceProvider();
-
-            var feed = new InProcessEngineProxy(_engine);
-            var consumerOptions = new ConsumerServiceOptions {
-                EnvCode = _options.EnvCode,
-                ConsumerGuid = _options.ConsumerGuid,
-                BatchSize = changeSettings.ConsumerBatchSize,
-                PollInterval = changeSettings.ConsumerPollInterval,
-                HeartbeatInterval = changeSettings.ConsumerHeartbeatInterval
-            };
-
-            var consumerMaker = new WorkFlowConsumerMaker()
-                .WithAdapterKey(_options.ConsumerAdapterKey)
-                .WithProvider(_runtimeProvider);
-            consumerMaker.EngineProxy = feed;
-            consumerMaker.Options = consumerOptions;
-
-            _runtimeConsumer = await consumerMaker.Build(_agw);
-            _runtimeConsumer.RegisterAssembly(typeof(ChangeRequestWrapper).Assembly);
-            _runtimeConsumer.NoticeRaised += n => {
-                Console.WriteLine($"[NOTICE:{n.Kind}] {n.Code} :: {n.Message}" +
-                    (n.Exception != null ? $" ex={n.Exception.GetType().Name}: {n.Exception.Message}" : string.Empty));
-                return Task.CompletedTask;
-            };
+            await _engineService.EnsureHostInitializedAsync(ct);
+            _engine = await _engineAccessor.GetEngineAsync(ct);
 
             await ImportUseCasesAsync(ct);
-            await _engine.StartMonitorAsync(ct);
-            await _runtimeConsumer.StartAsync(ct);
+
+            _consumerInitiator.RegisterAssembly(typeof(ChangeRequestWrapper).Assembly);
+            await _consumerInitiator.EnsureHostInitializedAsync(ct);
             _runtimeStarted = true;
         } finally {
-            _runtimeInitLock.Release();
+            _initLock.Release();
         }
     }
 
     private async Task ImportUseCasesAsync(CancellationToken ct) {
+        if (_engine == null) throw new InvalidOperationException("Engine runtime is not initialized.");
+
         for (var i = 0; i < UseCaseProfiles.Count; i++) {
             ct.ThrowIfCancellationRequested();
             var profile = UseCaseProfiles.Values.ElementAt(i);
@@ -252,7 +192,7 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
             var definitionJson = await File.ReadAllTextAsync(definitionPath, ct);
             var policyJson = await File.ReadAllTextAsync(policyPath, ct);
 
-            var defVersionId = await _engine!.ImportDefinitionJsonAsync(_options.EnvCode, _options.EnvDisplayName, definitionJson, ct);
+            var defVersionId = await _engine.ImportDefinitionJsonAsync(_options.EnvCode, _options.EnvDisplayName, definitionJson, ct);
             var policyId = await _engine.ImportPolicyJsonAsync(_options.EnvCode, _options.EnvDisplayName, policyJson, ct);
             await _engine.InvalidateAsync(_options.EnvCode, profile.DefName, ct);
 
@@ -280,16 +220,6 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
         throw new FileNotFoundException($"Unable to locate use-case file '{folder}/{fileName}'. Checked roots: {string.Join(" | ", candidateRoots)}");
     }
 
-    private T BuildSettings<T>(T settings) where T : UseSettingsBase {
-        settings.EnvCode = _options.EnvCode;
-        settings.EnvDisplayName = _options.EnvDisplayName;
-        settings.ConsumerGuid = _options.ConsumerGuid;
-        settings.ENGINE_DBNAME = _options.EngineAdapterKey;
-        settings.CONSUMER_DBNAME = _options.ConsumerAdapterKey;
-        settings.ConfirmationTimeout = TimeSpan.FromSeconds(Math.Max(0, _options.ConfirmationTimeoutSeconds));
-        return settings;
-    }
-
     private async Task<IConsumerAdminService> EnsureConsumerAdminAsync(CancellationToken ct) {
         if (_consumerAdmin != null) return _consumerAdmin;
         await _consumerInitLock.WaitAsync(ct);
@@ -302,51 +232,6 @@ internal sealed class WorkflowAdminService :  IAsyncDisposable {
             _consumerInitLock.Release();
         }
     }
-
-    private async Task<Dictionary<string, object?>> PingAdapterAsync(string adapterKey, string checkName, CancellationToken ct) {
-        var sw = Stopwatch.StartNew();
-        try {
-            await _agw.ScalarAsync<int>(adapterKey, "SELECT 1", new DbExecutionLoad(ct));
-            sw.Stop();
-            return new Dictionary<string, object?> {
-                ["name"] = checkName,
-                ["status"] = "healthy",
-                ["responseTimeMs"] = sw.ElapsedMilliseconds
-            };
-        } catch (Exception ex) {
-            sw.Stop();
-            return new Dictionary<string, object?> {
-                ["name"] = checkName,
-                ["status"] = "unhealthy",
-                ["responseTimeMs"] = sw.ElapsedMilliseconds,
-                ["error"] = ex.Message
-            };
-        }
-    }
-
-    private LifeCycleInstanceKey BuildInstanceKey(
-        int? envCode,
-        string? defName,
-        string? entityId,
-        string? instanceGuid) {
-        if (!string.IsNullOrWhiteSpace(instanceGuid)) {
-            return new LifeCycleInstanceKey {
-                InstanceGuid = instanceGuid.Trim()
-            };
-        }
-
-        if (string.IsNullOrWhiteSpace(defName)) throw new ArgumentException("Definition name is required when instanceGuid is not supplied.", nameof(defName));
-        if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentException("Entity id is required when instanceGuid is not supplied.", nameof(entityId));
-
-        return new LifeCycleInstanceKey {
-            EnvCode = ResolveEnvCode(envCode),
-            DefName = defName.Trim(),
-            EntityId = entityId.Trim()
-        };
-    }
-
-    private int ResolveEnvCode(int? envCode)
-        => envCode.GetValueOrDefault(_options.EnvCode);
 
     private (int skip, int take) NormalizePaging(int skip, int take) {
         var normalizedSkip = skip < 0 ? 0 : skip;
