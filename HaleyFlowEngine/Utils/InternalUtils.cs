@@ -13,6 +13,25 @@ using static Haley.Internal.KeyConstants;
 
 namespace Haley.Utils {
     internal static class InternalUtils {
+        public static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumerIds) {
+            if (consumerIds == null || consumerIds.Count == 0) return Array.Empty<long>();
+
+            var set = new HashSet<long>();
+            for (var i = 0; i < consumerIds.Count; i++) {
+                var consumerId = consumerIds[i];
+                if (consumerId > 0) set.Add(consumerId);
+            }
+
+            if (set.Count == 0) return Array.Empty<long>();
+            var result = new long[set.Count];
+            set.CopyTo(result);
+            return result;
+        }
+
+        public static string NormalizeRuntimeName(string? value) {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            return System.Text.RegularExpressions.Regex.Replace(value.Trim(), @"\s+", " ").ToLowerInvariant();
+        }
 
         public static string BuildDefinitionHashMaterial(this JsonElement root) {
             // keep ONLY states/events/transitions

@@ -1,13 +1,10 @@
 using Haley.Abstractions;
 using Haley.Enums;
 using Haley.Models;
+using Haley.Services.Orchestrators;
 using Haley.Utils;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.Tracing;
-using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using static Haley.Internal.KeyConstants;
@@ -38,6 +35,10 @@ namespace Haley.Services {
         internal IRuntimeEngine Runtime { get; }
         internal IEngineCare Care { get; }
         internal ILifeCycleMonitor Monitor { get; }
+        private readonly TriggerOrchestrator _triggerOrchestrator;
+        private readonly AckOutcomeOrchestrator _ackOutcomeOrchestrator;
+        private readonly MonitorOrchestrator _monitorOrchestrator;
+        private readonly ReopenOrchestrator _reopenOrchestrator;
 
         // Two public events that the host application subscribes to:
         //   EventRaised  — a lifecycle transition or hook event that a consumer must process and ACK.
@@ -45,10 +46,6 @@ namespace Haley.Services {
         //                  These are fire-and-forget signals; they don't affect engine state.
         public event Func<ILifeCycleEvent, Task>? EventRaised;
         public event Func<LifeCycleNotice, Task>? NoticeRaised;
-
-        // In-memory throttle map for STATE_STALE notices — prevents the same (consumer, instance, state)
-        // combination from flooding the NoticeRaised handler on every monitor tick.
-        readonly ConcurrentDictionary<string, DateTimeOffset> _overDueLastAt = new(StringComparer.Ordinal);
 
         internal WorkFlowEngine(IWorkFlowDAL dal, WorkFlowEngineOptions? options = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
@@ -94,6 +91,10 @@ namespace Haley.Services {
 
             Runtime = new RuntimeEngine(_dal);
             Care = new EngineCare(_dal.EngineCare, AckManager);
+            _triggerOrchestrator = new TriggerOrchestrator(_dal, _opt, BlueprintManager, StateMachine, PolicyEnforcer, AckManager, DispatchEventsSafeAsync, FireNotice);
+            _ackOutcomeOrchestrator = new AckOutcomeOrchestrator(_dal, AckManager, DispatchEventsSafeAsync, FireNotice);
+            _monitorOrchestrator = new MonitorOrchestrator(_dal, _opt, AckManager, FireEvent, FireNotice);
+            _reopenOrchestrator = new ReopenOrchestrator(_dal, BlueprintManager, TriggerAsync);
 
             // The monitor is a background periodic loop. Every MonitorInterval it:
             //   1. Scans for stale instances that have been sitting in the same state too long (STATE_STALE notices)
@@ -133,312 +134,12 @@ namespace Haley.Services {
         //   9. Commit all writes atomically
         //  10. Fire events AFTER commit — fire-and-forget; the monitor handles missed deliveries
         // -----------------------------------------------------------------------
-        public async Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (req == null) throw new ArgumentNullException(nameof(req));
-            if (string.IsNullOrWhiteSpace(req.DefName)) throw new ArgumentNullException(nameof(req.DefName));
-            if (string.IsNullOrWhiteSpace(req.EntityId)) throw new ArgumentNullException(nameof(req.EntityId));
-            if (string.IsNullOrWhiteSpace(req.Event)) throw new ArgumentNullException(nameof(req.Event));
-
-            // Blueprint read can be outside txn (pure read + cached).
-            var bp = await BlueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct);
-
-            // Transition consumers must be resolved before we open the transaction. We need at least one
-            // consumer to receive this event — otherwise the ACK rows would be orphaned with no one to deliver to.
-            // Hook consumers are resolved later (after transition succeeds) because hooks are optional.
-
-            //to do: what if we have some auto transition state ?? like withou the need for any consumer? we just transition? to implement later
-            var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
-            if (transitionConsumers.Count < 1) throw new ArgumentException("No transition consumers found for this definition version. At least one transition consumer is required to proceed.", nameof(req));
-
-            var transaction = _dal.CreateNewTransaction();
-            using var tx = transaction.Begin(false);
-            var load = new DbExecutionLoad(ct, transaction);
-            var committed = false;
-
-            var toDispatch = new List<ILifeCycleEvent>(8);
-            var lcAckGuids = new List<string>(4);
-            var hookAckGuids = new List<string>(8);
-
-            DbRow instance = null!;
-            ApplyTransitionResult transition = null!;
-            PolicyResolution pr = null!;
-
-            try {
-                // Resolve the LATEST policy for this definition. This is only used for new instances —
-                // once the policy is attached to an instance it is locked. The policy stores rule conditions
-                // (which hooks fire, on_success/on_failure event codes, params) that drive the workflow logic.
-                // If the policy changes tomorrow, already-running instances are unaffected.
-                var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load); //latest policy
-                instance = await StateMachine.EnsureInstanceAsync(bp.DefVersionId, req.EntityId, policy.PolicyId ?? 0, req.Metadata, load);
-
-                // Version lock: once an instance is created, it is tied to the def_version at that moment.
-                // If the definition was later updated (new states added, transitions changed), existing instances
-                // continue using their original version. We reload the blueprint for that locked version here
-                // so all subsequent state/event lookups are consistent with what this instance was created under.
-                var instanceDefVersion = instance.GetLong(KEY_DEF_VERSION);
-                if (instanceDefVersion != bp.DefVersionId) {
-                    bp = await BlueprintManager.GetBlueprintByVersionIdAsync(instanceDefVersion, ct);
-                }
-
-                // ACK gate: if enabled, block this transition if any consumer for the LAST lifecycle entry
-                // still hasn't ACKed (status is Pending or Delivered). The idea is: don't advance the state
-                // machine if the current event hasn't been fully processed yet.
-                // The caller can bypass this with SkipAckGate=true (e.g. for administrative corrections).
-                if (_opt.AckGateEnabled && !req.SkipAckGate) {
-                    var gateInstanceId = instance.GetLong(KEY_ID);
-                    var pendingAckCount = await _dal.LcAck.CountPendingForInstanceAsync(gateInstanceId, load);
-                    if (pendingAckCount > 0) {
-                        transaction.Commit();
-                        committed = true;
-                        return new LifeCycleTriggerResult {
-                            Applied = false,
-                            InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
-                            InstanceId = gateInstanceId,
-                            Reason = "BlockedByPendingAck",
-                            LifecycleAckGuids = Array.Empty<string>(),
-                            HookAckGuids = Array.Empty<string>()
-                        };
-                    }
-                }
-
-                transition = await StateMachine.ApplyTransitionAsync(bp, instance, req.Event, req.Actor, req.Payload, req.OccurredAt, load);
-
-                var result = new LifeCycleTriggerResult {
-                    Applied = transition.Applied,
-                    InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
-                    InstanceId = instance.GetLong(KEY_ID),
-                    LifeCycleId = transition.LifeCycleId,
-                    FromState = bp.StatesById.TryGetValue(transition.FromStateId, out var fs) ? (fs.Name ?? string.Empty) : string.Empty,
-                    ToState = bp.StatesById.TryGetValue(transition.ToStateId, out var ts) ? (ts.Name ?? string.Empty) : string.Empty,
-                    Reason = transition.Reason ?? string.Empty,
-                    LifecycleAckGuids = Array.Empty<string>(),
-                    HookAckGuids = Array.Empty<string>()
-                };
-
-                // Even if the transition was not applied (event not valid in current state, or same-state),
-                // the instance may have just been CREATED for the first time — commit that creation.
-                // The caller will see Applied=false with a Reason explaining why (e.g. "NoTransition").
-                if (!transition.Applied) {
-                    transaction.Commit(); 
-                    committed = true;
-                    return result;
-                }
-
-                var hookConsumers = await AckManager.GetHookConsumersAsync(bp.DefVersionId, ct);
-                var normTransitionConsumers = NormalizeConsumers(transitionConsumers);
-                var normHookConsumers = NormalizeConsumers(hookConsumers);
-
-                var instanceId = result.InstanceId;
-
-                // Stamp lc_id on all runtime rows for the state that was just closed.
-                // This links activities logged during from_state to the lifecycle entry that closed it,
-                // so they appear nested inside the timeline entry rather than as "Other Activities".
-                if (transition.LifeCycleId.HasValue && transition.FromStateId > 0) {
-                    await _dal.Runtime.StampLcIdByInstanceAndStateAsync(instanceId, transition.FromStateId, transition.LifeCycleId.Value, load);
-                }
-
-                // Now reload the policy that is ACTUALLY attached to this instance, not the latest one.
-                // The instance might have been created months ago when a different policy was active.
-                // We need the right policy to evaluate hooks and resolve params for the target state.
-                var pid = instance.GetLong(KEY_POLICY_ID); //Important to ensure correct policy is fetched.
-                if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
-
-                // Create the lifecycle ACK entry. One ack_guid is shared across all consumers — but each
-                // consumer gets its own ack_consumer row so we can track delivery independently.
-                // The monitor will resend the event to any consumer whose row is still Pending/Delivered.
-                var lcAckGuid = string.Empty;
-                if (req.AckRequired) {
-                    var ackRef = await AckManager.CreateLifecycleAckAsync(transition.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
-                    lcAckGuid = ackRef.AckGuid ?? string.Empty;
-                    lcAckGuids.Add(lcAckGuid);
-                }
-
-                // Resolve rule context from the policy JSON: for the target state + triggering event,
-                // extract the params (data consumers need), and on_success / on_failure event codes
-                // (what the consumer should trigger next if its work succeeds or fails).
-                RuleContext ctx = new RuleContext();
-                if (!string.IsNullOrWhiteSpace(pr.PolicyJson) && bp.StatesById.TryGetValue(transition.ToStateId, out var toState)) {
-                    bp.EventsById.TryGetValue(transition.EventId, out var viaEvent);
-                    ctx = PolicyEnforcer.ResolveRuleContextFromJson(pr.PolicyJson!, toState, viaEvent, ct, pr.PolicyId ?? 0);
-                }
-
-                // Build the base event object. This is cloned for every consumer (transition + hook).
-                // Metadata is the instance-level immutable string set when the instance was first created —
-                // it travels on every event so consumers don't need a separate lookup to read it.
-                var lcEvent = new LifeCycleEvent() {
-                    InstanceGuid = result.InstanceGuid,
-                    DefinitionId = bp.DefinitionId,
-                    DefinitionVersionId = bp.DefVersionId,
-                    EntityId = req.EntityId,
-                    OccurredAt = req.OccurredAt ?? DateTimeOffset.UtcNow,
-                    AckGuid = lcAckGuid,
-                    AckRequired = req.AckRequired,
-                    Metadata = instance.GetString(KEY_METADATA),
-                    Params = ctx.Params,            
-                    OnSuccessEvent = ctx.OnSuccessEvent, 
-                    OnFailureEvent = ctx.OnFailureEvent 
-                };
-
-                // Build one LifeCycleTransitionEvent per consumer. Each copy carries the same data
-                // but a different ConsumerId — so consumers identify themselves when calling AckAsync.
-                for (var i = 0; i < normTransitionConsumers.Count; i++) {
-                    var consumerId = normTransitionConsumers[i];
-                    var transitionEvent = new LifeCycleTransitionEvent(lcEvent) {
-                        ConsumerId = consumerId,
-                        LifeCycleId = transition.LifeCycleId.Value,
-                        FromStateId = transition.FromStateId,
-                        ToStateId = transition.ToStateId,
-                        EventCode = transition.EventCode,
-                        EventName = transition.EventName ?? string.Empty,
-                        PrevStateMeta = new Dictionary<string, object>()
-                    };
-                    toDispatch.Add(transitionEvent);
-                }
-
-                // Hooks: PolicyEnforcer creates hook + hook_lc rows and returns only the min-order emissions.
-                // Higher-order hook_lc rows exist with dispatched=0 and are activated later
-                // by AdvanceNextHookOrderAsync once the current order's blocking hooks are all Processed.
-                var hookEmissions = await PolicyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr, req.AckRequired);
-                for (var h = 0; h < hookEmissions.Count; h++) {
-                    var he = hookEmissions[h];
-                   if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
-
-                    var hookAckGuid = string.Empty;
-                    if (req.AckRequired) {
-                        var hookAck = await AckManager.CreateHookAckAsync(he.HookLcId, normHookConsumers, (int)AckStatus.Pending, load);
-                        hookAckGuid = hookAck.AckGuid ?? string.Empty;
-                        hookAckGuids.Add(hookAckGuid);
-                        await _dal.HookLc.MarkDispatchedAsync(he.HookLcId, load);
-                    }
-
-                    var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(he.HookId, load);
-                    for (var i = 0; i < normHookConsumers.Count; i++) {
-
-                        var consumerId = normHookConsumers[i];
-                        var hookEvent = new LifeCycleHookEvent(lcEvent) {
-                            ConsumerId = consumerId,
-                            AckGuid = hookAckGuid,
-                            OnEntry = he.OnEntry,
-                            Route = he.Route ?? string.Empty,
-                            OnSuccessEvent = he.OnSuccessEvent ?? string.Empty,
-                            OnFailureEvent = he.OnFailureEvent ?? string.Empty,
-                            Params = he.Params,
-                            NotBefore = he.NotBefore,
-                            Deadline = he.Deadline,
-                            IsBlocking = he.IsBlocking,
-                            GroupName = he.GroupName,
-                            OrderSeq = he.OrderSeq,
-                            AckMode = he.AckMode,
-                            RunCount = runCount
-                        };
-                        toDispatch.Add(hookEvent);
-                    }
-                }
-
-                transaction.Commit();
-                committed = true;
-
-                // Dispatch AFTER commit — this is critical. All ACK rows already exist in the DB,
-                // so even if the process crashes here or a handler throws, the monitor will resend
-                // on the next tick based on the still-Pending ack_consumer rows.
-                await DispatchEventsSafeAsync(toDispatch, ct);
-
-                result.LifecycleAckGuids = lcAckGuids;
-                result.HookAckGuids = hookAckGuids;
-                return result;
-            } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
-                if (!committed) { try { transaction.Rollback(); } catch { } }
-                throw;
-            } catch (Exception ex) {
-                if (!committed) { try { transaction.Rollback(); } catch { } }
-                FireNotice(LifeCycleNotice.Error("TRIGGER_ERROR", "TRIGGER_ERROR", ex.Message, ex));
-                throw;
-            }
+        public Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
+            return _triggerOrchestrator.TriggerAsync(req, ct);
         }
 
-        // -----------------------------------------------------------------------
-        // ACK — consumer tells us what happened with an event it received.
-        //
-        // Outcomes:
-        //   Processed — consumer handled the event successfully. Move the ack_consumer row to terminal state.
-        //   Retry     — consumer wants the engine to resend later (transient failure, retryAt is honoured).
-        //   Dead      — consumer gave up permanently; mark row Failed, do not retry.
-        //
-        // When Processed, we also run three side-effect checks specifically for hook events:
-        //   1. AckMode=Any fan-out  — if hook had ack_mode=Any, auto-mark ALL sibling consumers Processed
-        //                             so they don't get retried. "First one to ACK wins."
-        //   2. Group completion     — if hook is part of a named group, check if every member is now done.
-        //                             If yes, fire HOOK_GROUP_COMPLETE notice.
-        //   3. Order advancement    — if hook was blocking, check if ALL blocking hooks in its order_seq
-        //                             are now Processed. If yes, dispatch the next order's hooks.
-        // -----------------------------------------------------------------------
-        public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
-            if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
-            var load = new DbExecutionLoad(ct);
-            await AckManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, load);
-
-            if (outcome == AckOutcome.Processed) {
-                // Fetch hook context once — reused for all three checks below.
-                // If this ack_guid belongs to a lifecycle transition (not a hook), GetContextByAckGuidAsync
-                // returns null and we skip all three checks safely.
-                DbRow? hookCtx = null;
-                try {
-                    hookCtx = await _dal.Hook.GetContextByAckGuidAsync(ackGuid, load);
-                } catch (Exception ex) {
-                    FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
-                        $"Hook context lookup failed for ack={ackGuid}: {ex.Message}"));
-                }
-
-                // 1. AckMode=Any fan-out: mark all sibling ack_consumer rows Processed BEFORE group check
-                //    so CountUnresolvedInGroup sees them as terminal.
-                //    Scenario: hook has 3 consumers, ack_mode=Any. Consumer-A ACKs Processed →
-                //    Consumer-B and Consumer-C rows are auto-marked Processed. Monitor won't retry them.
-                if (hookCtx != null && hookCtx.GetInt(KEY_ACK_MODE) == 1) {
-                    try {
-                        await _dal.AckConsumer.MarkAllProcessedByAckIdAsync(hookCtx.GetLong(KEY_ACK_ID), load);
-                    } catch (Exception ex) {
-                        FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
-                            $"AckMode=Any fan-out failed for ack={ackGuid}: {ex.Message}"));
-                    }
-                }
-
-                // 2. Group completion check
-                try {
-                    var ctx = await _dal.HookGroup.GetContextByAckGuidAsync(ackGuid, load);
-                    if (ctx != null) {
-                        var pending = await _dal.HookGroup.CountUnresolvedInGroupAsync(
-                            ctx.GetLong(KEY_INSTANCE_ID), ctx.GetLong(KEY_STATE_ID), ctx.GetLong(KEY_VIA_EVENT),
-                            ctx.GetBool(KEY_ON_ENTRY), ctx.GetLong(KEY_LC_ID), ctx.GetLong(KEY_GROUP_ID), load);
-                        if (pending == 0) {
-                            var groupName = ctx.GetString(KEY_GROUP_NAME) ?? string.Empty;
-                            var instanceGuid = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
-                            FireNotice(LifeCycleNotice.Info("HOOK_GROUP_COMPLETE", "HOOK_GROUP_COMPLETE",
-                                $"All hooks in group '{groupName}' are processed. instance={instanceGuid}",
-                                new Dictionary<string, object?> { ["groupName"] = groupName, ["instanceGuid"] = instanceGuid }));
-                        }
-                    }
-                } catch (Exception ex) {
-                    FireNotice(LifeCycleNotice.Warn("HOOK_GROUP_CHECK_ERROR", "HOOK_GROUP_CHECK_ERROR",
-                        $"Group completion check failed for ack={ackGuid}: {ex.Message}"));
-                }
-
-                // 3. Order advancement (only when the ACKed hook is blocking)
-                if (hookCtx != null && hookCtx.GetBool(KEY_BLOCKING)) {
-                    try {
-                        var incomplete = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
-                            hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
-                            hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
-                            hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
-                        if (incomplete == 0) await AdvanceNextHookOrderAsync(hookCtx, ct);
-                    } catch (Exception ex) {
-                        FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
-                            $"Order advancement failed for ack={ackGuid}: {ex.Message}"));
-                    }
-                }
-            }
+        public Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
+            return _ackOutcomeOrchestrator.AckAsync(consumerId, ackGuid, outcome, message, retryAt, ct);
         }
 
         public async Task<LifeCycleInstanceData?> GetInstanceDataAsync(LifeCycleInstanceKey key, CancellationToken ct = default) {
@@ -521,35 +222,14 @@ namespace Haley.Services {
         // Public entry point for a single monitor pass for ONE specific consumer.
         // Runs resend for both Pending rows (event never delivered) and Delivered rows (delivered but not ACKed).
         // Ignores consumers that are currently down (PushNextDueForDown handles postponing their rows).
-        public async Task RunMonitorOnceAsync(long consumerId, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            await ResendDispatchKindAsync(consumerId, (int)AckStatus.Pending, ct);
-            await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
+        public Task RunMonitorOnceAsync(long consumerId, CancellationToken ct = default) {
+            return _monitorOrchestrator.RunMonitorOnceAsync(consumerId, ct);
         }
 
-        // Internal entry point called by the background Monitor timer on each tick.
-        // Two responsibilities:
-        //   1. Stale instance scan — fires STATE_STALE notices for instances stuck too long (no DB writes)
-        //   2. Resend loop — for each active consumer returned by the Hub's ResolveConsumers callback,
-        //      call RunMonitorOnceAsync to resend any overdue events
-        internal async Task RunMonitorOnceInternalAsync(Func<LifeCycleConsumerType, CancellationToken, Task<IReadOnlyList<long>>> consumersProvider, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-
-            await RaiseOverDueDefaultStateStaleNoticesAsync(ct);  // stale notice scan (no ACK, no DB writes)
-
-            // consumersProvider is the Hub's ResolveConsumers callback with defVersionId=null (Monitor type).
-            // Hub returns all currently active consumers so we resend for all of them.
-            var consumerList = await consumersProvider(LifeCycleConsumerType.Monitor,ct);
-            for (var i = 0; i < consumerList.Count; i++) {
-                var consumerId = consumerList[i];
-                await RunMonitorOnceAsync(consumerId, ct);
-            }
+        internal Task RunMonitorOnceInternalAsync(Func<LifeCycleConsumerType, CancellationToken, Task<IReadOnlyList<long>>> consumersProvider, CancellationToken ct = default) {
+            return _monitorOrchestrator.RunMonitorOnceInternalAsync(consumersProvider, ct);
         }
 
-
-        // Registers a consumer process with the engine. Returns the engine-assigned numeric consumer ID.
-        // Idempotent — safe to call every startup. The consumerGuid is the stable identity of the consumer
-        // process (e.g. a fixed GUID in config). The numeric ID is what gets stored in ack_consumer rows.
         public Task<long> RegisterConsumerAsync(int envCode, string consumerGuid, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(consumerGuid)) throw new ArgumentNullException(nameof(consumerGuid));
@@ -594,8 +274,8 @@ namespace Haley.Services {
 
             // Normalize at the API boundary: trim, lowercase, collapse repeated whitespace.
             // Consumers send "Running", "APPROVED", "send approval" — we store the canonical form.
-            var activity = NormalizeRuntimeName(req.Activity);
-            var status   = NormalizeRuntimeName(req.Status);
+            var activity = InternalUtils.NormalizeRuntimeName(req.Activity);
+            var status   = InternalUtils.NormalizeRuntimeName(req.Status);
 
             var load = new DbExecutionLoad(ct);
             var instanceRow = await ResolveInstanceRowByKeyAsync(req.Instance, load);
@@ -641,77 +321,10 @@ namespace Haley.Services {
         //   4. ForceReset: single atomic UPDATE — sets current_state=initial, clears Suspended|Completed|Failed|Archived, sets Active, NULLs last_event and message.
         //   5. Find the auto-start event: the first defined transition out of the initial state.
         //   6. Call TriggerAsync with that event — creates the lifecycle row, fires hooks, fans out ACKs.
-        public async Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
-            if (string.IsNullOrWhiteSpace(actor)) throw new ArgumentNullException(nameof(actor));
-
-            var load = new DbExecutionLoad(ct);
-            var instanceRow = await _dal.Instance.GetByGuidAsync(instanceGuid, load);
-            if (instanceRow == null) throw new InvalidOperationException($"Instance not found: {instanceGuid}");
-
-            var instanceId   = instanceRow.GetLong(KEY_ID);
-            var currentFlags = (uint)instanceRow.GetLong(KEY_FLAGS);
-            var entityId     = instanceRow.GetString(KEY_ENTITY_ID) ?? string.Empty;
-            var defVersionId = instanceRow.GetLong(KEY_DEF_VERSION);
-
-            // Only Completed / Failed / Archived qualify as "terminal" for reopen.
-            // Suspended alone is handled by UnsuspendAsync — not by ReopenAsync.
-            const uint terminalCheck = (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived);
-            if ((currentFlags & terminalCheck) == 0) {
-                return new LifeCycleTriggerResult {
-                    Applied           = false,
-                    InstanceGuid      = instanceGuid,
-                    InstanceId        = instanceId,
-                    Reason            = "NotTerminal",
-                    LifecycleAckGuids = Array.Empty<string>(),
-                    HookAckGuids      = Array.Empty<string>()
-                };
-            }
-
-            var bp = await BlueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
-            if (bp == null) throw new InvalidOperationException($"Blueprint not found for def_version {defVersionId}.");
-
-            // Clear all terminal + suspended flags; Active (1) is set by the query.
-            const uint clearMask = (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed
-                                        | LifeCycleInstanceFlag.Archived  | LifeCycleInstanceFlag.Suspended);
-            await _dal.Instance.ForceResetToStateAsync(instanceId, bp.InitialStateId, clearMask, load);
-
-            // No need to delete hooks on reopen. With the hook_lc schema, each lifecycle entry gets
-            // its own hook_lc rows (dispatched=0 initially). Re-entering a state creates fresh hook_lc
-            // rows via EmitHooksAsync → PolicyEnforcer → HookLc.InsertReturnIdAsync, giving new ack_guids
-            // per run. Prior runs' acks remain intact as history — monitor ignores Processed/Failed rows.
-
-            // Find the auto-start event: first transition out of the initial state.
-            var autoStart = bp.Transitions.FirstOrDefault(kv => kv.Key.Item1 == bp.InitialStateId);
-            if (autoStart.Value == null) {
-                // Definition has no outgoing transition from the initial state — instance is reset but stays.
-                return new LifeCycleTriggerResult {
-                    Applied           = true,
-                    InstanceGuid      = instanceGuid,
-                    InstanceId        = instanceId,
-                    ToState           = bp.StatesById.TryGetValue(bp.InitialStateId, out var init) ? (init.Name ?? string.Empty) : string.Empty,
-                    Reason            = "ResetToInitial",
-                    LifecycleAckGuids = Array.Empty<string>(),
-                    HookAckGuids      = Array.Empty<string>()
-                };
-            }
-
-            bp.EventsById.TryGetValue(autoStart.Value.EventId, out var autoStartEvent);
-
-            return await TriggerAsync(new LifeCycleTriggerRequest {
-                DefName     = bp.DefName,
-                EnvCode     = bp.EnvCode,
-                EntityId    = entityId,
-                Event       = autoStartEvent?.Name ?? string.Empty,
-                Actor       = actor,
-                AckRequired = false,
-                SkipAckGate = true   // instance was just reset; no pending ACKs from prior run
-            }, ct);
+        public Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
+            return _reopenOrchestrator.ReopenAsync(instanceGuid, actor, ct);
         }
 
-        // Resolves a LifeCycleInstanceKey → instance DbRow.
-        // Priority: InstanceGuid (direct) → EnvCode+DefName+EntityId (via blueprint lookup, fully environment-scoped).
         async Task<DbRow?> ResolveInstanceRowByKeyAsync(LifeCycleInstanceKey key, DbExecutionLoad load) {
             if (key == null) throw new ArgumentNullException(nameof(key));
 
@@ -728,198 +341,6 @@ namespace Haley.Services {
             if (defId <= 0) return null;
 
             return await _dal.Instance.GetByDefIdAndEntityIdAsync(defId, key.EntityId, load);
-        }
-
-        // Normalizes an activity or status name: trim, lowercase, collapse whitespace to single space.
-        // Applied at every public-API entry point so the DB always receives a consistent canonical form.
-        private static string NormalizeRuntimeName(string s) {
-            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-            return System.Text.RegularExpressions.Regex.Replace(s.Trim(), @"\s+", " ").ToLowerInvariant();
-        }
-
-
-        // Called when all blocking hooks at the current order_seq are Processed.
-        // Finds the next undispatched order, atomically creates ACK rows + marks hooks dispatched,
-        // then fires the events. Loops if the new order has no blocking hooks (non-blocking-only orders
-        // need no ACK to advance further, so we immediately move to the next order in the same call).
-        async Task AdvanceNextHookOrderAsync(DbRow hookCtx, CancellationToken ct) {
-            var instanceId   = hookCtx.GetLong(KEY_INSTANCE_ID);
-            var stateId      = hookCtx.GetLong(KEY_STATE_ID);
-            var viaEvent     = hookCtx.GetLong(KEY_VIA_EVENT);
-            var onEntry      = hookCtx.GetBool(KEY_ON_ENTRY);
-            var lcId         = hookCtx.GetLong(KEY_LC_ID);
-            var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
-            var instanceGuid = hookCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
-            var entityId     = hookCtx.GetString(KEY_ENTITY_ID) ?? string.Empty;
-            var definitionId = hookCtx.GetLong(KEY_DEFINITION_ID);
-            var metadata     = hookCtx.GetString(KEY_METADATA);
-
-            var hookConsumers = await AckManager.GetHookConsumersAsync(defVersionId, ct);
-            var normConsumers = NormalizeConsumers(hookConsumers);
-
-            var baseLcEvent = new LifeCycleEvent {
-                InstanceGuid       = instanceGuid,
-                DefinitionId       = definitionId,
-                DefinitionVersionId = defVersionId,
-                EntityId           = entityId,
-                Metadata           = metadata,
-                OccurredAt         = DateTimeOffset.UtcNow,
-                AckRequired        = true
-            };
-
-            while (!ct.IsCancellationRequested) {
-                var scanLoad = new DbExecutionLoad(ct);
-
-                var nextOrderRaw = await _dal.Hook.GetMinUndispatchedOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, scanLoad);
-                if (nextOrderRaw == null) return;
-                var nextOrder = nextOrderRaw.Value;
-
-                var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, scanLoad);
-                if (nextHooks.Count == 0) return;
-
-                // Create ACK rows + mark hook_lc dispatched atomically in a transaction.
-                // Fire events only after commit — same pattern as TriggerAsync.
-                var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * (normConsumers.Count > 0 ? normConsumers.Count : 1));
-                var transaction = _dal.CreateNewTransaction();
-                using var tx = transaction.Begin(false);
-                var txLoad = new DbExecutionLoad(ct, transaction);
-                var committed = false;
-
-                try {
-                    for (var j = 0; j < nextHooks.Count; j++) {
-                        var hookRow    = nextHooks[j];
-                        var hookId     = hookRow.GetLong(KEY_ID);
-                        var hookLcId   = hookRow.GetLong(KEY_HOOK_LC_ID);
-                        var isBlocking = hookRow.GetBool(KEY_BLOCKING);
-                        var ackMode    = hookRow.GetInt(KEY_ACK_MODE);
-                        var route      = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
-                        var groupName  = hookRow.GetString(KEY_GROUP_NAME);
-                        var hookOnEntry = hookRow.GetBool(KEY_ON_ENTRY);
-
-                        var hookAck     = await AckManager.CreateHookAckAsync(hookLcId, normConsumers, (int)AckStatus.Pending, txLoad);
-                        var hookAckGuid = hookAck.AckGuid ?? string.Empty;
-                        await _dal.HookLc.MarkDispatchedAsync(hookLcId, txLoad);
-
-                        var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(hookId, txLoad);
-                        for (var i = 0; i < normConsumers.Count; i++) {
-                            toDispatch.Add(new LifeCycleHookEvent(baseLcEvent) {
-                                ConsumerId = normConsumers[i],
-                                AckGuid    = hookAckGuid,
-                                OnEntry    = hookOnEntry,
-                                Route      = route,
-                                IsBlocking = isBlocking,
-                                GroupName  = groupName,
-                                OrderSeq   = nextOrder,
-                                AckMode    = ackMode,
-                                RunCount   = runCount,
-                                AckRequired = true
-                            });
-                        }
-                    }
-                    transaction.Commit();
-                    committed = true;
-                } catch {
-                    if (!committed) { try { transaction.Rollback(); } catch { } }
-                    throw;
-                }
-
-                await DispatchEventsSafeAsync(toDispatch, ct);
-                FireNotice(LifeCycleNotice.Info("HOOK_ORDER_ADVANCED", "HOOK_ORDER_ADVANCED",
-                    $"Next-order hooks dispatched. order={nextOrder} instance={instanceGuid}",
-                    new Dictionary<string, object?> { ["orderSeq"] = nextOrder, ["instanceGuid"] = instanceGuid }));
-
-                // If no blocking hooks in this order no one will call AckAsync to trigger further
-                // advancement, so loop immediately to dispatch the next order too.
-                var anyBlocking = false;
-                for (var j = 0; j < nextHooks.Count; j++) {
-                    if (nextHooks[j].GetBool(KEY_BLOCKING)) { anyBlocking = true; break; }
-                }
-                if (anyBlocking) break;  // wait for consumer ACKs before advancing further
-            }
-        }
-
-        // Resends all overdue events of a given status (Pending or Delivered) for one consumer.
-        //
-        // "Pending" means the event was never delivered at all (e.g. process was down when TriggerAsync fired).
-        // "Delivered" means the event was delivered but the consumer hasn't called AckAsync yet (still processing).
-        //
-        // Flow:
-        //   1. If the consumer is currently DOWN (last heartbeat older than ConsumerTtlSeconds), push all its
-        //      due rows into the future by ConsumerDownRecheckSeconds — no point re-firing to a dead process.
-        //   2. List all rows that are now due for resend (next_due <= now).
-        //   3. For each row: if retry count exceeded MaxRetryCount → mark Failed + suspend the instance.
-        //      Otherwise: bump next_due (back-off), fire ACK_RETRY notice, re-fire the event.
-        async Task ResendDispatchKindAsync(long consumerId, int ackStatus, CancellationToken ct) {
-            ct.ThrowIfCancellationRequested();
-
-            var load = new DbExecutionLoad(ct);
-            var nowUtc = DateTime.UtcNow;
-            var nextDueUtc = ackStatus == (int)AckStatus.Pending ? nowUtc.Add(_opt.AckPendingResendAfter) : nowUtc.Add(_opt.AckDeliveredResendAfter);
-            var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30;
-            var recheckSeconds = _opt.ConsumerDownRecheckSeconds;
-
-            // If consumer is down, push their overdue rows into the future so we don't spam when they come back up.
-            await _dal.AckConsumer.PushNextDueForDownAsync(consumerId, ackStatus, ttlSeconds, recheckSeconds, load);
-
-            // Lifecycle transition events — resend
-            var lc = await AckManager.ListDueLifecycleDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
-            for (var i = 0; i < lc.Count; i++) {
-                ct.ThrowIfCancellationRequested();
-                var item = lc[i];
-
-                if (item.TriggerCount >= _opt.MaxRetryCount) {
-                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
-
-                    var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
-                    if (instanceId > 0) {
-                        var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
-                        await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
-                        FireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
-                    } else {
-                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=lifecycle ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
-                    }
-
-                    continue;
-                }
-
-                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, load);
-                FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
-                FireEvent(item.Event);
-            }
-
-            // Hook events — same resend logic as lifecycle events above, but blocking vs non-blocking
-            // hooks are treated differently: a blocking hook failure suspends the instance; a non-blocking
-            // hook failure just fires a notice and is abandoned (it doesn't block the workflow).
-            var hk = await AckManager.ListDueHookDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
-            for (var i = 0; i < hk.Count; i++) {
-                ct.ThrowIfCancellationRequested();
-                var item = hk[i];
-
-                if (item.TriggerCount >= _opt.MaxRetryCount) {
-                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
-
-                    var isBlocking = item.Event is ILifeCycleHookEvent hev && hev.IsBlocking;
-                    if (isBlocking) {
-                        var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
-                        if (instanceId > 0) {
-                            var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
-                            await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
-                            FireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
-                        } else {
-                            FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
-                        }
-                    } else {
-                        var hookRoute = item.Event is ILifeCycleHookEvent h ? h.Route : string.Empty;
-                        FireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Non-blocking hook failed after max retries. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} route={hookRoute} instance={item.Event.InstanceGuid}"));
-                    }
-
-                    continue;
-                }
-
-                await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, load);
-                FireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
-                FireEvent(item.Event);
-            }
         }
 
         // Iterates the event list and fires each one. Called after the DB transaction commits.
@@ -959,111 +380,6 @@ namespace Haley.Services {
             }
         }
 
-        // Deduplicates and filters the consumer list — removes zeros and duplicates.
-        // The ResolveConsumers callback is external code; we can't trust it to return a clean list.
-        static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumers) {
-            if (consumers == null || consumers.Count == 0) return new long[] {};
-            var list = new List<long>(consumers.Count);
-            for (var i = 0; i < consumers.Count; i++) { var c = consumers[i]; if (c > 0 && !list.Contains(c)) list.Add(c); }
-            return list;
-        }
-
-        // Scans for instances that have been sitting in the same state longer than DefaultStateStaleDuration
-        // without any resolved (Processed) lifecycle entry. This is purely a notification scan — no DB writes,
-        // no state changes. It fires STATE_STALE notices so the host can alert or take corrective action.
-        //
-        // Why throttle in memory? The scan runs on every monitor tick. Without throttling, the same stale
-        // instance would fire a notice every 2 minutes forever. The _overDueLastAt map ensures we only
-        // fire once per (consumer, instance, state) combination per DefaultStateStaleDuration window.
-        async Task RaiseOverDueDefaultStateStaleNoticesAsync(CancellationToken ct) {
-            ct.ThrowIfCancellationRequested();
-
-            var dur = _opt.DefaultStateStaleDuration;
-            if (dur <= TimeSpan.Zero) return; // disabled — host opted out by setting duration to zero
-
-            var staleSeconds = (int)Math.Max(1, dur.TotalSeconds);
-            var processed = (int)AckStatus.Processed;
-            var excluded = (uint)(LifeCycleInstanceFlag.Suspended | LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived);
-
-            var take = _opt.MonitorPageSize > 0 ? _opt.MonitorPageSize : 200;
-            var skip = 0;
-            var now = DateTimeOffset.UtcNow;
-
-            var resolver = _opt.ResolveConsumers;
-            var consumerCache = new Dictionary<long, IReadOnlyList<long>>();
-
-            // crude safety cap (since throttle is in-memory)
-            if (_overDueLastAt.Count > 200_000) _overDueLastAt.Clear();
-
-            while (!ct.IsCancellationRequested) {
-                var rows = await _dal.Instance.ListStaleByDefaultStateDurationPagedAsync(staleSeconds, processed, excluded, skip, take, new DbExecutionLoad(ct));
-                if (rows.Count == 0) break;
-
-                for (var i = 0; i < rows.Count; i++) {
-                    ct.ThrowIfCancellationRequested();
-
-                    var r = rows[i];
-                    var instanceId = Convert.ToInt64(r[KEY_INSTANCE_ID]);
-                    var instanceGuid = (string)r[KEY_INSTANCE_GUID];
-                    var entityId = r[KEY_ENTITY_ID] as string ?? string.Empty;
-                    var defVersionId = Convert.ToInt64(r[KEY_DEF_VERSION_ID]);
-                    var stateId = Convert.ToInt64(r[KEY_CURRENT_STATE_ID]);
-                    var stateName = r[KEY_STATE_NAME] as string ?? string.Empty;
-                    var lcId = Convert.ToInt64(r[KEY_LC_ID]);
-                    var staleSec = Convert.ToInt64(r[KEY_STALE_SECONDS]);
-
-                    IReadOnlyList<long> consumers;
-                    if (resolver == null) {
-                        consumers = Array.Empty<long>();
-                    } else if (!consumerCache.TryGetValue(defVersionId, out consumers!)) {
-                        consumers = NormalizeConsumers(await resolver(LifeCycleConsumerType.Transition, defVersionId, ct));
-                        consumerCache[defVersionId] = consumers;
-                    }
-
-                    if (consumers.Count == 0) {
-                        var k0 = $"0:{instanceId}:{stateId}";
-                        if (_overDueLastAt.TryGetValue(k0, out var last0) && (now - last0) < dur) continue;
-                        _overDueLastAt[k0] = now;
-
-                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale (no consumers resolved). instance={instanceGuid} entity={entityId} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
-                            ["consumerId"] = 0L,
-                            ["instanceId"] = instanceId,
-                            ["instanceGuid"] = instanceGuid,
-                            ["entityId"] = entityId,
-                            ["defVersionId"] = defVersionId,
-                            ["currentStateId"] = stateId,
-                            ["stateName"] = stateName,
-                            ["lcId"] = lcId,
-                            ["staleSeconds"] = staleSec
-                        }));
-                        continue;
-                    }
-
-                    for (var c = 0; c < consumers.Count; c++) {
-                        var consumerId = consumers[c];
-                        var key = $"{consumerId}:{instanceId}:{stateId}";
-                        if (_overDueLastAt.TryGetValue(key, out var last) && (now - last) < dur) continue;
-                        _overDueLastAt[key] = now;
-
-                        FireNotice(new LifeCycleNotice(LifeCycleNoticeKind.OverDue, "STATE_STALE", "DEFAULT_STATE_STALE", $"Instance stale. consumer={consumerId} instance={instanceGuid} entity={entityId} state={stateName} stale={TimeSpan.FromSeconds(staleSec)}", null, new Dictionary<string, object?> {
-                            ["consumerId"] = consumerId,
-                            ["instanceId"] = instanceId,
-                            ["instanceGuid"] = instanceGuid,
-                            ["entityId"] = entityId,
-                            ["defVersionId"] = defVersionId,
-                            ["currentStateId"] = stateId,
-                            ["stateName"] = stateName,
-                            ["lcId"] = lcId,
-                            ["staleSeconds"] = staleSec
-                        }));
-                    }
-                }
-
-                if (rows.Count < take) break;
-                skip += take;
-            }
-        }
-
         // These delegate directly to BlueprintImporter — thin pass-through so the caller never needs to
         // know about internal sub-components. BlueprintImporter is idempotent (hash-guarded): re-importing
         // the same JSON is safe and a no-op if nothing changed. Call these every startup to stay in sync.
@@ -1076,5 +392,3 @@ namespace Haley.Services {
         public Task<int> RegisterEnvironmentAsync(int envCode, string? envDisplayName, CancellationToken ct) => BlueprintManager.EnsureEnvironmentAsync(envCode, envDisplayName, new DbExecutionLoad(ct));
     }
 }
-
-

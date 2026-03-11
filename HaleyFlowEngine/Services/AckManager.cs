@@ -291,7 +291,7 @@ namespace Haley.Services {
 
         private async Task EnsureConsumersInsertOnlyAsync(long ackId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load) {
             load.Ct.ThrowIfCancellationRequested();
-            var ids = NormalizeConsumers(consumerIds);
+            var ids = InternalUtils.NormalizeConsumers(consumerIds);
             if (ids.Count == 0) return;
 
             // Only INSERT missing rows. Do not overwrite existing status/next_due.
@@ -325,15 +325,6 @@ namespace Haley.Services {
             return new WorkFlowAckRef { AckId = ackId, AckGuid = guid! };
         }
 
-        private static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long> consumerIds) {
-            if (consumerIds == null || consumerIds.Count == 0) return Array.Empty<long>();
-            var set = new HashSet<long>();
-            for (var i = 0; i < consumerIds.Count; i++) if (consumerIds[i] > 0) set.Add(consumerIds[i]);
-            if (set.Count == 0) return Array.Empty<long>();
-            var arr = new long[set.Count];
-            set.CopyTo(arr);
-            return arr;
-        }
     }
 }
 
