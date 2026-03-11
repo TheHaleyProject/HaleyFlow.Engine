@@ -17,12 +17,7 @@ var adminBootstrap = adminSection.Get<WorkflowAdminOptions>() ?? new WorkflowAdm
 
 builder.Services.Configure<WorkflowAdminOptions>(adminSection);
 builder.Services.AddWorkFlowEngineService(opt => {
-    opt.EnvCode = adminBootstrap.EnvCode;
-    opt.EnvDisplayName = adminBootstrap.EnvDisplayName;
     opt.EngineAdapterKey = adminBootstrap.EngineAdapterKey;
-    opt.ConsumerGuid = adminBootstrap.ConsumerGuid;
-    opt.DefaultTake = adminBootstrap.DefaultTake;
-    opt.MaxTake = adminBootstrap.MaxTake;
     opt.MonitorInterval = defaults.MonitorInterval;
     opt.AckPendingResendAfter = defaults.AckPendingResendAfter;
     opt.AckDeliveredResendAfter = defaults.AckDeliveredResendAfter;
@@ -34,6 +29,7 @@ builder.Services.AddWorkFlowEngineService(opt => {
 builder.Services.AddWorkFlowConsumerInitiator(opt => {
     opt.ConsumerAdapterKey = adminBootstrap.ConsumerAdapterKey;
     opt.EnvCode = adminBootstrap.EnvCode;
+    opt.EnvDisplayName = adminBootstrap.EnvDisplayName;
     opt.ConsumerGuid = adminBootstrap.ConsumerGuid;
     opt.BatchSize = defaults.ConsumerBatchSize;
     opt.PollInterval = defaults.ConsumerPollInterval;

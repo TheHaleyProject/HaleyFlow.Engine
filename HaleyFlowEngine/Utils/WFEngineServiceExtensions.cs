@@ -14,7 +14,7 @@ namespace Haley.Utils {
             ArgumentNullException.ThrowIfNull(configuration);
             if (string.IsNullOrWhiteSpace(sectionName)) throw new ArgumentException("Section name is required.", nameof(sectionName));
 
-            services.Configure<EngineServiceOptions>(configuration.GetSection(sectionName));
+            services.Configure<EngineServiceOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
             return AddWorkFlowEngineServiceCore(services, autoStart);
         }
 
@@ -26,14 +26,28 @@ namespace Haley.Utils {
             return AddWorkFlowEngineServiceCore(services, autoStart);
         }
 
-        private static IServiceCollection AddWorkFlowEngineServiceCore(IServiceCollection services, bool autoStart) {
-            services.TryAddSingleton<IAdapterGateway, AdapterGateway>();
+        static IServiceCollection AddWorkFlowEngineServiceCore(IServiceCollection services, bool autoStart) {
+            var hasIAdapter = services.Any(s => s.ServiceType == typeof(IAdapterGateway));
+            var hasAdapter = services.Any(s => s.ServiceType == typeof(AdapterGateway));
+
+            if (!hasIAdapter) {
+                if (hasAdapter) {
+                    services.TryAddSingleton<IAdapterGateway>(sp => sp.GetRequiredService<AdapterGateway>());
+                } else {
+                    services.TryAddSingleton<AdapterGateway>();
+                    services.TryAddSingleton<IAdapterGateway>(sp => sp.GetRequiredService<AdapterGateway>());
+                }
+            }
+
             services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<EngineServiceOptions>>().Value);
             services.TryAddSingleton<WorkFlowEngineService>();
             services.TryAddSingleton<IWorkFlowEngineService>(sp => sp.GetRequiredService<WorkFlowEngineService>());
             services.TryAddSingleton<IWorkFlowEngineAccessor>(sp => sp.GetRequiredService<WorkFlowEngineService>());
 
             if (autoStart) {
+                //to make the engine start without a manual call
+                //IHostedService is a multi-registration collectoin.
+                //TryAddEnumerable to ensure we dont add duplicate registration
                 services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WorkFlowEngineHostedService>());
             }
 

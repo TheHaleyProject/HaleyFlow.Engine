@@ -14,7 +14,6 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
     private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
 
     private IWorkFlowEngine? _engine;
-    private long _resolvedConsumerId;
     private bool _runtimeStarted;
 
     public WorkFlowEngineService(EngineServiceOptions options, IAdapterGateway agw) {
@@ -44,28 +43,28 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
         if (string.IsNullOrWhiteSpace(defName)) throw new ArgumentException("Definition name is required.", nameof(defName));
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        return await _engine!.GetInstanceRefsAsync(ResolveEnvCode(envCode), defName.Trim(), flags, normalizedSkip, normalizedTake, ct);
+        return await _engine!.GetInstanceRefsAsync(RequireEnvCode(envCode), defName.Trim(), flags, normalizedSkip, normalizedTake, ct);
     }
 
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetEngineEntitiesAsync(string? defName, bool runningOnly, int skip, int take, CancellationToken ct) {
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetEngineEntitiesAsync(int envCode, string? defName, bool runningOnly, int skip, int take, CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _engine!.ListInstancesAsync(ResolveEnvCode(null), defName?.Trim(), runningOnly, normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
+        var rows = await _engine!.ListInstancesAsync(envCode, defName?.Trim(), runningOnly, normalizedSkip, normalizedTake, ct);
+        return rows.ToDictionaries();
     }
 
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetPendingAcksAsync(int skip, int take, CancellationToken ct) {
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetPendingAcksAsync(int envCode, int skip, int take, CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _engine!.ListPendingAcksAsync(ResolveEnvCode(null), normalizedSkip, normalizedTake, ct);
-        return ToDictionaries(rows);
+        var rows = await _engine!.ListPendingAcksAsync(envCode, normalizedSkip, normalizedTake, ct);
+        return rows.ToDictionaries();
     }
 
-    public async Task<Dictionary<string, object?>> GetSummaryAsync(CancellationToken ct) {
+    public async Task<Dictionary<string, object?>> GetSummaryAsync(int envCode, CancellationToken ct) {
         await EnsureInitializedAsync(ct);
-        var s = await _engine!.GetSummaryAsync(ResolveEnvCode(null), ct);
+        var s = await _engine!.GetSummaryAsync(envCode, ct);
         return new Dictionary<string, object?> {
-            ["envCode"] = _options.EnvCode,
+            ["envCode"] = envCode,
             ["engineTotalInstances"] = s.TotalInstances,
             ["engineRunningInstances"] = s.RunningInstances,
             ["enginePendingAcks"] = s.PendingAcks,
@@ -125,9 +124,7 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
             ["checkedAt"] = DateTimeOffset.UtcNow,
             ["engineInitialized"] = _engine != null,
             ["runtimeStarted"] = _runtimeStarted,
-            ["alreadyRunning"] = wasRuntimeStarted,
-            ["envCode"] = _options.EnvCode,
-            ["consumerId"] = _resolvedConsumerId > 0 ? _resolvedConsumerId : null
+            ["alreadyRunning"] = wasRuntimeStarted
         };
     }
 
@@ -164,11 +161,6 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
                 if (_engine == null) {
                     var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(_options.EngineAdapterKey);
                     engineMaker.Options = _options;
-                    engineMaker.Options.ResolveConsumers = (ty, defVersionId, token) => {
-                        token.ThrowIfCancellationRequested();
-                        if (_resolvedConsumerId <= 0) return Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>());
-                        return Task.FromResult<IReadOnlyList<long>>(new[] { _resolvedConsumerId });
-                    };
                     _engine = await engineMaker.Build(_agw);
                 }
             } catch (Exception) {
@@ -189,10 +181,10 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
             if (_runtimeStarted) return;
             if (_engine == null) throw new InvalidOperationException("Engine is not initialized.");
 
-            await _engine.RegisterEnvironmentAsync(_options.EnvCode, _options.EnvDisplayName, ct);
-            _resolvedConsumerId = await _engine.RegisterConsumerAsync(_options.EnvCode, _options.ConsumerGuid, ct);
-
-            await _engine.StartMonitorAsync(ct);
+            // Engine runtime start only.
+            // Consumer/environment registration belongs to consumer-side startup through ILifeCycleEngineProxy
+            // (in-process or remote), not engine host startup.
+            await _engine.StartMonitorAsync(ct); 
             _runtimeStarted = true;
         } catch (Exception) {
             throw; //Very important.. because without this, the engine might silently be failing and we will never know the issue..
@@ -212,34 +204,22 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
         if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentException("Entity id is required when instanceGuid is not supplied.", nameof(entityId));
 
         return new LifeCycleInstanceKey {
-            EnvCode = ResolveEnvCode(envCode),
+            EnvCode = RequireEnvCode(envCode),
             DefName = defName.Trim(),
             EntityId = entityId.Trim()
         };
     }
 
-    private int ResolveEnvCode(int? envCode)
-        => envCode.GetValueOrDefault(_options.EnvCode);
-
-    private (int skip, int take) NormalizePaging(int skip, int take) {
-        var normalizedSkip = skip < 0 ? 0 : skip;
-        var fallbackTake = _options.DefaultTake > 0 ? _options.DefaultTake : 50;
-        var normalizedTake = take <= 0 ? fallbackTake : take;
-        var maxTake = _options.MaxTake > 0 ? _options.MaxTake : 500;
-        if (normalizedTake > maxTake) normalizedTake = maxTake;
-        return (normalizedSkip, normalizedTake);
+    private static int RequireEnvCode(int? envCode) {
+        if (!envCode.HasValue) throw new ArgumentException("envCode is required when instanceGuid is not supplied.", nameof(envCode));
+        return envCode.Value;
     }
 
-    private static IReadOnlyList<Dictionary<string, object?>> ToDictionaries(DbRows rows) {
-        var result = new List<Dictionary<string, object?>>(rows.Count);
-        for (var i = 0; i < rows.Count; i++) {
-            var row = rows[i];
-            var item = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in row) {
-                item[entry.Key] = entry.Value == DBNull.Value ? null : entry.Value;
-            }
-            result.Add(item);
-        }
-        return result;
+    private static (int skip, int take) NormalizePaging(int skip, int take) {
+        var normalizedSkip = skip < 0 ? 0 : skip;
+        var normalizedTake = take <= 0 ? 50 : take;
+        const int maxTake = 500;
+        if (normalizedTake > maxTake) normalizedTake = maxTake;
+        return (normalizedSkip, normalizedTake);
     }
 }

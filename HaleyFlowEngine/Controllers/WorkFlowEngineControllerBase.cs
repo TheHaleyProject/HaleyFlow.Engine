@@ -41,20 +41,20 @@ public class WorkFlowEngineControllerBase : ControllerBase {
     }
 
     [HttpGet("entities")]
-    public async Task<IActionResult> GetEngineEntities([FromQuery] string? defName, [FromQuery] bool runningOnly = false, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
-        var rows = await _service.GetEngineEntitiesAsync(defName, runningOnly, skip, take, ct);
+    public async Task<IActionResult> GetEngineEntities([FromQuery] int envCode, [FromQuery] string? defName, [FromQuery] bool runningOnly = false, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+        var rows = await _service.GetEngineEntitiesAsync(envCode, defName, runningOnly, skip, take, ct);
         return Ok(rows);
     }
 
     [HttpGet("pending-acks")]
-    public async Task<IActionResult> GetPendingAcks([FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
-        var rows = await _service.GetPendingAcksAsync(skip, take, ct);
+    public async Task<IActionResult> GetPendingAcks([FromQuery] int envCode, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+        var rows = await _service.GetPendingAcksAsync(envCode, skip, take, ct);
         return Ok(rows);
     }
 
     [HttpGet("summary")]
-    public async Task<IActionResult> GetSummary(CancellationToken ct) {
-        var summary = await _service.GetSummaryAsync(ct);
+    public async Task<IActionResult> GetSummary([FromQuery] int envCode, CancellationToken ct) {
+        var summary = await _service.GetSummaryAsync(envCode, ct);
         return Ok(summary);
     }
 
