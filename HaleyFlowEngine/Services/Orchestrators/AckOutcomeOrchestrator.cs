@@ -18,11 +18,7 @@ namespace Haley.Services.Orchestrators {
         private readonly Action<LifeCycleNotice> _fireNotice;
 
         // dispatchEventsAsync / fireNotice are engine callbacks so subscribers stay centralized.
-        public AckOutcomeOrchestrator(
-            IWorkFlowDAL dal,
-            IAckManager ackManager,
-            Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync,
-            Action<LifeCycleNotice> fireNotice) {
+        public AckOutcomeOrchestrator(IWorkFlowDAL dal, IAckManager ackManager, Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync, Action<LifeCycleNotice> fireNotice) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _ackManager = ackManager ?? throw new ArgumentNullException(nameof(ackManager));
             _dispatchEventsAsync = dispatchEventsAsync ?? throw new ArgumentNullException(nameof(dispatchEventsAsync));

@@ -358,7 +358,7 @@ Monitor loop (background)
 
 ```csharp
 // 1. Build engine
-var engine = new WorkFlowEngine(dal, new WorkFlowEngineOptions {
+var engine = new WorkFlowEngine(dal, new WorkFlowBootStrapOptions {
     AckGateEnabled = true,          // optional: block new transitions until prior ACKs resolve
     DefaultStateStaleDuration = TimeSpan.FromHours(24),
 });

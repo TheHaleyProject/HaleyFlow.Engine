@@ -55,20 +55,20 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
     private readonly WorkflowAdminOptions _options;
     private readonly IWorkFlowEngineService _engineService;
     private readonly IWorkFlowEngineAccessor _engineAccessor;
-    private readonly IWorkFlowConsumerInitiatorService _consumerInitiator;
+    private readonly IWorkFlowConsumerBootstrap _consumerInitiator;
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly SemaphoreSlim _consumerInitLock = new(1, 1);
 
     private IWorkFlowEngine? _engine;
-    private IConsumerAdminService? _consumerAdmin;
+    private IWorkFlowConsumerService? _consumerAdmin;
     private bool _runtimeStarted;
 
     public WorkflowAdminService(
         IOptions<WorkflowAdminOptions> options,
         IWorkFlowEngineService engineService,
         IWorkFlowEngineAccessor engineAccessor,
-        IWorkFlowConsumerInitiatorService consumerInitiator,
+        IWorkFlowConsumerBootstrap consumerInitiator,
         IAdapterGateway agw) {
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _engineService = engineService ?? throw new ArgumentNullException(nameof(engineService));
@@ -220,13 +220,13 @@ internal sealed class WorkflowAdminService : IWorkflowAdminService, IAsyncDispos
         throw new FileNotFoundException($"Unable to locate use-case file '{folder}/{fileName}'. Checked roots: {string.Join(" | ", candidateRoots)}");
     }
 
-    private async Task<IConsumerAdminService> EnsureConsumerAdminAsync(CancellationToken ct) {
+    private async Task<IWorkFlowConsumerService> EnsureConsumerAdminAsync(CancellationToken ct) {
         if (_consumerAdmin != null) return _consumerAdmin;
         await _consumerInitLock.WaitAsync(ct);
         try {
             if (_consumerAdmin != null) return _consumerAdmin;
             var maker = new WorkFlowConsumerMaker().WithAdapterKey(_options.ConsumerAdapterKey);
-            _consumerAdmin = await maker.BuildAdmin(_agw);
+            _consumerAdmin = await maker.BuildService(_agw);
             return _consumerAdmin;
         } finally {
             _consumerInitLock.Release();

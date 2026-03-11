@@ -16,10 +16,7 @@ namespace Haley.Services.Orchestrators {
         private readonly Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> _triggerAsync;
 
         // triggerAsync callback reuses existing trigger orchestration without duplicating logic.
-        public ReopenOrchestrator(
-            IWorkFlowDAL dal,
-            IBlueprintManager blueprintManager,
-            Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> triggerAsync) {
+        public ReopenOrchestrator(IWorkFlowDAL dal, IBlueprintManager blueprintManager, Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> triggerAsync) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _blueprintManager = blueprintManager ?? throw new ArgumentNullException(nameof(blueprintManager));
             _triggerAsync = triggerAsync ?? throw new ArgumentNullException(nameof(triggerAsync));

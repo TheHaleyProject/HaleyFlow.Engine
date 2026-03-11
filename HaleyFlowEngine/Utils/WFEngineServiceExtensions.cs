@@ -9,16 +9,24 @@ using Microsoft.Extensions.Options;
 
 namespace Haley.Utils {
     public static class WFEngineServiceExtensions {
+
+        public static async Task<IWorkFlowEngine> Build(this WorkFlowEngineMaker input, IAdapterGateway agw) {
+            //replace the sql contents, as only we know that.
+            var adapterKey = await input.Initialize(agw); //Base names are already coming from the concrete implementation of DBInstanceMaker
+            var dal = new MariaWorkFlowDAL(agw, adapterKey);
+            return new WorkFlowEngine(dal, input.Options);
+        }
+
         public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, IConfiguration configuration, string sectionName = "WorkFlowEngine", bool autoStart = true) {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configuration);
             if (string.IsNullOrWhiteSpace(sectionName)) throw new ArgumentException("Section name is required.", nameof(sectionName));
 
-            services.Configure<EngineServiceOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
+            services.Configure<EngineBootstrapOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
             return AddWorkFlowEngineServiceCore(services, autoStart);
         }
 
-        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineServiceOptions> configureOptions, bool autoStart = true) {
+        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineBootstrapOptions> configureOptions, bool autoStart = true) {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configureOptions);
 
@@ -39,7 +47,7 @@ namespace Haley.Utils {
                 }
             }
 
-            services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<EngineServiceOptions>>().Value);
+            services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<EngineBootstrapOptions>>().Value);
             services.TryAddSingleton<WorkFlowEngineService>();
             services.TryAddSingleton<IWorkFlowEngineService>(sp => sp.GetRequiredService<WorkFlowEngineService>());
             services.TryAddSingleton<IWorkFlowEngineAccessor>(sp => sp.GetRequiredService<WorkFlowEngineService>());

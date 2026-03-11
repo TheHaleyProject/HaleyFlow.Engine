@@ -66,7 +66,7 @@ namespace WFE.Test.UseCases {
 
         private static UseSettingsBase? _settings;
         private static IWorkFlowEngine? _engine;
-        private static IWorkFlowConsumerService? _consumer;
+        private static IWorkFlowConsumerProcessor? _consumer;
         private static ServiceProvider? _serviceProvider;
         private static long _resolvedConsumerId;
         private static bool _started;
@@ -150,7 +150,7 @@ namespace WFE.Test.UseCases {
                     .WithProvider(provider);
 
                 consumerMaker.EngineProxy = feed;
-                consumerMaker.Options = new ConsumerServiceOptions {
+                consumerMaker.Options = new WorkFlowConsumerOptions {
                     EnvCode = settings.EnvCode,
                     ConsumerGuid = settings.ConsumerGuid,
                     BatchSize = settings.ConsumerBatchSize,

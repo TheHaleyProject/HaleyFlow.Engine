@@ -271,9 +271,7 @@ namespace Haley.Services {
             return emissions;
         }
 
-        private static IReadOnlyList<LifeCycleParamItem>? ResolveParams(
-            IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog,
-            IReadOnlyList<string> codes) {
+        private static IReadOnlyList<LifeCycleParamItem>? ResolveParams(IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>?> catalog, IReadOnlyList<string> codes) {
 
             if (codes == null || codes.Count == 0) return null;
 

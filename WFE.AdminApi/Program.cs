@@ -26,7 +26,7 @@ builder.Services.AddWorkFlowEngineService(opt => {
     opt.ConsumerDownRecheckSeconds = defaults.ConsumerDownRecheckSeconds;
 }, autoStart: true);
 
-builder.Services.AddWorkFlowConsumerInitiator(opt => {
+builder.Services.AddWorkFlowConsumerBootstrap(opt => {
     opt.ConsumerAdapterKey = adminBootstrap.ConsumerAdapterKey;
     opt.EnvCode = adminBootstrap.EnvCode;
     opt.EnvDisplayName = adminBootstrap.EnvDisplayName;

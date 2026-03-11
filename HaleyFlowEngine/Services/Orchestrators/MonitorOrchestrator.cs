@@ -21,12 +21,7 @@ namespace Haley.Services.Orchestrators {
         private readonly ConcurrentDictionary<string, DateTimeOffset> _overDueLastAt = new(StringComparer.Ordinal);
 
         // fireEvent and fireNotice delegate to WorkFlowEngine's subscriber pipeline.
-        public MonitorOrchestrator(
-            IWorkFlowDAL dal,
-            WorkFlowEngineOptions opt,
-            IAckManager ackManager,
-            Action<ILifeCycleEvent> fireEvent,
-            Action<LifeCycleNotice> fireNotice) {
+        public MonitorOrchestrator(IWorkFlowDAL dal, WorkFlowEngineOptions opt, IAckManager ackManager, Action<ILifeCycleEvent> fireEvent, Action<LifeCycleNotice> fireNotice) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _opt = opt ?? throw new ArgumentNullException(nameof(opt));
             _ackManager = ackManager ?? throw new ArgumentNullException(nameof(ackManager));

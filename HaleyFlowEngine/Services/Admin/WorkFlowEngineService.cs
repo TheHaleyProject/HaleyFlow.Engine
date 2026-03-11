@@ -8,7 +8,7 @@ namespace Haley.Services;
 
 public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAccessor, IAsyncDisposable {
 
-    private readonly EngineServiceOptions _options;
+    private readonly EngineBootstrapOptions _options;
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
@@ -16,7 +16,7 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAcce
     private IWorkFlowEngine? _engine;
     private bool _runtimeStarted;
 
-    public WorkFlowEngineService(EngineServiceOptions options, IAdapterGateway agw) {
+    public WorkFlowEngineService(EngineBootstrapOptions options, IAdapterGateway agw) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _agw = agw as AdapterGateway ?? throw new ArgumentException("AdapterGateway implementation is required.", nameof(agw));
     }

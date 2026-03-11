@@ -38,7 +38,7 @@ IWorkFlowDAL dal = await CreateDalOrThrow();
 // -------------------------
 // 2) Build engine
 // -------------------------
-var opt = new WorkFlowEngineOptions {
+var opt = new WorkFlowBootStrapOptions {
     DefaultConsumerId = ConsumerId,
     MonitorInterval = TimeSpan.FromSeconds(10),
     MonitorPageSize = 200,

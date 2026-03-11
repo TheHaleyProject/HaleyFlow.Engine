@@ -21,15 +21,7 @@ namespace Haley.Services.Orchestrators {
 
         // Dependencies are passed in from WorkFlowEngine so behavior stays identical after extraction.
         // dispatchEventsAsync and fireNotice are callbacks to engine-level event/notice pipelines.
-        public TriggerOrchestrator(
-            IWorkFlowDAL dal,
-            WorkFlowEngineOptions opt,
-            IBlueprintManager blueprintManager,
-            IStateMachine stateMachine,
-            IPolicyEnforcer policyEnforcer,
-            IAckManager ackManager,
-            Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync,
-            Action<LifeCycleNotice> fireNotice) {
+        public TriggerOrchestrator(IWorkFlowDAL dal, WorkFlowEngineOptions opt, IBlueprintManager blueprintManager, IStateMachine stateMachine, IPolicyEnforcer policyEnforcer, IAckManager ackManager, Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync, Action<LifeCycleNotice> fireNotice) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _opt = opt ?? throw new ArgumentNullException(nameof(opt));
             _blueprintManager = blueprintManager ?? throw new ArgumentNullException(nameof(blueprintManager));
