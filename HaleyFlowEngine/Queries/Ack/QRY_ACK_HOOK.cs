@@ -29,7 +29,7 @@ namespace Haley.Internal {
                JOIN hook_lc hl ON hl.id = ha.hook_id
                JOIN hook h ON h.id = hl.hook_id
                WHERE ac.status = {ACK_STATUS}
-               ORDER BY ac.last_trigger ASC, ac.id ASC;";
+               ORDER BY ac.last_trigger ASC, ac.ack_id ASC, ac.consumer ASC;";
 
         // Resolves the state_id for a hook-type ack by guid.
         // Join chain: ack → hook_ack → hook_lc → hook.

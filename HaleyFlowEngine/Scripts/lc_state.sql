@@ -21,120 +21,119 @@ USE `lcstate`;
 
 -- Dumping structure for table lcstate.ack
 CREATE TABLE IF NOT EXISTS `ack` (
-  `guid` char(36) NOT NULL DEFAULT uuid(),
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `guid` char(36) NOT NULL DEFAULT uuid() COMMENT 'Stable GUID used for external correlation.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_ack` (`guid`)
-) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Master acknowledgement envelope created by the engine and used for cross-system correlation.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.ack_consumer
 CREATE TABLE IF NOT EXISTS `ack_consumer` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `consumer` int(11) NOT NULL DEFAULT 0,
-  `ack_id` bigint(20) NOT NULL,
-  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Flag:\n    Pending =1,\n    Delivered=2,\n    Processed=3,\n    Failed=4',
-  `last_trigger` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'when was the last time, this trigger was initiated.. Whenever we send the ack to consumer, we mark it.',
-  `trigger_count` int(11) NOT NULL DEFAULT 0 COMMENT 'how many times did we try to send this acknowledgement to the consumer',
-  `next_due` datetime DEFAULT NULL,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
+  `consumer` int(11) NOT NULL DEFAULT 0 COMMENT 'Consumer identifier.',
+  `ack_id` bigint(20) NOT NULL COMMENT 'Acknowledgement identifier (FK to ack.id).',
+  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed.',
+  `last_trigger` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'Most recent dispatch trigger timestamp.',
+  `trigger_count` int(11) NOT NULL DEFAULT 0 COMMENT 'Number of dispatch attempts performed so far.',
+  `next_due` datetime DEFAULT NULL COMMENT 'Next scheduled timestamp for retry/dispatch.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp() COMMENT 'UTC timestamp when the row was last updated.',
+  PRIMARY KEY (`ack_id`,`consumer`),
   UNIQUE KEY `unq_ack_consumer` (`ack_id`,`consumer`),
   KEY `idx_ack_consumer` (`next_due`,`status`),
   KEY `idx_ack_consumer_0` (`consumer`,`next_due`,`status`),
   CONSTRAINT `fk_ack_consumer_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Per-consumer delivery state for each acknowledgement, including retry scheduling and processing outcome.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.activity
 CREATE TABLE IF NOT EXISTS `activity` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_name` varchar(140) NOT NULL,
-  `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `display_name` varchar(140) NOT NULL COMMENT 'Human-readable display name.',
+  `name` varchar(140) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized activity key (lowercase trimmed display_name).',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are minor applicatoin managed activies which the statemachine doens''t have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..';
+) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Catalog of business activities tracked by consumers outside core state transitions.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.activity_status
 CREATE TABLE IF NOT EXISTS `activity_status` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_name` varchar(120) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `display_name` varchar(120) NOT NULL COMMENT 'Human-readable display name.',
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized status key (lowercase trimmed display_name).',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='These are all execution or activity status, which WorkFlow engine has no visibility about.  Like, ''Pending''''Completed''"approved'',"Rejected''"Returned''.. Reason is, we dont know what kind of state each runtime activity might follow.. For instance, one of the runtime activity can have ''Approved'',''Rejected'' state.. another can only have ''Sent''"Pendin'' (like, email delivery)';
+) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Catalog of runtime activity statuses used by consumer-side tracking.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.category
 CREATE TABLE IF NOT EXISTS `category` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_name` varchar(120) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `display_name` varchar(120) NOT NULL COMMENT 'Human-readable display name.',
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized category key (lowercase trimmed display_name).',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_category` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=1999 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1999 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Catalog that classifies workflow states into functional groups.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.consumer
 CREATE TABLE IF NOT EXISTS `consumer` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `env` int(11) NOT NULL,
-  `consumer_guid` varchar(38) NOT NULL COMMENT 'guid expected',
-  `last_beat` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'consumer is nothing but the application.. application should notify that it is still running.. by updating itself, here.. if this application has crashed down, we should identify, when it was last working..\n\nlets say every 10 seconds, we expect the beat..',
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `env` int(11) NOT NULL COMMENT 'Environment identifier (FK to environment.id).',
+  `consumer_guid` varchar(38) NOT NULL COMMENT 'Consumer instance GUID used for identity and heartbeat tracking.',
+  `last_beat` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'Latest heartbeat timestamp reported by consumer.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_consumer_beat` (`env`,`consumer_guid`),
   CONSTRAINT `fk_consumer_beat_environment` FOREIGN KEY (`env`) REFERENCES `environment` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1995 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1995 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Registered consumer applications with environment binding and heartbeat for liveness detection.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.definition
 CREATE TABLE IF NOT EXISTS `definition` (
-  `env` int(11) NOT NULL DEFAULT 0,
-  `guid` char(36) NOT NULL DEFAULT uuid(),
-  `display_name` varchar(200) NOT NULL,
-  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
-  `description` text DEFAULT NULL,
-  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'it should be a code provided by the user.',
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `env` int(11) NOT NULL DEFAULT 0 COMMENT 'Environment identifier (FK to environment.id).',
+  `guid` char(36) NOT NULL DEFAULT uuid() COMMENT 'Stable GUID used for external correlation.',
+  `display_name` varchar(200) NOT NULL COMMENT 'Human-readable display name.',
+  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized definition key (lowercase trimmed display_name).',
+  `description` text DEFAULT NULL COMMENT 'Optional descriptive text.',
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_definition_0` (`guid`),
   UNIQUE KEY `unq_definition` (`env`,`name`),
   KEY `idx_definition` (`name`),
   CONSTRAINT `fk_definition_environment` FOREIGN KEY (`env`) REFERENCES `environment` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Root workflow definition identity scoped to an environment.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.def_policies
 CREATE TABLE IF NOT EXISTS `def_policies` (
-  `definition` int(11) NOT NULL,
-  `policy` int(11) NOT NULL,
-  `modified` datetime NOT NULL DEFAULT current_timestamp(),
+  `definition` int(11) NOT NULL COMMENT 'Workflow definition identifier (FK to definition.id).',
+  `policy` int(11) NOT NULL COMMENT 'Policy identifier (FK to policy.id).',
+  `modified` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was last updated.',
   PRIMARY KEY (`definition`,`policy`),
   KEY `fk_def_policies_policy` (`policy`),
   CONSTRAINT `fk_def_policies_definition` FOREIGN KEY (`definition`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_def_policies_policy` FOREIGN KEY (`policy`) REFERENCES `policy` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Associative mapping between workflow definitions and policy records.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.def_version
 CREATE TABLE IF NOT EXISTS `def_version` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `guid` char(36) NOT NULL DEFAULT uuid(),
-  `version` int(11) NOT NULL DEFAULT 1,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `parent` int(11) NOT NULL,
-  `data` longtext NOT NULL,
-  `hash` varchar(48) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `guid` char(36) NOT NULL DEFAULT uuid() COMMENT 'Stable GUID used for external correlation.',
+  `version` int(11) NOT NULL DEFAULT 1 COMMENT 'Monotonic version number starting from 1.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp() COMMENT 'UTC timestamp when the row was last updated.',
+  `parent` int(11) NOT NULL COMMENT 'Parent identifier (FK to the parent definition).',
+  `data` longtext NOT NULL COMMENT 'Serialized workflow definition JSON for this version.',
+  `hash` varchar(48) NOT NULL COMMENT 'Hash of serialized definition JSON for de-duplication.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_def_version` (`parent`,`version`),
   UNIQUE KEY `unq_def_version_0` (`guid`),
@@ -142,53 +141,53 @@ CREATE TABLE IF NOT EXISTS `def_version` (
   CONSTRAINT `fk_def_version_definition` FOREIGN KEY (`parent`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `cns_def_version` CHECK (`version` > 0),
   CONSTRAINT `cns_def_version_0` CHECK (json_valid(`data`))
-) ENGINE=InnoDB AUTO_INCREMENT=1988 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1988 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Immutable version snapshots of workflow definition payloads.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.environment
 CREATE TABLE IF NOT EXISTS `environment` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_name` varchar(120) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
-  `code` int(11) NOT NULL,
-  `guid` varchar(42) NOT NULL DEFAULT uuid(),
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `display_name` varchar(120) NOT NULL COMMENT 'Human-readable display name.',
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized environment key (lowercase trimmed display_name).',
+  `code` int(11) NOT NULL COMMENT 'Numeric code used by application contracts.',
+  `guid` varchar(42) NOT NULL DEFAULT uuid() COMMENT 'Stable GUID used for external correlation.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_environment` (`code`),
   UNIQUE KEY `unq_environment_1` (`guid`),
   UNIQUE KEY `unq_environment_0` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='environment code\n//Doesnt'' need to be like dev/prod/test.. It can be an work-group environmetn as well..\n\n//like preq-app (is one environment), so all preq-app (wherever it runs, local, production etc) will be able to read definitions.\n\n//we can even extend it as , preq-app-dev, preq-app-prod etc.';
+) ENGINE=InnoDB AUTO_INCREMENT=1998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Logical environment/tenant boundary used to isolate definitions and consumers.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.events
 CREATE TABLE IF NOT EXISTS `events` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_name` varchar(120) NOT NULL,
-  `code` int(11) NOT NULL,
-  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
-  `def_version` int(11) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `display_name` varchar(120) NOT NULL COMMENT 'Human-readable display name.',
+  `code` int(11) NOT NULL COMMENT 'Numeric code used by application contracts.',
+  `name` varchar(120) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized event key (lowercase trimmed display_name).',
+  `def_version` int(11) NOT NULL COMMENT 'Definition version identifier (FK to def_version.id).',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_events_0` (`def_version`,`code`),
   UNIQUE KEY `unq_events` (`def_version`,`code`,`name`),
   CONSTRAINT `fk_events_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1989 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1989 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Event catalog for each definition version; events are used to trigger transitions.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook
 CREATE TABLE IF NOT EXISTS `hook` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `state_id` int(11) NOT NULL,
-  `via_event` int(11) NOT NULL,
-  `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'by default, the hooks are for entry.. we can also, setup on leave.\n0 - on leaving\n1 - on entry',
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `instance_id` bigint(20) NOT NULL,
-  `blocking` bit(1) NOT NULL DEFAULT b'1' COMMENT 'should the instance be allowed to move to next state in case this hook is failed or not? If blocking, this is crucial for next step.',
-  `order_seq` smallint(6) NOT NULL DEFAULT 1 COMMENT 'emission order; lower fires first; same order = parallel dispatch',
-  `ack_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=All consumers must ACK Processed; 1=Any one consumer ACK Processed satisfies the hook',
-  `route_id` bigint(20) NOT NULL COMMENT 'event or the route name that needs to be triggered or hooked.',
-  `group_id` bigint(20) DEFAULT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `state_id` int(11) NOT NULL COMMENT 'State identifier in current workflow context.',
+  `via_event` int(11) NOT NULL COMMENT 'Event identifier that caused this hook emission.',
+  `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Hook phase flag: 1=OnEntry, 0=OnExit.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `instance_id` bigint(20) NOT NULL COMMENT 'Workflow instance identifier (FK to instance.id).',
+  `blocking` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Blocking flag: 1 requires successful hook completion before progression.',
+  `order_seq` smallint(6) NOT NULL DEFAULT 1 COMMENT 'Dispatch order sequence; lower numbers are dispatched first.',
+  `ack_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT 'ACK aggregation mode: 0=AllConsumersMustProcess, 1=AnyConsumerMaySatisfy.',
+  `route_id` bigint(20) NOT NULL COMMENT 'Route identifier to invoke for this hook (FK to hook_route.id).',
+  `group_id` bigint(20) DEFAULT NULL COMMENT 'Optional grouping identifier for related hooks (FK to hook_group.id).',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hooks` (`instance_id`,`state_id`,`via_event`,`on_entry`,`route_id`),
   KEY `fk_hook_hook_route` (`route_id`),
@@ -196,74 +195,74 @@ CREATE TABLE IF NOT EXISTS `hook` (
   CONSTRAINT `fk_hook_hook_group` FOREIGN KEY (`group_id`) REFERENCES `hook_group` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hook_hook_route` FOREIGN KEY (`route_id`) REFERENCES `hook_route` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hooks_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='hooks are raised based on policy.. we just check the policy and then raise these hooks';
+) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Hook work items emitted by policy on lifecycle edges and routed to consumers.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook_ack
 CREATE TABLE IF NOT EXISTS `hook_ack` (
-  `ack_id` bigint(20) NOT NULL,
-  `hook_id` bigint(20) NOT NULL,
+  `ack_id` bigint(20) NOT NULL COMMENT 'Acknowledgement identifier (FK to ack.id).',
+  `hook_id` bigint(20) NOT NULL COMMENT 'Hook lifecycle identifier (FK to hook_lc.id).',
   PRIMARY KEY (`hook_id`),
   UNIQUE KEY `unq_hook_ack` (`ack_id`),
   CONSTRAINT `fk_hook_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hook_ack_hook_lc` FOREIGN KEY (`hook_id`) REFERENCES `hook_lc` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='One-to-one mapping between hook lifecycle entries and acknowledgement envelopes.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook_group
 CREATE TABLE IF NOT EXISTS `hook_group` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `name` varchar(140) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `name` varchar(140) NOT NULL COMMENT 'Unique hook group name used to classify related routes.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hook_group` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Named grouping of hook routes for orchestration and operational organization.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook_lc
 CREATE TABLE IF NOT EXISTS `hook_lc` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `dispatched` bit(1) NOT NULL DEFAULT b'0',
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `hook_id` bigint(20) NOT NULL,
-  `lc_id` bigint(20) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `dispatched` bit(1) NOT NULL DEFAULT b'0' COMMENT 'Dispatch marker: 0=NotDispatched, 1=Dispatched.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `hook_id` bigint(20) NOT NULL COMMENT 'Hook identifier.',
+  `lc_id` bigint(20) NOT NULL COMMENT 'Lifecycle identifier (FK to lifecycle.id).',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hook_lc` (`hook_id`,`lc_id`),
   KEY `fk_hook_lc_lifecycle` (`lc_id`),
   CONSTRAINT `fk_hook_lc_hook` FOREIGN KEY (`hook_id`) REFERENCES `hook` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_hook_lc_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Link between hook entries and lifecycle records, including dispatch marker.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.hook_route
 CREATE TABLE IF NOT EXISTS `hook_route` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `name` varchar(240) NOT NULL,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `name` varchar(240) NOT NULL COMMENT 'Unique hook route name invoked by consumers.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_route` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Canonical route names targeted by hook dispatching.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.instance
 CREATE TABLE IF NOT EXISTS `instance` (
-  `def_version` int(11) NOT NULL,
-  `current_state` int(11) NOT NULL DEFAULT 0,
-  `last_event` int(11) DEFAULT NULL,
-  `guid` char(36) NOT NULL DEFAULT uuid(),
-  `entity_id` varchar(36) NOT NULL COMMENT 'like external workflow id or submission id or transmittal id.. Expected value is a GUID',
-  `def_id` int(11) NOT NULL,
-  `policy_id` int(11) DEFAULT 0,
-  `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'active =1,\nsuspended =2 ,\ncompleted = 4,\nfailed = 8, \narchive = 16',
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `message` text DEFAULT NULL COMMENT 'any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..',
-  `metadata` longtext DEFAULT NULL COMMENT 'Immutable.. Set during the initiation.. Doesn''t change during runtime.. Contains information like environment tags, test flags, or opaque config, which is important for the consumer.. may be to avoid side effects.',
-  `context` longtext DEFAULT NULL COMMENT 'Mutable information bag. Each event can add or stamp their result here.. ( if needed).. and other calls can make use of it if required.',
+  `def_version` int(11) NOT NULL COMMENT 'Definition version identifier (FK to def_version.id).',
+  `current_state` int(11) NOT NULL DEFAULT 0 COMMENT 'Current state identifier for this instance.',
+  `last_event` int(11) DEFAULT NULL COMMENT 'Most recently applied event identifier.',
+  `guid` char(36) NOT NULL DEFAULT uuid() COMMENT 'Stable GUID used for external correlation.',
+  `entity_id` varchar(36) NOT NULL COMMENT 'External business entity identifier (for example submission or application id).',
+  `def_id` int(11) NOT NULL COMMENT 'Workflow definition identifier.',
+  `policy_id` int(11) DEFAULT 0 COMMENT 'Policy identifier associated with this record.',
+  `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'Instance flags bitmask: 1=Active, 2=Suspended, 4=Completed, 8=Failed, 16=Archived.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp() COMMENT 'UTC timestamp when the row was last updated.',
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `message` text DEFAULT NULL COMMENT 'Operational note describing current state or failure context.',
+  `metadata` longtext DEFAULT NULL COMMENT 'Immutable initiation metadata (example: {"source":"backfill"}).',
+  `context` longtext DEFAULT NULL COMMENT 'Mutable runtime context bag updated by workflow processing.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_instance` (`guid`),
   UNIQUE KEY `unq_instance_0` (`def_id`,`entity_id`),
@@ -273,83 +272,83 @@ CREATE TABLE IF NOT EXISTS `instance` (
   KEY `idx_instance` (`entity_id`),
   CONSTRAINT `fk_instance_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_instance_definition` FOREIGN KEY (`def_id`) REFERENCES `definition` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1857 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance';
+) ENGINE=InnoDB AUTO_INCREMENT=1857 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Workflow instance aggregate for one business entity, including immutable metadata and mutable runtime context.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.lc_ack
 CREATE TABLE IF NOT EXISTS `lc_ack` (
-  `ack_id` bigint(20) NOT NULL,
-  `lc_id` bigint(20) NOT NULL,
+  `ack_id` bigint(20) NOT NULL COMMENT 'Acknowledgement identifier (FK to ack.id).',
+  `lc_id` bigint(20) NOT NULL COMMENT 'Lifecycle identifier (FK to lifecycle.id).',
   PRIMARY KEY (`lc_id`),
   UNIQUE KEY `idx_lc_ack` (`ack_id`),
   CONSTRAINT `fk_lc_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_lc_ack_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Mapping between lifecycle transitions and acknowledgement envelopes for transition delivery.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.lc_data
 CREATE TABLE IF NOT EXISTS `lc_data` (
-  `lc_id` bigint(20) NOT NULL,
-  `actor` varchar(60) DEFAULT NULL,
-  `payload` longtext DEFAULT NULL COMMENT 'Result of each transition is always stored in context of the instance.. one single place, where we can easily track all the even/hook/transition results which other events or transitions can refer to..\n\nHere,this is the input payload that was provided by the initiation.. Waht caused this specifc transition. We know the exact inputs that caused this.',
+  `lc_id` bigint(20) NOT NULL COMMENT 'Lifecycle identifier (FK to lifecycle.id).',
+  `actor` varchar(60) DEFAULT NULL COMMENT 'Actor identity (user/system/service) for this operation.',
+  `payload` longtext DEFAULT NULL COMMENT 'Input payload captured for traceability and replay diagnostics.',
   PRIMARY KEY (`lc_id`),
   CONSTRAINT `fk_transition_data_transition_log` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Supplemental actor and payload details captured for lifecycle transitions.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.lc_timeout
 CREATE TABLE IF NOT EXISTS `lc_timeout` (
-  `lc_id` bigint(20) NOT NULL,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `lc_id` bigint(20) NOT NULL COMMENT 'Lifecycle identifier (FK to lifecycle.id).',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   PRIMARY KEY (`lc_id`),
   CONSTRAINT `fk_timeout_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Marker table for lifecycle entries generated by timeout processing.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.lifecycle
 CREATE TABLE IF NOT EXISTS `lifecycle` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `from_state` int(11) NOT NULL,
-  `to_state` int(11) NOT NULL,
-  `event` int(11) NOT NULL,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `instance_id` bigint(20) NOT NULL,
-  `occurred` datetime DEFAULT NULL COMMENT 'In case of a replay or late join, a lifecycle event would have occured at a different time.. But would be created or captured in the engine at a different time.. So, we need occurred time for proper capturing.',
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `from_state` int(11) NOT NULL COMMENT 'Source state identifier.',
+  `to_state` int(11) NOT NULL COMMENT 'Target state identifier.',
+  `event` int(11) NOT NULL COMMENT 'Event identifier that triggered this transition.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `instance_id` bigint(20) NOT NULL COMMENT 'Workflow instance identifier (FK to instance.id).',
+  `occurred` datetime DEFAULT NULL COMMENT 'Domain occurrence timestamp from source event.',
   PRIMARY KEY (`id`),
   KEY `fk_transition_log_instance` (`instance_id`),
   CONSTRAINT `fk_transition_log_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Contains the major states which are controlled by the statemachine';
+) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Immutable audit log of state-machine transitions for workflow instances.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.policy
 CREATE TABLE IF NOT EXISTS `policy` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `hash` varchar(48) NOT NULL COMMENT 'hash of the policy contents (states, attach modes, routes)',
-  `content` text NOT NULL COMMENT 'supposedly the policy json',
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `hash` varchar(48) NOT NULL COMMENT 'Hash of policy JSON content used for de-duplication.',
+  `content` text NOT NULL COMMENT 'Policy definition JSON (hooks, attach modes, timeout configuration).',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_policy` (`hash`)
-) ENGINE=InnoDB AUTO_INCREMENT=1988 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1988 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Policy payload store defining hook behavior, attachment modes, and timeout rules.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.runtime
 CREATE TABLE IF NOT EXISTS `runtime` (
-  `instance_id` bigint(20) NOT NULL,
-  `activity` int(11) NOT NULL,
-  `state_id` int(11) NOT NULL,
-  `actor_id` varchar(60) NOT NULL DEFAULT '0',
-  `status` int(11) NOT NULL,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `modified` datetime NOT NULL DEFAULT current_timestamp(),
-  `frozen` bit(1) NOT NULL DEFAULT b'0' COMMENT 'For instance, this specific item may have some status, but we might freeze it, meaning, it cannot change status anymore.. unless we unlock the frreeze state..',
-  `lc_id` bigint(20) NOT NULL DEFAULT 0,
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `instance_id` bigint(20) NOT NULL COMMENT 'Workflow instance identifier (FK to instance.id).',
+  `activity` int(11) NOT NULL COMMENT 'Activity identifier (FK to activity.id).',
+  `state_id` int(11) NOT NULL COMMENT 'State identifier in current workflow context.',
+  `actor_id` varchar(60) NOT NULL DEFAULT '0' COMMENT 'Actor identifier for runtime activity tracking.',
+  `status` int(11) NOT NULL COMMENT 'Runtime activity status identifier (FK to activity_status.id).',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `modified` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was last updated.',
+  `frozen` bit(1) NOT NULL DEFAULT b'0' COMMENT 'Freeze marker: 1 prevents status changes until explicitly unlocked.',
+  `lc_id` bigint(20) NOT NULL DEFAULT 0 COMMENT 'Lifecycle identifier (FK to lifecycle.id).',
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_execution` (`instance_id`,`state_id`,`activity`,`actor_id`),
   KEY `fk_execution_runtime_state` (`status`),
@@ -357,60 +356,60 @@ CREATE TABLE IF NOT EXISTS `runtime` (
   CONSTRAINT `fk_execution_runtime_state` FOREIGN KEY (`status`) REFERENCES `activity_status` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_runtime_activity` FOREIGN KEY (`activity`) REFERENCES `activity` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_runtime_instance` FOREIGN KEY (`instance_id`) REFERENCES `instance` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Remember, runtime state (or activity track) doesn''t need an acknowledgement, because, this infomration itself is managed in application side and we are only receiving it directly from the app itself.. But, there might be some events that we need to raise for each state based on the policy.. those has to be properly acknowledge.d';
+) ENGINE=InnoDB AUTO_INCREMENT=2000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Consumer-reported runtime activity status for instance/state/activity/actor context.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.runtime_data
 CREATE TABLE IF NOT EXISTS `runtime_data` (
-  `runtime` bigint(20) NOT NULL,
-  `data` longtext DEFAULT NULL COMMENT 'data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..',
-  `payload` longtext DEFAULT NULL COMMENT 'Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.',
+  `runtime` bigint(20) NOT NULL COMMENT 'Runtime row identifier (FK to runtime.id).',
+  `data` longtext DEFAULT NULL COMMENT 'Serialized data payload (typically JSON).',
+  `payload` longtext DEFAULT NULL COMMENT 'Input payload captured for traceability and replay diagnostics.',
   PRIMARY KEY (`runtime`),
   CONSTRAINT `fk_runtime_data_runtime` FOREIGN KEY (`runtime`) REFERENCES `runtime` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Supplemental display and payload data for runtime records.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.state
 CREATE TABLE IF NOT EXISTS `state` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_name` varchar(200) NOT NULL,
-  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL,
-  `category` int(11) NOT NULL DEFAULT 0,
-  `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'none = 0\nis_initial = 1\nis_final = 2\nis_system = 4\nis_error = 8',
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `def_version` int(11) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `display_name` varchar(200) NOT NULL COMMENT 'Human-readable display name.',
+  `name` varchar(200) GENERATED ALWAYS AS (lcase(trim(`display_name`))) VIRTUAL COMMENT 'System-generated normalized state key (lowercase trimmed display_name).',
+  `category` int(11) NOT NULL DEFAULT 0 COMMENT 'State category identifier (FK to category.id).',
+  `flags` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'State flags bitmask: 1=Initial, 2=Final, 4=System, 8=Error.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `def_version` int(11) NOT NULL COMMENT 'Definition version identifier (FK to def_version.id).',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_state` (`def_version`,`name`),
   KEY `fk_state_category` (`category`),
   CONSTRAINT `fk_state_category` FOREIGN KEY (`category`) REFERENCES `category` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_state_def_version` FOREIGN KEY (`def_version`) REFERENCES `def_version` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2014 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2014 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='State catalog for a workflow definition version.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.timeouts
 CREATE TABLE IF NOT EXISTS `timeouts` (
-  `policy_id` int(11) NOT NULL,
-  `state_name` varchar(200) NOT NULL,
-  `duration` int(11) NOT NULL,
-  `mode` int(11) NOT NULL DEFAULT 0 COMMENT '0-Once\n1-Repeat',
-  `event_code` int(11) DEFAULT NULL COMMENT 'CODE',
+  `policy_id` int(11) NOT NULL COMMENT 'Policy identifier associated with this record.',
+  `state_name` varchar(200) NOT NULL COMMENT 'State name this rule targets.',
+  `duration` int(11) NOT NULL COMMENT 'Timeout duration value interpreted by engine timeout semantics.',
+  `mode` int(11) NOT NULL DEFAULT 0 COMMENT 'Timeout mode: 0=Once, 1=Repeat.',
+  `event_code` int(11) DEFAULT NULL COMMENT 'Event code emitted when timeout is reached.',
   PRIMARY KEY (`policy_id`,`state_name`),
   CONSTRAINT `fk_timeouts_policy` FOREIGN KEY (`policy_id`) REFERENCES `policy` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Timeout rules per policy and state, including mode and event to emit on expiry.';
 
 -- Data exporting was unselected.
 
 -- Dumping structure for table lcstate.transition
 CREATE TABLE IF NOT EXISTS `transition` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `from_state` int(11) NOT NULL,
-  `to_state` int(11) NOT NULL,
-  `created` datetime NOT NULL DEFAULT current_timestamp(),
-  `def_version` int(11) NOT NULL,
-  `event` int(11) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
+  `from_state` int(11) NOT NULL COMMENT 'Source state identifier.',
+  `to_state` int(11) NOT NULL COMMENT 'Target state identifier.',
+  `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
+  `def_version` int(11) NOT NULL COMMENT 'Definition version identifier (FK to def_version.id).',
+  `event` int(11) NOT NULL COMMENT 'Event identifier that triggered this transition.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_transition` (`def_version`,`from_state`,`to_state`,`event`),
   KEY `fk_transition_state` (`from_state`),
@@ -420,7 +419,7 @@ CREATE TABLE IF NOT EXISTS `transition` (
   CONSTRAINT `fk_transition_events` FOREIGN KEY (`event`) REFERENCES `events` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_transition_state` FOREIGN KEY (`from_state`) REFERENCES `state` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_transition_state_0` FOREIGN KEY (`to_state`) REFERENCES `state` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1988 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1988 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Allowed transition graph edges per definition version.';
 
 -- Data exporting was unselected.
 

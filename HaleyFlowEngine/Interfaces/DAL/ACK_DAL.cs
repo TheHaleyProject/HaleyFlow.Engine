@@ -18,7 +18,7 @@ namespace Haley.Abstractions {
     internal interface IAckConsumerDAL {
         Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default);
         Task<DbRow?> GetByAckGuidAndConsumerAsync(string ackGuid, long consumer, DbExecutionLoad load = default);
-        Task<long> UpsertByAckIdAndConsumerReturnIdAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<int> UpsertByAckIdAndConsumerAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
         Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
         Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
         Task<int> MarkTriggerAsync(long ackId, long consumer, DateTime? utcNextDue, DbExecutionLoad load = default);

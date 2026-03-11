@@ -68,12 +68,12 @@ namespace Haley.Services {
             var fromStateId = instance.GetLong(KEY_CURRENT_STATE);
             var ev = ResolveEvent(bp, eventName);
 
+            if (ev == null) { res.Reason = "UnknownEvent"; res.ToStateId = fromStateId; return res; }
+
             res.FromStateId = fromStateId;
             res.EventId = ev?.Id ?? 0;
             res.EventCode = ev?.Code ?? 0;
             res.EventName = ev?.Name ?? string.Empty;
-
-            if (ev == null) { res.Reason = "UnknownEvent"; res.ToStateId = fromStateId; return res; }
 
             if (!bp.Transitions.TryGetValue(Tuple.Create(fromStateId, ev.Id), out var t)) {
                 res.Reason = "InvalidTransition";

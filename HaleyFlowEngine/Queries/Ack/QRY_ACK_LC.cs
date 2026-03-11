@@ -16,7 +16,7 @@ namespace Haley.Internal {
         public const string DELETE_BY_ACK_ID = $@"DELETE FROM lc_ack WHERE ack_id = {ACK_ID};";
         public const string DELETE_BY_LC_ID = $@"DELETE FROM lc_ack WHERE lc_id = {LC_ID};";
 
-        public const string PENDING_ACKS = $@"SELECT a.id AS ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.last_trigger, ac.trigger_count, l.* FROM lc_ack la JOIN ack a ON a.id = la.ack_id JOIN ack_consumer ac ON ac.ack_id = a.id JOIN lifecycle l ON l.id = la.lc_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.last_trigger ASC, ac.id ASC;";
+        public const string PENDING_ACKS = $@"SELECT a.id AS ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.last_trigger, ac.trigger_count, l.* FROM lc_ack la JOIN ack a ON a.id = la.ack_id JOIN ack_consumer ac ON ac.ack_id = a.id JOIN lifecycle l ON l.id = la.lc_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.last_trigger ASC, ac.ack_id ASC, ac.consumer ASC;";
 
         // Returns count of ack_consumer rows for the most recent lifecycle entry of this instance that are NOT yet terminal (Processed=3, Failed=4).
         // Used by the ACK gate in TriggerAsync to block new transitions until all consumers have finished with the last transition.

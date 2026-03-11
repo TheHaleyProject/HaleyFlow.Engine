@@ -2,14 +2,18 @@
 <project name="lifecycle_state" database="MariaDb" id="19f578f4-fff8-4e61-ac61-4d42ca9c2334" >
 	<schema name="lcstate" >
 		<table name="ack" prior="ac" >
+			<comment><![CDATA[Master acknowledgement envelope created by the engine and used for cross-system correlation.]]></comment>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
+				<comment><![CDATA[Stable GUID used for external correlation.]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<index name="pk_ack" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -22,44 +26,38 @@
 ]]></options>
 		</table>
 		<table name="ack_consumer" prior="ack" >
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-			</column>
+			<comment><![CDATA[Per-consumer delivery state for each acknowledgement, including retry scheduling and processing outcome.]]></comment>
 			<column name="consumer" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Consumer identifier.]]></comment>
 			</column>
-			<column name="ack_id" type="BIGINT" mandatory="y" />
+			<column name="ack_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Acknowledgement identifier (FK to ack.id).]]></comment>
+			</column>
 			<column name="status" prior="ack_status" type="INT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[Flag:
-    Pending =1,
-    Delivered=2,
-    Processed=3,
-    Failed=4]]></comment>
+				<comment><![CDATA[Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed.]]></comment>
 			</column>
 			<column name="last_trigger" prior="last_retry" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
-				<comment><![CDATA[when was the last time, this trigger was initiated.. Whenever we send the ack to consumer, we mark it.]]></comment>
+				<comment><![CDATA[Most recent dispatch trigger timestamp.]]></comment>
 			</column>
 			<column name="trigger_count" prior="retry_count" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[how many times did we try to send this acknowledgement to the consumer]]></comment>
+				<comment><![CDATA[Number of dispatch attempts performed so far.]]></comment>
 			</column>
-			<column name="next_due" type="DATETIME" />
+			<column name="next_due" type="DATETIME" >
+				<comment><![CDATA[Next scheduled timestamp for retry/dispatch. From C#, this is set as DateTime.UtcNow.. so we need to consider this time is in UTC time.]]></comment>
+			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
+				<comment><![CDATA[UTC timestamp when the row was last updated.]]></comment>
 			</column>
-			<index name="pk_ack_consumer" unique="PRIMARY_KEY" >
-				<column name="id" />
-			</index>
-			<index name="unq_ack_consumer" unique="UNIQUE_KEY" >
-				<column name="ack_id" />
-				<column name="consumer" />
-			</index>
 			<index name="idx_ack_consumer" unique="NORMAL" >
 				<column name="next_due" />
 				<column name="status" />
@@ -69,6 +67,10 @@
 				<column name="next_due" />
 				<column name="status" />
 			</index>
+			<index name="pk_ack_consumer" unique="PRIMARY_KEY" >
+				<column name="ack_id" />
+				<column name="consumer" />
+			</index>
 			<fk name="fk_ack_consumer_ack" to_schema="lcstate" to_table="ack" >
 				<fk_column name="ack_id" pk="id" />
 			</fk>
@@ -77,13 +79,17 @@
 ]]></options>
 		</table>
 		<table name="activity" prior="activ" >
-			<comment><![CDATA[These are minor applicatoin managed activies which the statemachine doens't have any awareness about.. like, send_email, firstreview, escalatedreview, finalcheck, etc..]]></comment>
+			<comment><![CDATA[Catalog of business activities tracked by consumers outside core state transitions.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="140" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="140" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="140" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized activity key (lowercase trimmed display_name).]]></comment>
 			</column>
 			<index name="pk_activity" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -93,13 +99,17 @@
 ]]></options>
 		</table>
 		<table name="activity_status" prior="runtime_state" >
-			<comment><![CDATA[These are all execution or activity status, which WorkFlow engine has no visibility about.  Like, 'Pending''Completed'"approved',"Rejected'"Returned'.. Reason is, we dont know what kind of state each runtime activity might follow.. For instance, one of the runtime activity can have 'Approved','Rejected' state.. another can only have 'Sent'"Pendin' (like, email delivery)]]></comment>
+			<comment><![CDATA[Catalog of runtime activity statuses used by consumer-side tracking.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="120" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="120" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized status key (lowercase trimmed display_name).]]></comment>
 			</column>
 			<index name="pk_activity_status" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -109,12 +119,17 @@
 ]]></options>
 		</table>
 		<table name="category" prior="tbl" >
+			<comment><![CDATA[Catalog that classifies workflow states into functional groups.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="120" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="120" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized category key (lowercase trimmed display_name).]]></comment>
 			</column>
 			<index name="pk_category" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -127,18 +142,20 @@
 ]]></options>
 		</table>
 		<table name="consumer" prior="consumer_beat" >
+			<comment><![CDATA[Registered consumer applications with environment binding and heartbeat for liveness detection.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="env" prior="env_id" type="INT" mandatory="y" />
+			<column name="env" prior="env_id" type="INT" mandatory="y" >
+				<comment><![CDATA[Environment identifier (FK to environment.id).]]></comment>
+			</column>
 			<column name="consumer_guid" prior="consumer" type="VARCHAR" length="38" mandatory="y" >
-				<comment><![CDATA[guid expected]]></comment>
+				<comment><![CDATA[Consumer instance GUID used for identity and heartbeat tracking.]]></comment>
 			</column>
 			<column name="last_beat" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
-				<comment><![CDATA[consumer is nothing but the application.. application should notify that it is still running.. by updating itself, here.. if this application has crashed down, we should identify, when it was last working..
-
-lets say every 10 seconds, we expect the beat..]]></comment>
+				<comment><![CDATA[Latest heartbeat timestamp reported by consumer.]]></comment>
 			</column>
 			<index name="pk_consumer" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -155,10 +172,16 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 ]]></options>
 		</table>
 		<table name="def_policies" prior="definition_policies" >
-			<column name="definition" type="INT" mandatory="y" />
-			<column name="policy" type="INT" mandatory="y" />
+			<comment><![CDATA[Associative mapping between workflow definitions and policy records.]]></comment>
+			<column name="definition" type="INT" mandatory="y" >
+				<comment><![CDATA[Workflow definition identifier (FK to definition.id).]]></comment>
+			</column>
+			<column name="policy" type="INT" mandatory="y" >
+				<comment><![CDATA[Policy identifier (FK to policy.id).]]></comment>
+			</column>
 			<column name="modified" prior="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was last updated.]]></comment>
 			</column>
 			<index name="pk_def_policies" unique="PRIMARY_KEY" >
 				<column name="definition" />
@@ -176,25 +199,37 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="def_version" prior="def_versio" >
+			<comment><![CDATA[Immutable version snapshots of workflow definition payloads.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
+				<comment><![CDATA[Stable GUID used for external correlation.]]></comment>
 			</column>
 			<column name="version" type="INT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[Monotonic version number starting from 1.]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
+				<comment><![CDATA[UTC timestamp when the row was last updated.]]></comment>
 			</column>
-			<column name="parent" type="INT" mandatory="y" />
-			<column name="data" type="LONGTEXT" mandatory="y" />
-			<column name="hash" type="VARCHAR" length="48" mandatory="y" />
+			<column name="parent" type="INT" mandatory="y" >
+				<comment><![CDATA[Parent identifier (FK to the parent definition).]]></comment>
+			</column>
+			<column name="data" type="LONGTEXT" mandatory="y" >
+				<comment><![CDATA[Serialized workflow definition JSON for this version.]]></comment>
+			</column>
+			<column name="hash" type="VARCHAR" length="48" mandatory="y" >
+				<comment><![CDATA[Hash of serialized definition JSON for de-duplication.]]></comment>
+			</column>
 			<index name="unq_def_version" unique="UNIQUE_KEY" >
 				<column name="parent" />
 				<column name="version" />
@@ -223,23 +258,32 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 ]]></options>
 		</table>
 		<table name="definition" prior="definit" >
+			<comment><![CDATA[Root workflow definition identity scoped to an environment.]]></comment>
 			<column name="env" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Environment identifier (FK to environment.id).]]></comment>
 			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
+				<comment><![CDATA[Stable GUID used for external correlation.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="200" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="200" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized definition key (lowercase trimmed display_name).]]></comment>
 			</column>
-			<column name="description" type="TEXT" />
+			<column name="description" type="TEXT" >
+				<comment><![CDATA[Optional descriptive text.]]></comment>
+			</column>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
-				<comment><![CDATA[it should be a code provided by the user.]]></comment>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<column name="created" prior="created_at" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<index name="pk_definition" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -261,22 +305,24 @@ lets say every 10 seconds, we expect the beat..]]></comment>
  AUTO_INCREMENT 1998  ]]></options>
 		</table>
 		<table name="environment" prior="environme" >
-			<comment><![CDATA[environment code
-//Doesnt' need to be like dev/prod/test.. It can be an work-group environmetn as well..
-
-//like preq-app (is one environment), so all preq-app (wherever it runs, local, production etc) will be able to read definitions.
-
-//we can even extend it as , preq-app-dev, preq-app-prod etc.]]></comment>
+			<comment><![CDATA[Logical environment/tenant boundary used to isolate definitions and consumers.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="120" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="120" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized environment key (lowercase trimmed display_name).]]></comment>
 			</column>
-			<column name="code" type="INT" mandatory="y" />
+			<column name="code" type="INT" mandatory="y" >
+				<comment><![CDATA[Numeric code used by application contracts.]]></comment>
+			</column>
 			<column name="guid" type="VARCHAR" length="42" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
+				<comment><![CDATA[Stable GUID used for external correlation.]]></comment>
 			</column>
 			<index name="pk_environment" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -295,15 +341,24 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 ]]></options>
 		</table>
 		<table name="events" prior="e" >
+			<comment><![CDATA[Event catalog for each definition version; events are used to trigger transitions.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="120" mandatory="y" />
-			<column name="code" type="INT" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="120" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
+			<column name="code" type="INT" mandatory="y" >
+				<comment><![CDATA[Numeric code used by application contracts.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="120" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized event key (lowercase trimmed display_name).]]></comment>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
+			<column name="def_version" type="INT" mandatory="y" >
+				<comment><![CDATA[Definition version identifier (FK to def_version.id).]]></comment>
+			</column>
 			<index name="pk_events" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -324,38 +379,46 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 ]]></options>
 		</table>
 		<table name="hook" prior="hooks" >
-			<comment><![CDATA[hooks are raised based on policy.. we just check the policy and then raise these hooks]]></comment>
+			<comment><![CDATA[Hook work items emitted by policy on lifecycle edges and routed to consumers.]]></comment>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="state_id" type="INT" mandatory="y" />
-			<column name="via_event" type="INT" mandatory="y" />
+			<column name="state_id" type="INT" mandatory="y" >
+				<comment><![CDATA[State identifier in current workflow context.]]></comment>
+			</column>
+			<column name="via_event" type="INT" mandatory="y" >
+				<comment><![CDATA[Event identifier that caused this hook emission.]]></comment>
+			</column>
 			<column name="on_entry" type="BIT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[by default, the hooks are for entry.. we can also, setup on leave.
-0 - on leaving
-1 - on entry]]></comment>
+				<comment><![CDATA[Hook phase flag: 1=OnEntry, 0=OnExit.]]></comment>
 			</column>
 			<column name="created" prior="creted" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
-			<column name="instance_id" type="BIGINT" mandatory="y" />
+			<column name="instance_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Workflow instance identifier (FK to instance.id).]]></comment>
+			</column>
 			<column name="blocking" type="BIT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[should the instance be allowed to move to next state in case this hook is failed or not? If blocking, this is crucial for next step.]]></comment>
+				<comment><![CDATA[Blocking flag: 1 requires successful hook completion before progression.]]></comment>
 			</column>
 			<column name="order_seq" type="SMALLINT" length="6" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[emission order; lower fires first; same order = parallel dispatch]]></comment>
+				<comment><![CDATA[Dispatch order sequence; lower numbers are dispatched first.]]></comment>
 			</column>
 			<column name="ack_mode" type="TINYINT" length="4" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[0=All consumers must ACK Processed; 1=Any one consumer ACK Processed satisfies the hook]]></comment>
+				<comment><![CDATA[ACK aggregation mode: 0=AllConsumersMustProcess, 1=AnyConsumerMaySatisfy.]]></comment>
 			</column>
 			<column name="route_id" prior="route" type="BIGINT" mandatory="y" >
-				<comment><![CDATA[event or the route name that needs to be triggered or hooked.]]></comment>
+				<comment><![CDATA[Route identifier to invoke for this hook (FK to hook_route.id).]]></comment>
 			</column>
-			<column name="group_id" prior="group" type="BIGINT" />
+			<column name="group_id" prior="group" type="BIGINT" >
+				<comment><![CDATA[Optional grouping identifier for related hooks (FK to hook_group.id).]]></comment>
+			</column>
 			<index name="pk_hook" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -386,8 +449,13 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 ]]></options>
 		</table>
 		<table name="hook_ack" prior="hook_ck" >
-			<column name="ack_id" type="BIGINT" mandatory="y" />
-			<column name="hook_id" type="BIGINT" mandatory="y" />
+			<comment><![CDATA[One-to-one mapping between hook lifecycle entries and acknowledgement envelopes.]]></comment>
+			<column name="ack_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Acknowledgement identifier (FK to ack.id).]]></comment>
+			</column>
+			<column name="hook_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Hook lifecycle identifier (FK to hook_lc.id).]]></comment>
+			</column>
 			<index name="pk_hook_ack" unique="PRIMARY_KEY" >
 				<column name="hook_id" />
 			</index>
@@ -403,10 +471,14 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_group" prior="hook_g" >
+			<comment><![CDATA[Named grouping of hook routes for orchestration and operational organization.]]></comment>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="name" type="VARCHAR" length="140" mandatory="y" />
+			<column name="name" type="VARCHAR" length="140" mandatory="y" >
+				<comment><![CDATA[Unique hook group name used to classify related routes.]]></comment>
+			</column>
 			<index name="pk_hook_group" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -416,22 +488,33 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_lc" prior="hook_" >
+			<comment><![CDATA[Link between hook entries and lifecycle records, including dispatch marker.]]></comment>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<column name="dispatched" type="BIT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Dispatch marker: 0=NotDispatched, 1=Dispatched.]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
-				<defo><![CDATA[CURRENT_TIMESTAMP]]></defo>
+				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
-			<column name="hook_id" type="BIGINT" mandatory="y" />
-			<column name="lc_id" type="BIGINT" mandatory="y" />
+			<column name="hook_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Hook identifier.]]></comment>
+			</column>
+			<column name="lc_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Lifecycle identifier (FK to lifecycle.id).]]></comment>
+			</column>
 			<index name="pk_hook_lc" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_hook_lc" unique="UNIQUE_KEY" >
 				<column name="hook_id" />
+				<column name="lc_id" />
+			</index>
+			<index name="fk_hook_lc_lifecycle" unique="NORMAL" >
 				<column name="lc_id" />
 			</index>
 			<fk name="fk_hook_lc_hook" to_schema="lcstate" to_table="hook" >
@@ -443,10 +526,14 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="hook_route" prior="route" >
+			<comment><![CDATA[Canonical route names targeted by hook dispatching.]]></comment>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="name" type="VARCHAR" length="240" mandatory="y" />
+			<column name="name" type="VARCHAR" length="240" mandatory="y" >
+				<comment><![CDATA[Unique hook route name invoked by consumers.]]></comment>
+			</column>
 			<index name="pk_hook_route" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -456,48 +543,56 @@ lets say every 10 seconds, we expect the beat..]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="instance" prior="insta" >
-			<comment><![CDATA[remember, workflow could be distributed.. like multiple consumers working on a same instance.. For example, one consumer creating the instance, other consumers changing the states etc.. So, there is no instance owner. Ownership is always per hook or per transition. Not per instance]]></comment>
-			<column name="def_version" type="INT" mandatory="y" />
+			<comment><![CDATA[Workflow instance aggregate for one business entity, including immutable metadata and mutable runtime context.]]></comment>
+			<column name="def_version" type="INT" mandatory="y" >
+				<comment><![CDATA[Definition version identifier (FK to def_version.id).]]></comment>
+			</column>
 			<column name="current_state" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Current state identifier for this instance.]]></comment>
 			</column>
-			<column name="last_event" type="INT" />
+			<column name="last_event" type="INT" >
+				<comment><![CDATA[Most recently applied event identifier.]]></comment>
+			</column>
 			<column name="guid" type="CHAR" length="36" mandatory="y" >
 				<defo><![CDATA[uuid()]]></defo>
+				<comment><![CDATA[Stable GUID used for external correlation.]]></comment>
 			</column>
 			<column name="entity_id" prior="entity_ref" type="VARCHAR" length="36" mandatory="y" >
-				<comment><![CDATA[like external workflow id or submission id or transmittal id.. Expected value is a GUID]]></comment>
+				<comment><![CDATA[External business entity identifier (for example submission or application id).]]></comment>
 			</column>
-			<column name="def_id" type="INT" mandatory="y" />
+			<column name="def_id" type="INT" mandatory="y" >
+				<comment><![CDATA[Workflow definition identifier.]]></comment>
+			</column>
 			<column name="policy_id" type="INT" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Policy identifier associated with this record.]]></comment>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[active =1,
-suspended =2 ,
-completed = 4,
-failed = 8, 
-archive = 16]]></comment>
+				<comment><![CDATA[Instance flags bitmask: 1=Active, 2=Suspended, 4=Completed, 8=Failed, 16=Archived.]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
+			</column>
+			<column name="id" type="BIGINT" mandatory="y" >
+				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
-			</column>
-			<column name="id" type="BIGINT" mandatory="y" >
-				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[UTC timestamp when the row was last updated.]]></comment>
 			</column>
 			<column name="message" type="TEXT" >
-				<comment><![CDATA[any message that defines the current status of this instance.. like, if the consumer is down and the instance is suspended.. or the instance is no longer tracked in the consumer and this is marked as failed.. etc..]]></comment>
+				<comment><![CDATA[Operational note describing current state or failure context.]]></comment>
 			</column>
 			<column name="metadata" type="LONGTEXT" >
-				<comment><![CDATA[Immutable.. Set during the initiation.. Doesn't change during runtime.. Contains information like environment tags, test flags, or opaque config, which is important for the consumer.. may be to avoid side effects.]]></comment>
+				<comment><![CDATA[Immutable initiation metadata (example: {"source":"backfill"}).]]></comment>
 			</column>
 			<column name="context" type="LONGTEXT" >
-				<comment><![CDATA[Mutable information bag. Each event can add or stamp their result here.. ( if needed).. and other calls can make use of it if required.]]></comment>
+				<comment><![CDATA[Mutable runtime context bag updated by workflow processing.]]></comment>
 			</column>
 			<index name="pk_instance" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -518,7 +613,6 @@ archive = 16]]></comment>
 				<column name="entity_id" />
 			</index>
 			<index name="unq_instance_0" unique="UNIQUE_KEY" >
-				<comment><![CDATA[this uniqueness helps dedupe the request..  one entity can only go through a single version of a definition.. for example, if definition (onboarding), then an entity can only be onboaded only once (across all versions... it cannot be onboarded for different versions of same defintion).]]></comment>
 				<column name="def_id" />
 				<column name="entity_id" />
 			</index>
@@ -533,8 +627,13 @@ archive = 16]]></comment>
 ]]></options>
 		</table>
 		<table name="lc_ack" prior="lc_a" >
-			<column name="ack_id" type="BIGINT" mandatory="y" />
-			<column name="lc_id" type="BIGINT" mandatory="y" />
+			<comment><![CDATA[Mapping between lifecycle transitions and acknowledgement envelopes for transition delivery.]]></comment>
+			<column name="ack_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Acknowledgement identifier (FK to ack.id).]]></comment>
+			</column>
+			<column name="lc_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Lifecycle identifier (FK to lifecycle.id).]]></comment>
+			</column>
 			<index name="pk_lc_ack" unique="PRIMARY_KEY" >
 				<column name="lc_id" />
 			</index>
@@ -550,12 +649,15 @@ archive = 16]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="lc_data" prior="macro_data" >
-			<column name="lc_id" prior="lc_log" type="BIGINT" mandatory="y" />
-			<column name="actor" type="VARCHAR" length="60" />
+			<comment><![CDATA[Supplemental actor and payload details captured for lifecycle transitions.]]></comment>
+			<column name="lc_id" prior="lc_log" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Lifecycle identifier (FK to lifecycle.id).]]></comment>
+			</column>
+			<column name="actor" type="VARCHAR" length="60" >
+				<comment><![CDATA[Actor identity (user/system/service) for this operation.]]></comment>
+			</column>
 			<column name="payload" prior="metadata" type="LONGTEXT" >
-				<comment><![CDATA[Result of each transition is always stored in context of the instance.. one single place, where we can easily track all the even/hook/transition results which other events or transitions can refer to..
-
-Here,this is the input payload that was provided by the initiation.. Waht caused this specifc transition. We know the exact inputs that caused this.]]></comment>
+				<comment><![CDATA[Input payload captured for traceability and replay diagnostics.]]></comment>
 			</column>
 			<index name="pk_lc_data" unique="PRIMARY_KEY" >
 				<column name="lc_id" />
@@ -566,9 +668,13 @@ Here,this is the input payload that was provided by the initiation.. Waht caused
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="lc_timeout" prior="timeout" >
-			<column name="lc_id" type="BIGINT" mandatory="y" />
+			<comment><![CDATA[Marker table for lifecycle entries generated by timeout processing.]]></comment>
+			<column name="lc_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Lifecycle identifier (FK to lifecycle.id).]]></comment>
+			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<index name="pk_lc_timeout" unique="PRIMARY_KEY" >
 				<column name="lc_id" />
@@ -579,19 +685,29 @@ Here,this is the input payload that was provided by the initiation.. Waht caused
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="lifecycle" prior="lifecycle_log" >
-			<comment><![CDATA[Contains the major states which are controlled by the statemachine]]></comment>
+			<comment><![CDATA[Immutable audit log of state-machine transitions for workflow instances.]]></comment>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="from_state" type="INT" mandatory="y" />
-			<column name="to_state" type="INT" mandatory="y" />
-			<column name="event" type="INT" mandatory="y" />
+			<column name="from_state" type="INT" mandatory="y" >
+				<comment><![CDATA[Source state identifier.]]></comment>
+			</column>
+			<column name="to_state" type="INT" mandatory="y" >
+				<comment><![CDATA[Target state identifier.]]></comment>
+			</column>
+			<column name="event" type="INT" mandatory="y" >
+				<comment><![CDATA[Event identifier that triggered this transition.]]></comment>
+			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
-			<column name="instance_id" type="BIGINT" mandatory="y" />
+			<column name="instance_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Workflow instance identifier (FK to instance.id).]]></comment>
+			</column>
 			<column name="occurred" type="DATETIME" >
-				<comment><![CDATA[In case of a replay or late join, a lifecycle event would have occured at a different time.. But would be created or captured in the engine at a different time.. So, we need occurred time for proper capturing.]]></comment>
+				<comment><![CDATA[Domain occurrence timestamp from source event.]]></comment>
 			</column>
 			<index name="pk_lifecycle" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -607,17 +723,20 @@ Here,this is the input payload that was provided by the initiation.. Waht caused
 ]]></options>
 		</table>
 		<table name="policy" prior="polic" >
+			<comment><![CDATA[Policy payload store defining hook behavior, attachment modes, and timeout rules.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<column name="hash" type="VARCHAR" length="48" mandatory="y" >
-				<comment><![CDATA[hash of the policy contents (states, attach modes, routes)]]></comment>
+				<comment><![CDATA[Hash of policy JSON content used for de-duplication.]]></comment>
 			</column>
 			<column name="content" type="TEXT" mandatory="y" >
-				<comment><![CDATA[supposedly the policy json]]></comment>
+				<comment><![CDATA[Policy definition JSON (hooks, attach modes, timeout configuration).]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<index name="pk_policy" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -630,29 +749,42 @@ Here,this is the input payload that was provided by the initiation.. Waht caused
 ]]></options>
 		</table>
 		<table name="runtime" prior="execution" >
-			<comment><![CDATA[Remember, runtime state (or activity track) doesn't need an acknowledgement, because, this infomration itself is managed in application side and we are only receiving it directly from the app itself.. But, there might be some events that we need to raise for each state based on the policy.. those has to be properly acknowledge.d]]></comment>
-			<column name="instance_id" type="BIGINT" mandatory="y" />
-			<column name="activity" type="INT" mandatory="y" />
-			<column name="state_id" type="INT" mandatory="y" />
+			<comment><![CDATA[Consumer-reported runtime activity status for instance/state/activity/actor context.]]></comment>
+			<column name="instance_id" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Workflow instance identifier (FK to instance.id).]]></comment>
+			</column>
+			<column name="activity" type="INT" mandatory="y" >
+				<comment><![CDATA[Activity identifier (FK to activity.id).]]></comment>
+			</column>
+			<column name="state_id" type="INT" mandatory="y" >
+				<comment><![CDATA[State identifier in current workflow context.]]></comment>
+			</column>
 			<column name="actor_id" type="VARCHAR" length="60" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Actor identifier for runtime activity tracking.]]></comment>
 			</column>
-			<column name="status" prior="runtime_state" type="INT" mandatory="y" />
+			<column name="status" prior="runtime_state" type="INT" mandatory="y" >
+				<comment><![CDATA[Runtime activity status identifier (FK to activity_status.id).]]></comment>
+			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
 			<column name="modified" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was last updated.]]></comment>
 			</column>
 			<column name="frozen" type="BIT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[For instance, this specific item may have some status, but we might freeze it, meaning, it cannot change status anymore.. unless we unlock the frreeze state..]]></comment>
+				<comment><![CDATA[Freeze marker: 1 prevents status changes until explicitly unlocked.]]></comment>
 			</column>
 			<column name="lc_id" prior="lifecycle_id" type="BIGINT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Lifecycle identifier (FK to lifecycle.id).]]></comment>
 			</column>
 			<column name="id" type="BIGINT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
 			<index name="pk_runtime" unique="PRIMARY_KEY" >
 				<column name="id" />
@@ -683,12 +815,15 @@ Here,this is the input payload that was provided by the initiation.. Waht caused
 ]]></options>
 		</table>
 		<table name="runtime_data" prior="runtime_" >
-			<column name="runtime" type="BIGINT" mandatory="y" />
+			<comment><![CDATA[Supplemental display and payload data for runtime records.]]></comment>
+			<column name="runtime" type="BIGINT" mandatory="y" >
+				<comment><![CDATA[Runtime row identifier (FK to runtime.id).]]></comment>
+			</column>
 			<column name="data" type="LONGTEXT" >
-				<comment><![CDATA[data that needs to be displayed.. For instance, I can send in a json value, which can then be displayed in the UI with property name/value pair..  So that parsing during display can be reduced ..]]></comment>
+				<comment><![CDATA[Serialized data payload (typically JSON).]]></comment>
 			</column>
 			<column name="payload" prior="metadata" type="LONGTEXT" >
-				<comment><![CDATA[Some data associate with this transition.. may or may not be present, which can then be reused or used for idempotency.]]></comment>
+				<comment><![CDATA[Input payload captured for traceability and replay diagnostics.]]></comment>
 			</column>
 			<index name="pk_runtime_data" unique="PRIMARY_KEY" >
 				<column name="runtime" />
@@ -699,28 +834,33 @@ Here,this is the input payload that was provided by the initiation.. Waht caused
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="state" prior="tbl" >
+			<comment><![CDATA[State catalog for a workflow definition version.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="display_name" type="VARCHAR" length="200" mandatory="y" />
+			<column name="display_name" type="VARCHAR" length="200" mandatory="y" >
+				<comment><![CDATA[Human-readable display name.]]></comment>
+			</column>
 			<column name="name" type="VARCHAR" length="200" >
 				<identity><![CDATA[GENERATED  ALWAYS AS (lcase(trim(`display_name`)))]]></identity>
+				<comment><![CDATA[System-generated normalized state key (lowercase trimmed display_name).]]></comment>
 			</column>
 			<column name="category" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[State category identifier (FK to category.id).]]></comment>
 			</column>
 			<column name="flags" type="INT" mandatory="y" unsigned="y" >
 				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[none = 0
-is_initial = 1
-is_final = 2
-is_system = 4
-is_error = 8]]></comment>
+				<comment><![CDATA[State flags bitmask: 1=Initial, 2=Final, 4=System, 8=Error.]]></comment>
 			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
-			<column name="def_version" type="INT" mandatory="y" />
+			<column name="def_version" type="INT" mandatory="y" >
+				<comment><![CDATA[Definition version identifier (FK to def_version.id).]]></comment>
+			</column>
 			<index name="pk_state" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -742,16 +882,22 @@ is_error = 8]]></comment>
 ]]></options>
 		</table>
 		<table name="timeouts" prior="policy_timeouts" >
-			<column name="policy_id" type="INT" mandatory="y" />
-			<column name="state_name" type="VARCHAR" length="200" mandatory="y" />
-			<column name="duration" prior="timeout_minutes" type="INT" mandatory="y" />
+			<comment><![CDATA[Timeout rules per policy and state, including mode and event to emit on expiry.]]></comment>
+			<column name="policy_id" type="INT" mandatory="y" >
+				<comment><![CDATA[Policy identifier associated with this record.]]></comment>
+			</column>
+			<column name="state_name" type="VARCHAR" length="200" mandatory="y" >
+				<comment><![CDATA[State name this rule targets.]]></comment>
+			</column>
+			<column name="duration" prior="timeout_minutes" type="INT" mandatory="y" >
+				<comment><![CDATA[Timeout duration value interpreted by engine timeout semantics.]]></comment>
+			</column>
 			<column name="mode" prior="timeout_mode" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
-				<comment><![CDATA[0-Once
-1-Repeat]]></comment>
+				<comment><![CDATA[Timeout mode: 0=Once, 1=Repeat.]]></comment>
 			</column>
 			<column name="event_code" prior="timeout_event_code" type="INT" >
-				<comment><![CDATA[CODE]]></comment>
+				<comment><![CDATA[Event code emitted when timeout is reached.]]></comment>
 			</column>
 			<index name="pk_timeouts" unique="PRIMARY_KEY" >
 				<column name="policy_id" />
@@ -763,16 +909,27 @@ is_error = 8]]></comment>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>
 		<table name="transition" prior="transi" >
+			<comment><![CDATA[Allowed transition graph edges per definition version.]]></comment>
 			<column name="id" type="INT" mandatory="y" >
 				<identity><![CDATA[AUTO_INCREMENT]]></identity>
+				<comment><![CDATA[Internal surrogate identifier.]]></comment>
 			</column>
-			<column name="from_state" type="INT" mandatory="y" />
-			<column name="to_state" type="INT" mandatory="y" />
+			<column name="from_state" type="INT" mandatory="y" >
+				<comment><![CDATA[Source state identifier.]]></comment>
+			</column>
+			<column name="to_state" type="INT" mandatory="y" >
+				<comment><![CDATA[Target state identifier.]]></comment>
+			</column>
 			<column name="created" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
+				<comment><![CDATA[UTC timestamp when the row was created.]]></comment>
 			</column>
-			<column name="def_version" prior="def" type="INT" mandatory="y" />
-			<column name="event" type="INT" mandatory="y" />
+			<column name="def_version" prior="def" type="INT" mandatory="y" >
+				<comment><![CDATA[Definition version identifier (FK to def_version.id).]]></comment>
+			</column>
+			<column name="event" type="INT" mandatory="y" >
+				<comment><![CDATA[Event identifier that triggered this transition.]]></comment>
+			</column>
 			<index name="pk_transition" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -808,10 +965,10 @@ is_error = 8]]></comment>
 ]]></options>
 		</table>
 	</schema>
-	<diagram_group name="Default" id="1d2ee47d-c010-4085-8ab9-885effaf7af9" >
+	<diagram_group name="Default" id="7c3804d9-8328-45b0-aa94-e2572c473568" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
-			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="475" y="95" />
+			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="437" y="95" />
 			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1159" />
 			<entity schema="lcstate" name="activity_status" color="00FF00" x="475" y="1216" />
 			<entity schema="lcstate" name="category" color="1A4D4D" x="969" y="380" />

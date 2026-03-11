@@ -28,11 +28,6 @@ namespace Haley.Services {
         private readonly ConcurrentDictionary<string, Lazy<Task<long>>> _consumerIdByEnvGuid = new();
 
         private static string NormalizeGuid(string guid) => (guid ?? string.Empty).Trim().ToLowerInvariant();
-        private static string DefaultConsumerGuid(int envCode) {
-            using var md5 = System.Security.Cryptography.MD5.Create();
-            var bytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes($"lc:default-consumer:{envCode}"));
-            return new Guid(bytes).ToString();
-        }
 
         public async Task<int> EnsureEnvironmentAsync(int envCode,string? envDisplayName, DbExecutionLoad load) {
             load.Ct.ThrowIfCancellationRequested();

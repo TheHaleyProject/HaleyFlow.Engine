@@ -146,6 +146,8 @@ namespace Haley.Services {
             // Transition consumers must be resolved before we open the transaction. We need at least one
             // consumer to receive this event — otherwise the ACK rows would be orphaned with no one to deliver to.
             // Hook consumers are resolved later (after transition succeeds) because hooks are optional.
+
+            //to do: what if we have some auto transition state ?? like withou the need for any consumer? we just transition? to implement later
             var transitionConsumers = await AckManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
             if (transitionConsumers.Count < 1) throw new ArgumentException("No transition consumers found for this definition version. At least one transition consumer is required to proceed.", nameof(req));
 
@@ -235,10 +237,11 @@ namespace Haley.Services {
                 if (transition.LifeCycleId.HasValue && transition.FromStateId > 0) {
                     await _dal.Runtime.StampLcIdByInstanceAndStateAsync(instanceId, transition.FromStateId, transition.LifeCycleId.Value, load);
                 }
+
                 // Now reload the policy that is ACTUALLY attached to this instance, not the latest one.
                 // The instance might have been created months ago when a different policy was active.
                 // We need the right policy to evaluate hooks and resolve params for the target state.
-                var pid = instance.GetLong(KEY_POLICY_ID);
+                var pid = instance.GetLong(KEY_POLICY_ID); //Important to ensure correct policy is fetched.
                 if (pid > 0) pr = await PolicyEnforcer.ResolvePolicyByIdAsync(pid, load);
 
                 // Create the lifecycle ACK entry. One ack_guid is shared across all consumers — but each
@@ -429,8 +432,7 @@ namespace Haley.Services {
                             hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
                             hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
                             hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
-                        if (incomplete == 0)
-                            await AdvanceNextHookOrderAsync(hookCtx, ct);
+                        if (incomplete == 0) await AdvanceNextHookOrderAsync(hookCtx, ct);
                     } catch (Exception ex) {
                         FireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                             $"Order advancement failed for ack={ackGuid}: {ex.Message}"));

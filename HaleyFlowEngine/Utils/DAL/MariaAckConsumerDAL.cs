@@ -11,8 +11,8 @@ namespace Haley.Internal {
         public Task<DbRow?> GetByAckGuidAndConsumerAsync(string ackGuid, long consumer, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_ACK_CONSUMER.GET_BY_ACK_GUID_AND_CONSUMER, load, (GUID, ackGuid), (CONSUMER_ID, consumer));
 
-        public Task<long> UpsertByAckIdAndConsumerReturnIdAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default)
-            => Db.ScalarAsync<long>(QRY_ACK_CONSUMER.UPSERT_RETURN_ID, load, (ACK_ID, ackId),(CONSUMER_ID, consumer),(ACK_STATUS, status), (NEXT_DUE, utcNextDue));
+        public Task<int> UpsertByAckIdAndConsumerAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_ACK_CONSUMER.UPSERT, load, (ACK_ID, ackId), (CONSUMER_ID, consumer), (ACK_STATUS, status), (NEXT_DUE, utcNextDue));
 
         public Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_ACK_CONSUMER.SET_STATUS_AND_DUE, load, (ACK_ID, ackId), (CONSUMER_ID, consumer),(ACK_STATUS, status), (NEXT_DUE, utcNextDue));

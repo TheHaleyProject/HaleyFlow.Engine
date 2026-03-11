@@ -54,8 +54,8 @@ namespace Haley.Services {
             ct.ThrowIfCancellationRequested();
             if (Interlocked.CompareExchange(ref _running, 0, 1) != 1) return;
 
-            try { _cts?.Cancel(); } catch { }
-            var loop = _loop;
+            try { _cts?.Cancel(); } catch { } 
+            var loop = _loop; //This loop is prepared with the cancellation token mentioned above.. So, when we cancel the tokensource above, it wont immeidately stop the loop.. It will send instruction to the loop to stop the next time when it reaches the cancellation token, provided the loop properly handle the cancellation token. So, we await until this gracefully stops in the next line
             if (loop != null) await loop;
 
             _timer?.Dispose();
@@ -63,7 +63,7 @@ namespace Haley.Services {
             _cts?.Dispose();
             _cts = null;
             _loop = null;
-            Interlocked.Exchange(ref _runGate, 0);
+            Interlocked.Exchange(ref _runGate, 0); //Keep the gate open for future works.
         }
 
         // Executes one monitor cycle. The _runGate ensures only one cycle runs at a time —
@@ -72,7 +72,7 @@ namespace Haley.Services {
         // Cancellation propagates out because it means the monitor is shutting down.
         public async Task RunOnceAsync(CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
-            if (Interlocked.CompareExchange(ref _runGate, 1, 0) != 0) return;
+            if (Interlocked.CompareExchange(ref _runGate, 1, 0) != 0) return; //First close the gate, so other cannot invoke this.
 
             try {
                 await _runOnce(ct);

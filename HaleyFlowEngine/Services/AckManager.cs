@@ -8,10 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Haley.Services {
     // AckManager owns the full acknowledgement lifecycle for both lifecycle transitions and hooks.
@@ -62,25 +58,7 @@ namespace Haley.Services {
         public async Task<IWorkFlowAckRef> CreateLifecycleAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (lifecycleId <= 0) throw new ArgumentOutOfRangeException(nameof(lifecycleId));
-
-            var existingAckId = await _dal.LcAck.GetAckIdByLcIdAsync(lifecycleId, load);
-            if (existingAckId.HasValue && existingAckId.Value > 0) {
-                // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
-                await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
-                return await GetAckRefByIdAsync(existingAckId.Value, load);
-            }
-
-            var ack = await _dal.Ack.InsertReturnRowAsync(load);
-            if (ack == null) throw new InvalidOperationException("Ack insert failed.");
-
-            var ackId = ack.GetLong(KEY_ID);
-            var ackGuid = ack.GetString(KEY_GUID);
-            if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
-
-            await _dal.LcAck.AttachAsync(ackId, lifecycleId, load);
-            await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
-
-            return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
+            return await CreateAckAsync(consumerIds, initialAckStatus, load, getExistingAckIdAsync: () => _dal.LcAck.GetAckIdByLcIdAsync(lifecycleId, load), attachAsync: ackId => _dal.LcAck.AttachAsync(ackId, lifecycleId, load));
         }
 
         // Same pattern as CreateLifecycleAckAsync but for hook_lc rows (one ack per hook per lifecycle entry).
@@ -89,8 +67,11 @@ namespace Haley.Services {
         public async Task<IWorkFlowAckRef> CreateHookAckAsync(long hookLcId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (hookLcId <= 0) throw new ArgumentOutOfRangeException(nameof(hookLcId));
+            return await CreateAckAsync(consumerIds, initialAckStatus, load, getExistingAckIdAsync: () => _dal.HookAck.GetAckIdByHookLcIdAsync(hookLcId, load), attachAsync: ackId => _dal.HookAck.AttachAsync(ackId, hookLcId, load));
+        }
 
-            var existingAckId = await _dal.HookAck.GetAckIdByHookLcIdAsync(hookLcId, load);
+        private async Task<IWorkFlowAckRef> CreateAckAsync(IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load, Func<Task<long?>> getExistingAckIdAsync, Func<long, Task<int>> attachAsync) {
+            var existingAckId = await getExistingAckIdAsync();
             if (existingAckId.HasValue && existingAckId.Value > 0) {
                 // IMPORTANT: do NOT reschedule existing consumers; only insert missing ones.
                 await EnsureConsumersInsertOnlyAsync(existingAckId.Value, consumerIds, initialAckStatus, load);
@@ -104,7 +85,7 @@ namespace Haley.Services {
             var ackGuid = ack.GetString(KEY_GUID);
             if (ackId <= 0 || string.IsNullOrWhiteSpace(ackGuid)) throw new InvalidOperationException("Ack insert failed (id/guid missing).");
 
-            await _dal.HookAck.AttachAsync(ackId, hookLcId, load);
+            await attachAsync(ackId);
             await EnsureConsumersInsertOnlyAsync(ackId, consumerIds, initialAckStatus, load);
 
             return new WorkFlowAckRef { AckId = ackId, AckGuid = ackGuid! };
@@ -190,7 +171,7 @@ namespace Haley.Services {
                 if (!string.IsNullOrWhiteSpace(policyJson) && evt.DefinitionVersionId > 0) {
                     var bp = await _bp.GetBlueprintByVersionIdAsync(evt.DefinitionVersionId, load.Ct);
 
-                    // todo: best: use event_id (already in query) so no ambiguity
+                    // best: use event_id (already in query) so no ambiguity
                     var eventId = r.GetLong(KEY_EVENT_ID);
                     bp.EventsById.TryGetValue(eventId, out var viaEvent);
 
@@ -323,7 +304,7 @@ namespace Haley.Services {
                 if (existing != null) continue;
 
                 var nextDueUtc = ComputeInitialNextDueUtc(initialAckStatus);
-                await _dal.AckConsumer.UpsertByAckIdAndConsumerReturnIdAsync(ackId, consumerId, initialAckStatus, nextDueUtc, load);
+                await _dal.AckConsumer.UpsertByAckIdAndConsumerAsync(ackId, consumerId, initialAckStatus, nextDueUtc, load);
             }
         }
 

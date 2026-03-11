@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services {
+    //RuntimeEngine is very dumb.. It only upserts the data without validating anything into the database. The results are always fetched via TimeLine
     internal sealed class RuntimeEngine : IRuntimeEngine {
         private readonly IWorkFlowDAL _dal;
         public RuntimeEngine(IWorkFlowDAL dal) { _dal = dal ?? throw new ArgumentNullException(nameof(dal)); }
