@@ -84,6 +84,6 @@
     }
   ],
   "timeouts": [
-    { "state": "ReworkRequired", "timeout": "P7D", "timeout_event": 4010 }
+    { "state": "ReworkRequired", "timeout_minutes": 2,"max_retry": 4, "timeout_event": 4010 }
   ]
 }
