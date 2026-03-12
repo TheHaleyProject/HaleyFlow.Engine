@@ -241,8 +241,9 @@ CREATE TABLE IF NOT EXISTS `hook_lc` (
 CREATE TABLE IF NOT EXISTS `hook_route` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
   `name` varchar(240) NOT NULL COMMENT 'Unique hook route name invoked by consumers.',
+  `label` varchar(120) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unq_route` (`name`)
+  UNIQUE KEY `unq_route` (`name`,`label`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Canonical route names targeted by hook dispatching.';
 
 -- Data exporting was unselected.

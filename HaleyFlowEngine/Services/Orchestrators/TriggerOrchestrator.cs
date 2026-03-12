@@ -81,6 +81,24 @@ namespace Haley.Services.Orchestrators {
                     bp = await _blueprintManager.GetBlueprintByVersionIdAsync(instanceDefVersion, ct);
                 }
 
+                // Guard rail: transitions are allowed only for active, non-suspended, non-terminal instances.
+                var instanceFlags = (uint)instance.GetLong(KEY_FLAGS);
+                var hasTerminal = (instanceFlags & (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived)) != 0;
+                var isSuspended = (instanceFlags & (uint)LifeCycleInstanceFlag.Suspended) != 0;
+                var isActive = (instanceFlags & (uint)LifeCycleInstanceFlag.Active) != 0;
+                if (hasTerminal || isSuspended || !isActive) {
+                    transaction.Commit();
+                    committed = true;
+                    return new LifeCycleTriggerResult {
+                        Applied = false,
+                        InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
+                        InstanceId = instance.GetLong(KEY_ID),
+                        Reason = hasTerminal ? "InstanceIsTerminal" : "InstanceNotActive",
+                        LifecycleAckGuids = Array.Empty<string>(),
+                        HookAckGuids = Array.Empty<string>()
+                    };
+                }
+
                 // Optional ACK gate: block new transition while prior lifecycle ACKs are unresolved.
                 if (_opt.AckGateEnabled && !req.SkipAckGate) {
                     var gateInstanceId = instance.GetLong(KEY_ID);

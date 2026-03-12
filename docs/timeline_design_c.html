@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timeline · Design C — Audit Log</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:     #f9fafb;
+      --white:  #ffffff;
+      --border: #e5e7eb;
+      --text:   #111827;
+      --muted:  #6b7280;
+      --light:  #9ca3af;
+      --acc:    #2563eb;
+      --acc-lt: #eff6ff;
+      --acc-bd: #bfdbfe;
+      --green:  #059669;
+      --green-lt:#ecfdf5;
+      --green-bd:#a7f3d0;
+      --amber:  #b45309;
+      --amber-lt:#fffbeb;
+      --amber-bd:#fde68a;
+      --red:    #dc2626;
+      --red-lt: #fef2f2;
+      --red-bd: #fecaca;
+      --mono:   'Cascadia Code', 'Fira Mono', 'Consolas', monospace;
+    }
+    html, body { height:100%; background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',sans-serif; font-size:13px; }
+    body { display:flex; flex-direction:column; overflow:hidden; }
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-thumb { background:#d1d5db; border-radius:3px; }
+
+    /* ── Layout ── */
+    .shell { max-width:980px; width:100%; margin:0 auto; padding:20px 16px 0; height:100vh; display:flex; flex-direction:column; }
+    .scroll { flex:1; overflow-y:auto; padding-bottom:32px; }
+
+    /* ── Header strip ── */
+    .hdr {
+      background:var(--white); border:1px solid var(--border); border-radius:10px;
+      padding:16px 20px; margin-bottom:14px;
+      display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    }
+    .hdr-left { min-width:0; flex:1; }
+    .hdr-tag { font-size:10px; text-transform:uppercase; letter-spacing:.1em; font-weight:700; color:var(--acc); margin-bottom:4px; }
+    .hdr-entity { font-size:18px; font-weight:800; color:var(--text); word-break:break-all; }
+    .hdr-guid { font-size:11px; font-family:var(--mono); color:var(--light); margin-top:2px; }
+    .hdr-right { flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+    .hdr-state { display:inline-block; padding:5px 14px; border-radius:6px; background:var(--acc); color:#fff; font-weight:700; font-size:13px; }
+    .status-badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+    .s-active    { background:var(--green-lt); color:var(--green); border:1px solid var(--green-bd); }
+    .s-completed { background:var(--acc-lt);   color:var(--acc);   border:1px solid var(--acc-bd); }
+    .s-failed    { background:var(--red-lt);   color:var(--red);   border:1px solid var(--red-bd); }
+    .s-suspended { background:var(--amber-lt); color:var(--amber); border:1px solid var(--amber-bd); }
+    .s-none      { background:#f3f4f6; color:var(--muted); border:1px solid var(--border); }
+
+    /* ── Meta bar ── */
+    .meta-bar { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:12px; padding:10px 14px; background:var(--white); border:1px solid var(--border); border-radius:8px; }
+    .meta-item { display:flex; flex-direction:column; gap:1px; }
+    .meta-label { font-size:9px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:var(--light); }
+    .meta-val { font-size:12px; font-weight:600; color:var(--muted); }
+
+    /* ── Toolbar ── */
+    .toolbar { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .btn { display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:5px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--white); color:var(--muted); transition:all .15s; }
+    .btn:hover { border-color:var(--acc); color:var(--acc); }
+    .btn.active { background:var(--acc-lt); border-color:var(--acc); color:var(--acc); }
+    .filter-label { font-size:11px; color:var(--light); display:flex; align-items:center; gap:5px; }
+    .filter-label select { font-size:11px; border:1px solid var(--border); border-radius:4px; padding:3px 6px; background:var(--white); color:var(--text); cursor:pointer; }
+    .right-lbl { font-size:11px; color:var(--light); margin-left:auto; }
+
+    /* ── Log table ── */
+    .log-table { width:100%; border-collapse:collapse; background:var(--white); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+    .log-table thead th {
+      position:sticky; top:0; z-index:10;
+      background:#f3f4f6; border-bottom:1px solid var(--border);
+      padding:8px 12px; text-align:left;
+      font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
+      white-space:nowrap;
+    }
+    .log-table tbody tr { border-bottom:1px solid var(--border); transition:background .1s; cursor:pointer; }
+    .log-table tbody tr:last-child { border-bottom:none; }
+    .log-table tbody tr:hover { background:#f9fafb; }
+    .log-table tbody tr.expanded { background:#f0f7ff; }
+    td { padding:9px 12px; vertical-align:top; }
+    .col-num { width:36px; text-align:center; color:var(--light); font-size:11px; font-family:var(--mono); font-weight:600; }
+    .col-ts { white-space:nowrap; font-size:11px; font-family:var(--mono); color:var(--muted); min-width:110px; }
+    .col-trans { min-width:220px; }
+    .trans-states { display:flex; align-items:center; gap:6px; }
+    .st-from { font-size:12px; font-weight:500; color:var(--muted); }
+    .st-arrow { color:var(--light); }
+    .st-to { font-size:12px; font-weight:700; color:var(--text); }
+    .row-tag { display:inline-block; font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; margin-top:4px; }
+    .rt-start   { background:var(--green-lt); color:var(--green); border:1px solid var(--green-bd); }
+    .rt-end     { background:var(--acc-lt);   color:var(--acc);   border:1px solid var(--acc-bd); }
+    .rt-reopen  { background:var(--amber-lt); color:var(--amber); border:1px solid var(--amber-bd); }
+    .col-evt { min-width:140px; }
+    .evt-name { font-size:12px; font-weight:500; color:var(--text); }
+    .evt-code { font-size:10px; font-family:var(--mono); color:var(--acc); background:var(--acc-lt); border:1px solid var(--acc-bd); padding:0 5px; border-radius:3px; margin-top:3px; display:inline-block; }
+    .col-actor { min-width:130px; font-size:11px; font-family:var(--mono); color:var(--light); }
+    .col-acts { width:60px; text-align:center; }
+    .acts-badge { display:inline-block; padding:2px 7px; border-radius:12px; font-size:10px; font-weight:600; background:var(--acc-lt); color:var(--acc); border:1px solid var(--acc-bd); }
+    .acts-none { color:var(--light); font-size:11px; }
+    .col-dur { width:60px; text-align:right; font-size:11px; font-family:var(--mono); color:var(--muted); }
+    .col-expand { width:28px; text-align:center; }
+    .exp-icon { font-size:14px; color:var(--light); user-select:none; transition:transform .15s; }
+    .exp-icon.open { transform:rotate(90deg); }
+
+    /* expand panel */
+    .detail-row { display:none; background:#f0f7ff; }
+    .detail-row.open { display:table-row; }
+    .detail-cell { padding:0 12px 12px 44px; }
+    .detail-inner { border:1px solid var(--acc-bd); border-radius:8px; overflow:hidden; }
+    .detail-acts-table { width:100%; border-collapse:collapse; }
+    .detail-acts-table th {
+      background:#e8f1ff; padding:6px 12px; text-align:left;
+      font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--acc);
+    }
+    .detail-acts-table td { padding:7px 12px; font-size:11px; border-top:1px solid var(--acc-bd); }
+    .da-activity { font-family:var(--mono); color:var(--text); }
+    .da-actor { font-family:var(--mono); color:var(--light); }
+    .da-pill { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:600; }
+    .p-approved { background:var(--green-lt); color:var(--green); border:1px solid var(--green-bd); }
+    .p-rejected  { background:var(--red-lt);   color:var(--red);   border:1px solid var(--red-bd); }
+    .p-pending   { background:var(--amber-lt); color:var(--amber); border:1px solid var(--amber-bd); }
+    .da-dur { text-align:right; font-family:var(--mono); color:var(--muted); }
+    .no-detail { font-size:11px; color:var(--light); font-style:italic; padding:10px 12px; background:#f0f7ff; }
+
+    /* compact: hide certain columns */
+    .compact .hide-compact { display:none !important; }
+    .compact td, .compact th { padding:5px 10px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <div id="hdr-area"></div>
+  <div id="meta-area"></div>
+  <div class="toolbar">
+    <button class="btn" id="btn-compact" onclick="toggleCompact()">⊟ Compact</button>
+    <button class="btn" onclick="collapseAll()">− Collapse All</button>
+    <div class="filter-label">
+      Filter:
+      <select id="filter-sel" onchange="applyFilter()">
+        <option value="">All transitions</option>
+        <option value="with-activities">With activities</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </div>
+    <span class="right-lbl" id="right-lbl"></span>
+  </div>
+  <div class="scroll">
+    <table class="log-table" id="log-table">
+      <thead>
+        <tr>
+          <th class="col-num">#</th>
+          <th>Timestamp</th>
+          <th>Transition</th>
+          <th>Event</th>
+          <th class="hide-compact">Actor</th>
+          <th class="hide-compact" style="text-align:center">Acts.</th>
+          <th style="text-align:right">Duration</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="log-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const DATA = {
+  "instance": {
+    "id": 1858, "guid": "91cef12a-1ae2-11f1-8266-8c8caad7d6a5",
+    "entity_id": "CR-2026-0042",
+    "def_id": 1998, "def_name": "projectchangerequest",
+    "def_version_id": 1988, "def_version": 1,
+    "current_state_id": 2021, "current_state": "Approved",
+    "last_event_id": 1997, "last_event": "SteeringApproved",
+    "instance_status": "Completed", "instance_message": null,
+    "created": "2026-03-09 02:21:39", "modified": "2026-03-09 03:12:05"
+  },
+  "timeline": [
+    { "lifecycle_id": 2000, "created": "2026-03-09 02:21:39",
+      "from_state": "RequestLogged", "to_state": "ImpactAssessment",
+      "event": "AutoStart", "event_code": 4000, "actor": "wfe.adminapi",
+      "is_initial": true, "is_terminal": false, "activities": [] },
+    { "lifecycle_id": 2008, "created": "2026-03-09 02:39:35",
+      "from_state": "ImpactAssessment", "to_state": "CostReview",
+      "event": "ImpactAccepted", "event_code": 4001, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": false,
+      "activities": [
+        { "runtime_id": 2001, "state": "ImpactAssessment", "actor_id": "wfe.test.consumer",
+          "activity": "app.change.impact.assess", "status": "approved",
+          "created": "2026-03-09 02:27:31", "modified": "2026-03-09 02:39:35" }
+      ]},
+    { "lifecycle_id": 2011, "created": "2026-03-09 02:42:10",
+      "from_state": "CostReview", "to_state": "ReworkRequired",
+      "event": "CostRejected", "event_code": 4004, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": false,
+      "activities": [
+        { "runtime_id": 2017, "state": "CostReview", "actor_id": "wfe.test.consumer",
+          "activity": "app.change.cost.review", "status": "rejected",
+          "created": "2026-03-09 02:39:37", "modified": "2026-03-09 02:42:10" }
+      ]},
+    { "lifecycle_id": 2014, "created": "2026-03-09 02:50:00",
+      "from_state": "ReworkRequired", "to_state": "ImpactAssessment",
+      "event": "ReworkDone", "event_code": 4002, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": false, "activities": [] },
+    { "lifecycle_id": 2015, "created": "2026-03-09 02:57:14",
+      "from_state": "ImpactAssessment", "to_state": "CostReview",
+      "event": "ImpactAccepted", "event_code": 4001, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": false,
+      "activities": [
+        { "runtime_id": 2021, "state": "ImpactAssessment", "actor_id": "wfe.test.consumer",
+          "activity": "app.change.impact.assess", "status": "approved",
+          "created": "2026-03-09 02:51:02", "modified": "2026-03-09 02:57:14" }
+      ]},
+    { "lifecycle_id": 2018, "created": "2026-03-09 03:01:22",
+      "from_state": "CostReview", "to_state": "ScheduleReview",
+      "event": "CostAccepted", "event_code": 4003, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": false,
+      "activities": [
+        { "runtime_id": 2027, "state": "CostReview", "actor_id": "wfe.test.consumer",
+          "activity": "app.change.cost.review", "status": "approved",
+          "created": "2026-03-09 02:57:30", "modified": "2026-03-09 03:01:22" }
+      ]},
+    { "lifecycle_id": 2022, "created": "2026-03-09 03:06:44",
+      "from_state": "ScheduleReview", "to_state": "SteeringDecision",
+      "event": "ScheduleAccepted", "event_code": 4005, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": false,
+      "activities": [
+        { "runtime_id": 2033, "state": "ScheduleReview", "actor_id": "wfe.test.consumer",
+          "activity": "app.change.schedule.review", "status": "approved",
+          "created": "2026-03-09 03:01:40", "modified": "2026-03-09 03:06:44" }
+      ]},
+    { "lifecycle_id": 2025, "created": "2026-03-09 03:12:05",
+      "from_state": "SteeringDecision", "to_state": "Approved",
+      "event": "SteeringApproved", "event_code": 4007, "actor": "wfe.test.consumer",
+      "is_initial": false, "is_terminal": true,
+      "activities": [
+        { "runtime_id": 2040, "state": "SteeringDecision", "actor_id": "wfe.test.consumer",
+          "activity": "app.change.steering.decide", "status": "approved",
+          "created": "2026-03-09 03:07:10", "modified": "2026-03-09 03:12:05" }
+      ]}
+  ]
+};
+
+function fmt(dt, full) {
+  const d = new Date(dt.replace(' ','T')+'Z');
+  return full
+    ? d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true})
+    : d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+}
+function dur(a, b) {
+  const m = Math.round((new Date(b.replace(' ','T')+'Z') - new Date(a.replace(' ','T')+'Z')) / 60000);
+  return m < 1 ? '<1m' : m < 60 ? `${m}m` : `${Math.floor(m/60)}h ${m%60}m`;
+}
+function camel(s) { return s.replace(/([A-Z])/g, ' $1').trim(); }
+function pillClass(s) { return {approved:'p-approved',rejected:'p-rejected',pending:'p-pending'}[s]||'p-pending'; }
+function statusBadge(status) {
+  const map={Active:'s-active',Completed:'s-completed',Failed:'s-failed',Suspended:'s-suspended'};
+  return `<span class="status-badge ${map[status]||'s-none'}">${status||'Unknown'}</span>`;
+}
+
+function renderHeader() {
+  const i = DATA.instance;
+  document.getElementById('right-lbl').textContent = `${DATA.timeline.length} transitions`;
+  document.getElementById('hdr-area').innerHTML = `
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="hdr-tag">${i.def_name} · v${i.def_version}</div>
+      <div class="hdr-entity">${i.entity_id}</div>
+      <div class="hdr-guid">${i.guid}</div>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-state">${i.current_state}</div>
+      ${statusBadge(i.instance_status)}
+    </div>
+  </div>`;
+
+  document.getElementById('meta-area').innerHTML = `
+  <div class="meta-bar">
+    <div class="meta-item"><span class="meta-label">Last Event</span><span class="meta-val">${camel(i.last_event)}</span></div>
+    <div class="meta-item"><span class="meta-label">Instance</span><span class="meta-val">#${i.id}</span></div>
+    <div class="meta-item"><span class="meta-label">Started</span><span class="meta-val">${fmt(i.created,true)}</span></div>
+    <div class="meta-item"><span class="meta-label">Ended</span><span class="meta-val">${fmt(i.modified,true)}</span></div>
+    <div class="meta-item"><span class="meta-label">Total</span><span class="meta-val">${dur(i.created,i.modified)}</span></div>
+    <div class="meta-item"><span class="meta-label">Def Version</span><span class="meta-val">${i.def_version_id}</span></div>
+  </div>`;
+}
+
+function detailHtml(item) {
+  if (!item.activities.length)
+    return `<td colspan="8" class="detail-cell"><p class="no-detail">No activities recorded.</p></td>`;
+  const rows = item.activities.map(a => `
+    <tr>
+      <td class="da-activity">${a.activity}</td>
+      <td class="da-actor">${a.actor_id}</td>
+      <td><span class="da-pill ${pillClass(a.status)}">${a.status}</span></td>
+      <td class="da-dur">${dur(a.created,a.modified)}</td>
+    </tr>`).join('');
+  return `<td colspan="8" class="detail-cell">
+    <div class="detail-inner">
+      <table class="detail-acts-table">
+        <thead><tr><th>Activity</th><th>Actor</th><th>Status</th><th style="text-align:right">Duration</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </td>`;
+}
+
+const expandState = {};
+
+function toggleRow(idx) {
+  expandState[idx] = !expandState[idx];
+  const row  = document.getElementById(`dr-${idx}`);
+  const icon = document.getElementById(`ei-${idx}`);
+  const main = document.getElementById(`mr-${idx}`);
+  row.classList.toggle('open', expandState[idx]);
+  main.classList.toggle('expanded', expandState[idx]);
+  icon.classList.toggle('open', expandState[idx]);
+}
+
+function collapseAll() {
+  Object.keys(expandState).forEach(k => {
+    expandState[k] = false;
+    const row  = document.getElementById(`dr-${k}`);
+    const icon = document.getElementById(`ei-${k}`);
+    const main = document.getElementById(`mr-${k}`);
+    if (row) { row.classList.remove('open'); main.classList.remove('expanded'); icon.classList.remove('open'); }
+  });
+}
+
+function buildRows(filter) {
+  const tl = DATA.timeline;
+  let prevTerminal = false;
+  let rows = '';
+  let visible = 0;
+
+  tl.forEach((item, idx) => {
+    const isReopen = idx > 0 && prevTerminal;
+    prevTerminal = !!item.is_terminal;
+
+    // filter
+    if (filter === 'with-activities' && !item.activities.length) return;
+    if (filter === 'rejected' && !item.activities.some(a=>a.status==='rejected')) return;
+    visible++;
+
+    const nextItem = tl[idx+1] ?? null;
+    const stepDur = nextItem ? dur(item.created, nextItem.created) : '—';
+
+    const tag = item.is_initial
+      ? `<div><span class="row-tag rt-start">Started</span></div>`
+      : item.is_terminal ? `<div><span class="row-tag rt-end">Ended</span></div>`
+      : isReopen ? `<div><span class="row-tag rt-reopen">Reopened</span></div>` : '';
+
+    const hasActs = item.activities.length > 0;
+    const hasRejected = item.activities.some(a=>a.status==='rejected');
+
+    rows += `
+    <tr id="mr-${idx}" onclick="toggleRow(${idx})" ${hasRejected?'style="background:#fff5f5"':''}>
+      <td class="col-num">${idx+1}</td>
+      <td class="col-ts">${fmt(item.created)}</td>
+      <td class="col-trans">
+        <div class="trans-states">
+          <span class="st-from">${item.from_state}</span>
+          <span class="st-arrow">→</span>
+          <span class="st-to">${item.to_state}</span>
+        </div>
+        ${tag}
+      </td>
+      <td class="col-evt">
+        <div class="evt-name">${camel(item.event)}</div>
+        <span class="evt-code">evt:${item.event_code}</span>
+      </td>
+      <td class="col-actor hide-compact">${item.actor}</td>
+      <td class="col-acts hide-compact">${hasActs ? `<span class="acts-badge">${item.activities.length}</span>` : `<span class="acts-none">—</span>`}</td>
+      <td class="col-dur">${stepDur}</td>
+      <td class="col-expand"><span class="exp-icon" id="ei-${idx}">›</span></td>
+    </tr>
+    <tr class="detail-row" id="dr-${idx}">
+      ${detailHtml(item)}
+    </tr>`;
+  });
+
+  document.getElementById('right-lbl').textContent = `${visible} of ${tl.length} transitions`;
+  return rows;
+}
+
+function applyFilter() {
+  const filter = document.getElementById('filter-sel').value;
+  document.getElementById('log-body').innerHTML = buildRows(filter);
+}
+
+function toggleCompact() {
+  const tbl = document.getElementById('log-table');
+  const btn = document.getElementById('btn-compact');
+  const on  = tbl.classList.toggle('compact');
+  btn.classList.toggle('active', on);
+  btn.textContent = on ? '⊞ Full' : '⊟ Compact';
+}
+
+function render() {
+  renderHeader();
+  document.getElementById('log-body').innerHTML = buildRows('');
+}
+document.addEventListener('DOMContentLoaded', render);
+</script>
+</body>
+</html>

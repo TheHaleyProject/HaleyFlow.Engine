@@ -4,23 +4,45 @@ Admin API for Haley Flow Engine + Consumer monitoring.
 
 ## Key Endpoints
 
-- `GET /api/admin/workflow/instance`
+Engine (`/api/admin/wf/engine/...`):
+
+- `GET /api/admin/wf/engine/instance`
   - Query: `envCode?`, `defName`, `entityId`, `instanceGuid?`
-- `GET /api/admin/workflow/timeline`
+- `GET /api/admin/wf/engine/timeline`
   - Query: `envCode?`, `defName`, `entityId`, `instanceGuid?`
-- `GET /api/admin/workflow/refs`
+- `GET /api/admin/wf/engine/refs`
   - Query: `envCode?`, `defName`, `flags?`, `skip?`, `take?`
-- `GET /api/admin/workflow/entities`
-  - Query: `defName?`, `runningOnly?`, `skip?`, `take?`
-- `GET /api/admin/workflow/pending-acks`
+- `GET /api/admin/wf/engine/entities`
+  - Query: `envCode`, `defName?`, `runningOnly?`, `skip?`, `take?`
+- `GET /api/admin/wf/engine/instances`
+  - Query: `envCode`, `defName?`, `status?`, `skip?`, `take?`
+- `GET /api/admin/wf/engine/pending-acks`
+  - Query: `envCode`, `skip?`, `take?`
+- `GET /api/admin/wf/engine/summary`
+  - Query: `envCode`
+- `GET /api/admin/wf/engine/health`
+- `POST /api/admin/wf/engine/instance/suspend`
+  - Query: `instanceGuid`, `message?`
+- `POST /api/admin/wf/engine/instance/resume`
+  - Query: `instanceGuid`
+- `POST /api/admin/wf/engine/instance/fail`
+  - Query: `instanceGuid`, `message?`
+- `POST /api/admin/wf/engine/instance/reopen`
+  - Query: `instanceGuid`, `actor?`
+
+Consumer (`/api/admin/wf/consumer/...`):
+
+- `GET /api/admin/wf/consumer/workflows`
   - Query: `skip?`, `take?`
-- `GET /api/admin/workflow/consumer/workflows`
-  - Query: `skip?`, `take?`
-- `GET /api/admin/workflow/consumer/inbox`
+- `GET /api/admin/wf/consumer/inbox`
   - Query: `status?`, `skip?`, `take?`
-- `GET /api/admin/workflow/consumer/outbox`
+- `GET /api/admin/wf/consumer/outbox`
   - Query: `status?`, `skip?`, `take?`
-- `GET /api/admin/workflow/summary`
+
+Test helpers (`/api/admin/wf/test/...`):
+
+- `GET /api/admin/wf/test/usecases`
+- `POST /api/admin/wf/test/entities`
 
 ## Config
 

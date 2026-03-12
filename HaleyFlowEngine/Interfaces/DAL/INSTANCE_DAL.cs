@@ -30,6 +30,7 @@ namespace Haley.Abstractions {
         Task<int> UnsetFlagsAsync(long instanceId, uint flags, DbExecutionLoad load = default); // (flags & ~FLAGS) query
         Task<DbRows> ListStaleByDefaultStateDurationPagedAsync(int staleSeconds, int processedAckStatus, uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default);
         Task<DbRows> ListByFlagsAndDefVersionPagedAsync(long defVersionId, uint flagsMask, int skip, int take, DbExecutionLoad load = default);
+        Task<DbRows> ListByEnvDefAndStatusPagedAsync(int envCode, string? defName, uint statusFlags, int skip, int take, DbExecutionLoad load = default);
         Task<DbRows> ListByEnvAndDefPagedAsync(int envCode, string? defName, bool runningOnly, int skip, int take, DbExecutionLoad load = default);
     }
 
@@ -86,3 +87,4 @@ namespace Haley.Abstractions {
     }
 
 }
+

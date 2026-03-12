@@ -1,5 +1,6 @@
 using Haley.Abstractions;
 using Haley.Enums;
+using Haley.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Haley.Models;
@@ -46,6 +47,15 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
         return Ok(rows);
     }
 
+    [HttpGet("instances")]
+    public async Task<IActionResult> GetEngineInstances([FromQuery] int envCode, [FromQuery] string? defName, [FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+        if (!TryParseStatusFlags(status, out var statusFlags))
+            return BadRequest("Invalid status filter. Use comma-separated values from: Active, Suspended, Completed, Failed, Archived, or 'all'.");
+
+        var rows = await _service.GetEngineInstancesByStatusAsync(envCode, defName, statusFlags, skip, take, ct);
+        return Ok(rows);
+    }
+
     [HttpGet("pending-acks")]
     public async Task<IActionResult> GetPendingAcks([FromQuery] int envCode, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
         var rows = await _service.GetPendingAcksAsync(envCode, skip, take, ct);
@@ -71,13 +81,96 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
         return Ok(result);
     }
 
-    [HttpPost("instance/reopen")]
-    public async Task<IActionResult> ReopenInstance([FromBody] ReopenInstanceRequest request, CancellationToken ct) {
-        if (request == null) return BadRequest("Request body is required.");
-        if (string.IsNullOrWhiteSpace(request.InstanceGuid)) return BadRequest("instanceGuid is required.");
+    [HttpPost("instance/suspend")]
+    public async Task<IActionResult> SuspendInstance([FromQuery] string? instanceGuid, [FromQuery] string? message, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
 
-        var actor = string.IsNullOrWhiteSpace(request.Actor) ? "wfe.adminapi.reopen" : request.Actor.Trim();
-        var result = await _service.ReopenInstanceAsync(request.InstanceGuid.Trim(), actor, ct);
+        var normalizedGuid = instanceGuid.Trim();
+        var normalizedMessage = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+
+        try {
+            var suspended = await _service.SuspendInstanceAsync(normalizedGuid, normalizedMessage, ct);
+            if (!suspended) return NotFound($"Instance not found for guid '{normalizedGuid}'.");
+
+            return Ok(new {
+                status = "ok",
+                instanceGuid = normalizedGuid,
+                suspended = true
+            });
+        } catch (InvalidOperationException ex) {
+            return Conflict(new {
+                status = "failed",
+                instanceGuid = normalizedGuid,
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpPost("instance/resume")]
+    public async Task<IActionResult> ResumeInstance([FromQuery] string? instanceGuid, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
+
+        var normalizedGuid = instanceGuid.Trim();
+
+        try {
+            var resumed = await _service.ResumeInstanceAsync(normalizedGuid, ct);
+            if (!resumed) return NotFound($"Instance not found for guid '{normalizedGuid}'.");
+
+            return Ok(new {
+                status = "ok",
+                instanceGuid = normalizedGuid,
+                resumed = true
+            });
+        } catch (InvalidOperationException ex) {
+            return Conflict(new {
+                status = "failed",
+                instanceGuid = normalizedGuid,
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpPost("instance/fail")]
+    public async Task<IActionResult> FailInstance([FromQuery] string? instanceGuid, [FromQuery] string? message, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
+
+        var normalizedGuid = instanceGuid.Trim();
+        var normalizedMessage = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+
+        try {
+            var marked = await _service.FailInstanceAsync(normalizedGuid, normalizedMessage, ct);
+            if (!marked) return NotFound($"Instance not found for guid '{normalizedGuid}'.");
+
+            return Ok(new {
+                status = "ok",
+                instanceGuid = normalizedGuid,
+                failed = true
+            });
+        } catch (InvalidOperationException ex) {
+            return Conflict(new {
+                status = "failed",
+                instanceGuid = normalizedGuid,
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpPost("instance/reopen")]
+    public async Task<IActionResult> ReopenInstance([FromQuery] string? instanceGuid, [FromQuery] string? actor, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
+
+        var normalizedGuid = instanceGuid.Trim();
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.adminapi.reopen" : actor.Trim();
+        var result = await _service.ReopenInstanceAsync(normalizedGuid, normalizedActor, ct);
+
+        if (!result.Applied && string.Equals(result.Reason, "NotTerminal", StringComparison.OrdinalIgnoreCase)) {
+            return Conflict(new {
+                status = "failed",
+                instanceGuid = normalizedGuid,
+                message = "Reopen is allowed only for terminal instances (Failed, Archived, Completed)."
+            });
+        }
+
         return Ok(result);
     }
 
@@ -93,5 +186,25 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
         }
 
         return parsed == LifeCycleInstanceFlag.None ? LifeCycleInstanceFlag.Active : parsed;
+    }
+
+    private static bool TryParseStatusFlags(string? status, out LifeCycleInstanceFlag flags) {
+        flags = LifeCycleInstanceFlag.None;
+        if (string.IsNullOrWhiteSpace(status)) return true;
+
+        var parts = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) return true;
+
+        for (var i = 0; i < parts.Length; i++) {
+            var part = parts[i];
+            if (part.Equals("all", StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (!Enum.TryParse<LifeCycleInstanceFlag>(part, true, out var value) || value == LifeCycleInstanceFlag.None)
+                return false;
+
+            flags |= value;
+        }
+
+        return true;
     }
 }

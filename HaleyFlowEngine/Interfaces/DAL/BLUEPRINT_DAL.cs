@@ -41,6 +41,7 @@ namespace Haley.Abstractions {
         Task<int> DeleteByPolicyIdAsync(long policyId, DbExecutionLoad load = default);
         Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, int? maxRetry, DbExecutionLoad load = default);
         Task<DbRows> ListByPolicyIdAsync(long policyId, DbExecutionLoad load = default);
+        Task<int> UpsertHookRouteLabelAsync(string name, string label, DbExecutionLoad load = default);
     }
 
     internal interface IConsumerDAL {

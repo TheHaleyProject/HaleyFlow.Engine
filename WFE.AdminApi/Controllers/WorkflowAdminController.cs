@@ -10,7 +10,7 @@ using Haley.Utils;
 namespace WFE.AdminApi.Controllers;
 
 [ApiController]
-[Route("api/admin/workflow")]
+[Route("api/admin/wf/engine")]
 public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
     private readonly WorkflowAdminOptions _adminOptions;
     private readonly IWorkFlowConsumerService _consumerService;
@@ -26,7 +26,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         _testBootstrap = testBootstrap ?? throw new ArgumentNullException(nameof(testBootstrap));
     }
 
-    [HttpGet("consumer/workflows")]
+    [HttpGet("/api/admin/wf/consumer/workflows")]
     public async Task<IActionResult> GetConsumerWorkflows([FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
@@ -34,7 +34,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         return Ok(rows.ToWorkflowDictionaries());
     }
 
-    [HttpGet("consumer/inbox")]
+    [HttpGet("/api/admin/wf/consumer/inbox")]
     public async Task<IActionResult> GetConsumerInbox(
         [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
@@ -43,7 +43,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         return Ok(rows.ToInboxDictionaries());
     }
 
-    [HttpGet("consumer/outbox")]
+    [HttpGet("/api/admin/wf/consumer/outbox")]
     public async Task<IActionResult> GetConsumerOutbox([FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
@@ -51,13 +51,13 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         return Ok(rows.ToOutboxDictionaries());
     }
 
-    [HttpGet("test/usecases")]
+    [HttpGet("/api/admin/wf/test/usecases")]
     public async Task<IActionResult> GetTestUseCases(CancellationToken ct) {
         var useCases = await _testBootstrap.GetTestUseCasesAsync(ct);
         return Ok(useCases);
     }
 
-    [HttpPost("test/entities")]
+    [HttpPost("/api/admin/wf/test/entities")]
     public async Task<IActionResult> CreateTestEntities(
         [FromBody] CreateTestEntitiesRequest request,
         CancellationToken ct) {

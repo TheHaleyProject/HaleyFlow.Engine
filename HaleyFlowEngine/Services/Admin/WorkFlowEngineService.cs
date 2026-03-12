@@ -50,7 +50,13 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         await EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
         var rows = await _engine!.ListInstancesAsync(envCode, defName?.Trim(), runningOnly, normalizedSkip, normalizedTake, ct);
-        return rows.ToDictionaries();
+        return ToEngineInstanceDictionaries(rows);
+    }
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetEngineInstancesByStatusAsync(int envCode, string? defName, LifeCycleInstanceFlag statusFlags, int skip, int take, CancellationToken ct) {
+        await EnsureInitializedAsync(ct);
+        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
+        var rows = await _engine!.ListInstancesByStatusAsync(envCode, defName?.Trim(), statusFlags, normalizedSkip, normalizedTake, ct);
+        return ToEngineInstanceDictionaries(rows);
     }
 
     public async Task<IReadOnlyList<Dictionary<string, object?>>> GetPendingAcksAsync(int envCode, int skip, int take, CancellationToken ct) {
@@ -128,6 +134,26 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         };
     }
 
+    public async Task<bool> SuspendInstanceAsync(string instanceGuid, string? message, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
+
+        await EnsureInitializedAsync(ct);
+        return await _engine!.SuspendInstanceAsync(instanceGuid.Trim(), message, ct);
+    }
+
+    public async Task<bool> ResumeInstanceAsync(string instanceGuid, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
+
+        await EnsureInitializedAsync(ct);
+        return await _engine!.ResumeInstanceAsync(instanceGuid.Trim(), ct);
+    }
+
+    public async Task<bool> FailInstanceAsync(string instanceGuid, string? message, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
+
+        await EnsureInitializedAsync(ct);
+        return await _engine!.FailInstanceAsync(instanceGuid.Trim(), message, ct);
+    }
     public async Task<LifeCycleTriggerResult> ReopenInstanceAsync(string instanceGuid, string actor, CancellationToken ct) {
         if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
 
@@ -193,6 +219,45 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         }
     }
 
+    private static IReadOnlyList<Dictionary<string, object?>> ToEngineInstanceDictionaries(DbRows rows) {
+        var items = rows.ToDictionaries();
+        for (var i = 0; i < items.Count; i++) {
+            var item = items[i];
+            var flags = ToUInt(item, "instance_flags");
+            var statuses = GetInstanceStatuses(flags);
+            item["instance_status"] = statuses[0];
+            item["instance_statuses"] = statuses;
+        }
+
+        return items;
+    }
+
+    private static uint ToUInt(Dictionary<string, object?> item, string key) {
+        if (!item.TryGetValue(key, out var value) || value == null) return 0;
+
+        try {
+            return Convert.ToUInt32(value);
+        } catch {
+            return 0;
+        }
+    }
+
+    private static List<string> GetInstanceStatuses(uint flags) {
+        // Fail-safe projection: terminal flags dominate, so API never reports Active with terminal states.
+        if ((flags & (uint)LifeCycleInstanceFlag.Archived) != 0)
+            return new List<string>(1) { nameof(LifeCycleInstanceFlag.Archived) };
+        if ((flags & (uint)LifeCycleInstanceFlag.Failed) != 0)
+            return new List<string>(1) { nameof(LifeCycleInstanceFlag.Failed) };
+        if ((flags & (uint)LifeCycleInstanceFlag.Completed) != 0)
+            return new List<string>(1) { nameof(LifeCycleInstanceFlag.Completed) };
+
+        var statuses = new List<string>(2);
+        if ((flags & (uint)LifeCycleInstanceFlag.Suspended) != 0) statuses.Add(nameof(LifeCycleInstanceFlag.Suspended));
+        if ((flags & (uint)LifeCycleInstanceFlag.Active) != 0) statuses.Add(nameof(LifeCycleInstanceFlag.Active));
+
+        if (statuses.Count == 0) statuses.Add(nameof(LifeCycleInstanceFlag.None));
+        return statuses;
+    }
     private LifeCycleInstanceKey BuildInstanceKey(int? envCode, string? defName, string? entityId, string? instanceGuid) {
         if (!string.IsNullOrWhiteSpace(instanceGuid)) {
             return new LifeCycleInstanceKey {
@@ -223,3 +288,5 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         return (normalizedSkip, normalizedTake);
     }
 }
+
+

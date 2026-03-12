@@ -85,6 +85,7 @@ namespace Haley.Internal {
         public const string KEY_MAX_RETRY = "max_retry";
 
         // policy rule / emit keys
+        public const string KEY_LABEL = "label";
         public const string KEY_DATA = "data";
         public const string KEY_VIA = "via";
         public const string KEY_EMIT = "emit";

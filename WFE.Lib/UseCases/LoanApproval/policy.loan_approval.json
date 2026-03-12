@@ -21,7 +21,22 @@
       "emit": [
         {
           "route": "APP.LOAN.KYC.CHECK",
+          "label": "KYC Check",
+          "blocking": true,
+          "group": "kyc_decision",
+          "order": 1,
           "complete": { "success": 2001, "failure": 2002 }
+        },
+        {
+          "route": "APP.LOAN.KYC.AUDIT.LOG",
+          "label": "KYC Audit Log",
+          "blocking": false
+        },
+        {
+          "route": "APP.LOAN.KYC.NOTIFY.APPLICANT",
+          "label": "KYC Result Notification",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -30,7 +45,22 @@
       "emit": [
         {
           "route": "APP.LOAN.CREDIT.CHECK",
+          "label": "Credit Assessment",
+          "blocking": true,
+          "group": "credit_decision",
+          "order": 1,
           "complete": { "success": 2003, "failure": 2004 }
+        },
+        {
+          "route": "APP.LOAN.CREDIT.LOCAL.BACKUP",
+          "label": "Credit Snapshot Backup",
+          "blocking": false
+        },
+        {
+          "route": "APP.LOAN.CREDIT.RISK.FEED",
+          "label": "Risk Feed Update",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -39,7 +69,22 @@
       "emit": [
         {
           "route": "APP.LOAN.RISK.CHECK",
+          "label": "Risk Review",
+          "blocking": true,
+          "group": "risk_decision",
+          "order": 1,
           "complete": { "success": 2005, "failure": 2006 }
+        },
+        {
+          "route": "APP.LOAN.RISK.AUDIT.LOG",
+          "label": "Risk Audit Log",
+          "blocking": false
+        },
+        {
+          "route": "APP.LOAN.RISK.NOTIFY.ANALYST",
+          "label": "Risk Analyst Notification",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -49,7 +94,23 @@
       "emit": [
         {
           "route": "APP.LOAN.MANAGER.DECISION",
+          "label": "Manager Approval Decision",
+          "blocking": true,
+          "group": "manager_decision",
+          "order": 1,
           "complete": { "success": 2007, "failure": 2008 }
+        },
+        {
+          "route": "APP.LOAN.MANAGER.DOC.ARCHIVE",
+          "label": "Manager Approval Archive",
+          "blocking": true,
+          "order": 2
+        },
+        {
+          "route": "APP.LOAN.MANAGER.NOTIFY.APPLICANT",
+          "label": "Manager Decision Notification",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -58,7 +119,15 @@
       "via": 2009,
       "emit": [
         {
-          "route": "APP.LOAN.MANAGER.REMINDER"
+          "route": "APP.LOAN.MANAGER.REMINDER",
+          "label": "Manager Approval Reminder",
+          "blocking": false
+        },
+        {
+          "route": "APP.LOAN.MANAGER.REMINDER.EMAIL",
+          "label": "Reminder Email Dispatch",
+          "blocking": false,
+          "order": 2
         }
       ]
     }

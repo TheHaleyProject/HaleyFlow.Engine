@@ -78,6 +78,21 @@ namespace Haley.Services {
             }
         }
 
+        async Task ImportEmitRoutesAsync(JsonElement root, DbExecutionLoad load) {
+            // Parse the top-level "emit" array and upsert each route+label into hook_route.
+            // This is idempotent: re-importing the same policy just overwrites the label.
+            // Route name is required; label may be empty string.
+            if (!root.TryGetProperty(KEY_EMIT, out var arr) || arr.ValueKind != JsonValueKind.Array) return;
+
+            foreach (var e in arr.EnumerateArray()) {
+                if (e.ValueKind != JsonValueKind.Object) continue;
+                var routeName = e.GetString(KEY_ROUTE) ?? e.GetString(KEY_NAME);
+                if (string.IsNullOrWhiteSpace(routeName)) continue;
+                var label = e.GetString(KEY_LABEL) ?? string.Empty;
+                await _dal.BlueprintWrite.UpsertHookRouteLabelAsync(routeName, label, load);
+            }
+        }
+
         async Task ImportPolicyTimeoutsAsync(long policyId, JsonElement root, DbExecutionLoad load) {
             // Always delete existing timeout rows for this policy before re-inserting.
             // This makes policy re-import idempotent: importing the same policy JSON twice ends up with
@@ -134,6 +149,7 @@ namespace Haley.Services {
                 var policyId = await _dal.BlueprintWrite.EnsurePolicyByHashAsync(hash, policyHashmaterial, load); //We can also store the actual json as is but it might contain irrelevant data which might confuse.. So, we just take what is needed and relevant for us.
 
                 await ImportPolicyTimeoutsAsync(policyId, root, load);
+                await ImportEmitRoutesAsync(root, load);
                 //When we do like above, we lose only important data, which is the association of policy to definition. But it is fine, because, we only need to know what is the policy.
 
                 await _dal.BlueprintWrite.AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(envCode, defName!, policyId, load);

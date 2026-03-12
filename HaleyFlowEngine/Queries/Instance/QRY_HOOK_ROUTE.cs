@@ -8,5 +8,8 @@ namespace Haley.Internal {
         public const string GET_ID_BY_NAME = $@"SELECT id FROM hook_route WHERE name = {ROUTE} LIMIT 1;";
 
         public const string INSERT = $@"INSERT INTO hook_route (name) VALUES ({ROUTE}); SELECT LAST_INSERT_ID() AS id;";
+
+        // Upsert label for a known route name. Inserts if not present; updates label if it exists.
+        public const string UPSERT_LABEL = $@"INSERT INTO hook_route (name, label) VALUES ({ROUTE}, {LABEL}) ON DUPLICATE KEY UPDATE label = VALUES(label);";
     }
 }

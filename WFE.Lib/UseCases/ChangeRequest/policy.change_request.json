@@ -21,7 +21,22 @@
       "emit": [
         {
           "route": "APP.CHANGE.IMPACT.ASSESS",
+          "label": "Impact Assessment",
+          "blocking": true,
+          "group": "impact_decision",
+          "order": 1,
           "complete": { "success": 4001, "failure": 4002 }
+        },
+        {
+          "route": "APP.CHANGE.IMPACT.AUDIT.LOG",
+          "label": "Impact Audit Log",
+          "blocking": false
+        },
+        {
+          "route": "APP.CHANGE.IMPACT.NOTIFY.REQUESTOR",
+          "label": "Impact Decision Notification",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -30,7 +45,22 @@
       "emit": [
         {
           "route": "APP.CHANGE.COST.REVIEW",
+          "label": "Cost Review",
+          "blocking": true,
+          "group": "cost_decision",
+          "order": 1,
           "complete": { "success": 4003, "failure": 4004 }
+        },
+        {
+          "route": "APP.CHANGE.COST.LOCAL.BACKUP",
+          "label": "Cost Snapshot Backup",
+          "blocking": false
+        },
+        {
+          "route": "APP.CHANGE.COST.EMAIL.STAKEHOLDERS",
+          "label": "Cost Decision Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -39,7 +69,22 @@
       "emit": [
         {
           "route": "APP.CHANGE.SCHEDULE.REVIEW",
+          "label": "Schedule Review",
+          "blocking": true,
+          "group": "schedule_decision",
+          "order": 1,
           "complete": { "success": 4005, "failure": 4006 }
+        },
+        {
+          "route": "APP.CHANGE.SCHEDULE.AUDIT.LOG",
+          "label": "Schedule Audit Log",
+          "blocking": false
+        },
+        {
+          "route": "APP.CHANGE.SCHEDULE.CALENDAR.UPDATE",
+          "label": "Project Calendar Update",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -49,7 +94,23 @@
       "emit": [
         {
           "route": "APP.CHANGE.STEERING.DECIDE",
+          "label": "Steering Decision",
+          "blocking": true,
+          "group": "steering_decision",
+          "order": 1,
           "complete": { "success": 4007, "failure": 4008 }
+        },
+        {
+          "route": "APP.CHANGE.STEERING.MINUTES.ARCHIVE",
+          "label": "Steering Minutes Archive",
+          "blocking": true,
+          "order": 2
+        },
+        {
+          "route": "APP.CHANGE.STEERING.NOTIFY.WATCHERS",
+          "label": "Steering Outcome Notification",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -59,7 +120,22 @@
       "emit": [
         {
           "route": "APP.CHANGE.REWORK.REQUEST",
+          "label": "Rework Request",
+          "blocking": true,
+          "group": "rework_cycle",
+          "order": 1,
           "complete": { "success": 4009 }
+        },
+        {
+          "route": "APP.CHANGE.REWORK.LOCAL.BACKUP",
+          "label": "Rework Data Backup",
+          "blocking": false
+        },
+        {
+          "route": "APP.CHANGE.REWORK.EMAIL.REQUESTOR",
+          "label": "Rework Notification Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -69,7 +145,22 @@
       "emit": [
         {
           "route": "APP.CHANGE.REWORK.REQUEST",
+          "label": "Rework Request",
+          "blocking": true,
+          "group": "rework_cycle",
+          "order": 1,
           "complete": { "success": 4009 }
+        },
+        {
+          "route": "APP.CHANGE.REWORK.LOCAL.BACKUP",
+          "label": "Rework Data Backup",
+          "blocking": false
+        },
+        {
+          "route": "APP.CHANGE.REWORK.EMAIL.REQUESTOR",
+          "label": "Rework Notification Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -78,12 +169,20 @@
       "via": 4010,
       "emit": [
         {
-          "route": "APP.CHANGE.REWORK.EXPIRED"
+          "route": "APP.CHANGE.REWORK.EXPIRED",
+          "label": "Rework Expired",
+          "blocking": false
+        },
+        {
+          "route": "APP.CHANGE.REWORK.EXPIRED.NOTIFY",
+          "label": "Rework Expiry Notification",
+          "blocking": false,
+          "order": 2
         }
       ]
     }
   ],
   "timeouts": [
-    { "state": "ReworkRequired", "timeout_minutes": 2,"max_retry": 4, "timeout_event": 4010 }
+    { "state": "ReworkRequired", "timeout_minutes": 2, "max_retry": 4, "timeout_event": 4010 }
   ]
 }

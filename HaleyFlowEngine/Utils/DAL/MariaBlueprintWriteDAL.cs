@@ -157,6 +157,9 @@ namespace Haley.Internal {
 
         public Task<DbRows> ListByPolicyIdAsync(long policyId, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_TIMEOUTS.LIST_BY_POLICY_ID, load, (POLICY_ID, policyId));
+
+        public Task<int> UpsertHookRouteLabelAsync(string name, string label, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_HOOK_ROUTE.UPSERT_LABEL, load, (ROUTE, name), (LABEL, label));
     }
 
 }

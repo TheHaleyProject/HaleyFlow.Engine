@@ -534,11 +534,13 @@
 			<column name="name" type="VARCHAR" length="240" mandatory="y" >
 				<comment><![CDATA[Unique hook route name invoked by consumers.]]></comment>
 			</column>
+			<column name="label" type="VARCHAR" length="120" mandatory="y" />
 			<index name="pk_hook_route" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
 			<index name="unq_route" unique="UNIQUE_KEY" >
 				<column name="name" />
+				<column name="label" />
 			</index>
 			<options><![CDATA[engine=InnoDB]]></options>
 		</table>

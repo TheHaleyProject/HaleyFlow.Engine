@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -52,6 +52,7 @@ namespace Haley.Internal {
 
         public const string ON_ENTRY = "@ON_ENTRY";
         public const string ROUTE = "@ROUTE";
+        public const string LABEL = "@LABEL";
         public const string ROUTE_ID = "@ROUTE_ID";
         public const string GROUP_NAME = "@GROUP_NAME";
         public const string GROUP_ID = "@GROUP_ID";
@@ -83,5 +84,7 @@ namespace Haley.Internal {
         public const string TAKE = "@TAKE";
         public const string SKIP = "@SKIP";
         public const string RUNNING_ONLY = "@RUNNING_ONLY";
+        public const string STATUS_FLAGS = "@STATUS_FLAGS";
     }
 }
+

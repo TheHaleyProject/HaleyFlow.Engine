@@ -76,5 +76,14 @@ namespace Haley.Internal {
                 (RUNNING_ONLY, runningOnly ? 1 : 0),
                 (SKIP, skip),
                 (TAKE, take));
+
+        public Task<DbRows> ListByEnvDefAndStatusPagedAsync(int envCode, string? defName, uint statusFlags, int skip, int take, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_INSTANCE.LIST_BY_ENV_AND_DEF_AND_STATUS_PAGED, load,
+                (CODE, envCode),
+                (DEF_NAME, defName ?? string.Empty),
+                (STATUS_FLAGS, statusFlags),
+                (SKIP, skip),
+                (TAKE, take));
     }
 }
+

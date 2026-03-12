@@ -1,21 +1,22 @@
 @WFE.AdminApi_HostAddress = http://localhost:5267
 
-GET {{WFE.AdminApi_HostAddress}}/api/admin/workflow/summary
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/engine/summary
 Accept: application/json
 
 ###
 
-GET {{WFE.AdminApi_HostAddress}}/api/admin/workflow/entities?runningOnly=true&skip=0&take=20
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/engine/entities?runningOnly=true&skip=0&take=20
 Accept: application/json
 
 ###
 
-GET {{WFE.AdminApi_HostAddress}}/api/admin/workflow/pending-acks?skip=0&take=20
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/engine/pending-acks?skip=0&take=20
 Accept: application/json
 
 ###
 
-GET {{WFE.AdminApi_HostAddress}}/api/admin/workflow/consumer/outbox?status=1&skip=0&take=20
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/outbox?status=1&skip=0&take=20
 Accept: application/json
 
 ###
+

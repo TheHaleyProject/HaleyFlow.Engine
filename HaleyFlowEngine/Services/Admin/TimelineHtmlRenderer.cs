@@ -78,7 +78,21 @@ internal static class TimelineHtmlRenderer {
                     #timeline-scroll::-webkit-scrollbar { width: 6px; }
                     #timeline-scroll::-webkit-scrollbar-track { background: transparent; }
                     #timeline-scroll::-webkit-scrollbar-thumb { background: #90c4e8; border-radius: 3px; }
+                    /* Compact toggle */
+                    .compact .detail-only { display: none !important; }
+                    .compact-row { display: none; }
+                    .compact .compact-row { display: flex !important; }
+                    .compact .tl-item:not(:last-child) .tl-left::after { bottom: -10px; }
+                    .compact .tl-item .flex-1.pb-8 { padding-bottom: 0.5rem; }
                   </style>
+                  <script>
+                    function toggleCompact() {
+                      var wrap = document.getElementById('tl-wrap');
+                      var btn  = document.getElementById('btn-compact');
+                      var on   = wrap.classList.toggle('compact');
+                      btn.textContent = on ? '\u229e Detailed' : '\u229f Compact';
+                    }
+                  </script>
                 </head>
                 <body class="bg-slate-100 text-slate-800" style="display:flex;flex-direction:column">
 """); }
@@ -91,11 +105,29 @@ internal static class TimelineHtmlRenderer {
         var label      = !string.IsNullOrWhiteSpace(displayName) ? displayName : entityId;
         var defName    = S(inst, "def_name");
         var defVersion = S(inst, "def_version");
-        var curState   = S(inst, "current_state");
-        var lastEvent  = SplitCamel(S(inst, "last_event"));
-        var created    = FmtFull(S(inst, "created"));
-        var modified   = FmtFull(S(inst, "modified"));
-        var totalDur   = Dur(S(inst, "created"), S(inst, "modified"));
+        var curState        = S(inst, "current_state");
+        var lastEvent       = SplitCamel(S(inst, "last_event"));
+        var created         = FmtFull(S(inst, "created"));
+        var modified        = FmtFull(S(inst, "modified"));
+        var totalDur        = Dur(S(inst, "created"), S(inst, "modified"));
+        var instanceStatus  = S(inst, "instance_status");
+        var instanceMessage = S(inst, "instance_message");
+        var (statusBg, statusText, statusBorder) = instanceStatus switch {
+            "Active"    => ("#dcfce7", "#15803d", "#86efac"),
+            "Suspended" => ("#fef3c7", "#92400e", "#fcd34d"),
+            "Completed" => ("#dbeafe", "#1d4ed8", "#93c5fd"),
+            "Failed"    => ("#fee2e2", "#b91c1c", "#fca5a5"),
+            "Archived"  => ("#f1f5f9", "#475569", "#cbd5e1"),
+            _           => ("#f8fafc", "#64748b", "#e2e8f0")
+        };
+        var statusHtml = instanceStatus.Length > 0
+            ? $"<div><div class=\"text-xs mb-1 uppercase tracking-wide font-medium\" style=\"color:#0078d4\">Status</div>"
+            + $"<div class=\"inline-block px-3 py-1 rounded-full border font-semibold text-xs\" style=\"background:{statusBg};color:{statusText};border-color:{statusBorder}\">{E(instanceStatus)}</div></div>"
+            : string.Empty;
+        var messageHtml = instanceMessage.Length > 0
+            ? $"<div class=\"max-w-xs text-left\"><div class=\"text-xs mb-1 uppercase tracking-wide font-medium\" style=\"color:#b91c1c\">Message</div>"
+            + $"<div class=\"text-xs px-2 py-1 rounded border break-words\" style=\"background:#fee2e2;color:#991b1b;border-color:#fca5a5\">{E(instanceMessage)}</div></div>"
+            : string.Empty;
 
         sb.Append($"""
   <div class="rounded-2xl overflow-hidden shadow-sm mb-8" style="border:1px solid #b3d0eb;background:#f0f7fd">
@@ -110,20 +142,27 @@ internal static class TimelineHtmlRenderer {
           <p class="text-xs mt-0.5 font-mono break-all" style="color:#5a9dc0">{E(entityId)}</p>
           <p class="text-xs mt-0.5 font-mono" style="color:#8ab8d8">{E(guid)}</p>
         </div>
-        <div class="flex-shrink-0 text-right">
-          <div class="text-xs mb-1.5 uppercase tracking-wide font-medium" style="color:#0078d4">Current State</div>
-          <div class="inline-block px-3 py-1.5 rounded-lg" style="background:#0078d4">
-            <span class="font-semibold text-sm text-white">{E(curState)}</span>
+        <div class="flex-shrink-0 text-right flex flex-col items-end gap-2">
+          <div>
+            <div class="text-xs mb-1.5 uppercase tracking-wide font-medium" style="color:#0078d4">Current State</div>
+            <div class="inline-block px-3 py-1.5 rounded-lg" style="background:#0078d4">
+              <span class="font-semibold text-sm text-white">{E(curState)}</span>
+            </div>
           </div>
+          {statusHtml}
+          {messageHtml}
         </div>
       </div>
     </div>
-    <div class="px-6 py-3 flex flex-wrap gap-5 text-xs" style="border-top:1px solid #b3d0eb;background:#f0f7fd">
+    <div class="px-6 py-3 flex flex-wrap gap-5 text-xs items-center" style="border-top:1px solid #b3d0eb;background:#f0f7fd">
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Last Event</span>{E(lastEvent)}</div>
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Started</span>{E(created)}</div>
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Completed</span>{E(modified)}</div>
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Total Duration</span>{E(totalDur)}</div>
       <div class="text-slate-500"><span class="font-semibold text-slate-700 block">Transitions</span>{stepCount} steps</div>
+      <div class="ml-auto">
+        <button id="btn-compact" onclick="toggleCompact()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors" style="border-color:#b3d0eb;color:#0078d4;background:#e1f0fa" onmouseover="this.style.background='#c8e2f5'" onmouseout="this.style.background='#e1f0fa'">&#8863; Compact</button>
+      </div>
     </div>
   </div>
 
@@ -133,7 +172,7 @@ internal static class TimelineHtmlRenderer {
     // ── Timeline ─────────────────────────────────────────────────────────────
 
     private static void WriteTimeline(StringBuilder sb, JsonElement tl) {
-        sb.Append("""<div class="space-y-0">""");
+        sb.Append("""<div id="tl-wrap" class="space-y-0">""");
         var items = tl.EnumerateArray().ToList();
         var prevWasTerminal = false;
         for (var i = 0; i < items.Count; i++) {
@@ -198,10 +237,18 @@ internal static class TimelineHtmlRenderer {
               </div>
             </div>
             {(bannerBadge.Length > 0 ? $"            <div class=\"mt-2 pt-2 flex\">{bannerBadge}</div>" : "")}
+            <!-- Compact one-liner (hidden in detailed mode) -->
+            <div class="compact-row items-center gap-2 mt-2 pt-2 flex-wrap" style="border-top:1px solid #fde68a">
+              <span class="font-semibold text-sm" style="color:#1c1917">{E(evtName)}</span>
+              <span style="color:#d97706">·</span>
+              <code class="text-xs" style="color:#92400e">{E(actor)}</code>
+              <span style="color:#d97706">·</span>
+              <span class="text-xs" style="color:#78716c">{E(created)}</span>
+            </div>
           </div>
 
           <!-- Event meta -->
-          <div class="px-4 py-3 border-b border-slate-100">
+          <div class="detail-only px-4 py-3 border-b border-slate-100">
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <div class="flex items-center gap-2 flex-wrap">
@@ -224,7 +271,7 @@ internal static class TimelineHtmlRenderer {
               </div>
             </div>
           </div>
-          <div class="pt-3">
+          <div class="detail-only pt-3">
 """);
 
         WriteActivities(sb, acts);
@@ -241,22 +288,24 @@ internal static class TimelineHtmlRenderer {
 
     private static void WriteActivities(StringBuilder sb, JsonElement acts) {
         if (acts.ValueKind != JsonValueKind.Array || acts.GetArrayLength() == 0) {
-            sb.Append("            <p class=\"text-xs text-slate-400 italic px-4 pb-4\">No activities recorded.</p>\n");
+            sb.Append("            <p class=\"detail-only text-xs text-slate-400 italic px-4 pb-4\">No activities recorded.</p>\n");
             return;
         }
 
         sb.Append("            <div class=\"px-4 pb-4 space-y-2\">\n");
         foreach (var act in acts.EnumerateArray()) {
-            var activity = S(act, "activity");
-            var actorId  = S(act, "actor_id");
-            var status   = S(act, "status");
-            var dur      = Dur(S(act, "created"), S(act, "modified"));
-            var pill     = StatusPill.TryGetValue(status, out var p) ? p : "bg-slate-50 text-slate-600 border-slate-200";
+            var activity    = S(act, "activity");
+            var label       = S(act, "label");
+            var displayName = !string.IsNullOrWhiteSpace(label) ? label : activity;
+            var actorId     = S(act, "actor_id");
+            var status      = S(act, "status");
+            var dur         = Dur(S(act, "created"), S(act, "modified"));
+            var pill        = StatusPill.TryGetValue(status, out var p) ? p : "bg-slate-50 text-slate-600 border-slate-200";
 
             sb.Append($"""
               <div class="act-row flex items-center gap-3 border border-slate-100 rounded-lg px-3 py-2.5 transition-colors">
                 <div class="flex-1 min-w-0">
-                  <code class="text-xs text-slate-700 block truncate">{E(activity)}</code>
+                  <code class="text-xs text-slate-700 block truncate">{E(displayName)}</code>
                   <span class="text-xs text-slate-400 font-mono mt-0.5 block truncate">{E(actorId)}</span>
                 </div>
                 <div class="flex flex-col items-end gap-1 flex-shrink-0">

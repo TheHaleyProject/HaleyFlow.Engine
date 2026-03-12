@@ -26,7 +26,7 @@ namespace Haley.Services.Orchestrators {
         // 1. Resolve instance and validate terminal flags.
         // 2. Reset to initial state and clear terminal/suspended flags.
         // 3. Find auto-start transition from initial state.
-        // 4. If present, call TriggerAsync with AckRequired=false and SkipAckGate=true.
+        // 4. If present, call TriggerAsync with normal ACKed dispatch and SkipAckGate=true.
         public async Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
@@ -79,16 +79,18 @@ namespace Haley.Services.Orchestrators {
 
             bp.EventsById.TryGetValue(autoStart.Value.EventId, out var autoStartEvent);
 
-            // Reopen-trigger is fire-and-move semantics: do not create ACK gate pressure from this internal call.
+            // Reopen-trigger must create a real ack_guid so consumer idempotency/outbox flows stay intact.
+            // SkipAckGate=true is still used to avoid old unresolved ACKs blocking this bootstrap transition.
             return await _triggerAsync(new LifeCycleTriggerRequest {
                 DefName = bp.DefName,
                 EnvCode = bp.EnvCode,
                 EntityId = entityId,
                 Event = autoStartEvent?.Name ?? string.Empty,
                 Actor = actor,
-                AckRequired = false,
+                AckRequired = true,
                 SkipAckGate = true
             }, ct);
         }
     }
 }
+

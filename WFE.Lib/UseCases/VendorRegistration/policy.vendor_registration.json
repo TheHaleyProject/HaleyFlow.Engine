@@ -21,7 +21,16 @@
       "emit": [
         {
           "route": "APP.REG.CHECK.VENDOR_REGISTERED",
+          "label": "Vendor Registration Check",
+          "blocking": true,
+          "group": "vendor_registration_check",
+          "order": 1,
           "complete": { "success": 1001, "failure": 1002 }
+        },
+        {
+          "route": "APP.REG.CHECK.VENDOR_REGISTERED.AUDIT",
+          "label": "Vendor Registration Audit",
+          "blocking": false
         }
       ]
     },
@@ -30,7 +39,17 @@
       "emit": [
         {
           "route": "APP.REG.CHECK.RECENT_SUBMISSION",
+          "label": "Recent Submission Check",
+          "blocking": true,
+          "group": "recent_submission_check",
+          "order": 1,
           "complete": { "success": 1003, "failure": 1004 }
+        },
+        {
+          "route": "APP.REG.CHECK.RECENT_SUBMISSION.BACKUP",
+          "label": "Recent Submission Backup",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -39,7 +58,17 @@
       "emit": [
         {
           "route": "APP.REG.PQ.VALIDATION.START",
+          "label": "PQ Validation Start",
+          "blocking": true,
+          "group": "pq_start",
+          "order": 1,
           "complete": { "success": 1005 }
+        },
+        {
+          "route": "APP.REG.PQ.VALIDATION.START.EMAIL",
+          "label": "PQ Validation Start Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -49,7 +78,22 @@
       "emit": [
         {
           "route": "APP.REG.PQ.VALIDATION.REQUIRED",
+          "label": "PQ Validation Required",
+          "blocking": true,
+          "group": "pq_validation_decision",
+          "order": 1,
           "complete": { "success": 1006, "failure": 1008 }
+        },
+        {
+          "route": "APP.REG.PQ.VALIDATION.REQUIRED.AUDIT",
+          "label": "PQ Validation Audit",
+          "blocking": false
+        },
+        {
+          "route": "APP.REG.PQ.VALIDATION.REQUIRED.BACKUP",
+          "label": "PQ Validation Backup",
+          "blocking": true,
+          "order": 2
         }
       ]
     },
@@ -58,7 +102,17 @@
       "via": 1010,
       "emit": [
         {
-          "route": "APP.REG.PQ.OVERDUE.ENTER"
+          "route": "APP.REG.PQ.OVERDUE.ENTER",
+          "label": "PQ Overdue Entered",
+          "blocking": true,
+          "group": "pq_overdue_cycle",
+          "order": 1
+        },
+        {
+          "route": "APP.REG.PQ.OVERDUE.ENTER.EMAIL",
+          "label": "PQ Overdue Entry Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -67,7 +121,17 @@
       "via": 1011,
       "emit": [
         {
-          "route": "APP.REG.PQ.OVERDUE.REMIND"
+          "route": "APP.REG.PQ.OVERDUE.REMIND",
+          "label": "PQ Overdue Reminder",
+          "blocking": true,
+          "group": "pq_overdue_cycle",
+          "order": 1
+        },
+        {
+          "route": "APP.REG.PQ.OVERDUE.REMIND.EMAIL",
+          "label": "PQ Overdue Reminder Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     },
@@ -76,7 +140,23 @@
       "emit": [
         {
           "route": "APP.REG.VENDOR_CREATE",
+          "label": "Vendor Creation",
+          "blocking": true,
+          "group": "vendor_create",
+          "order": 1,
           "complete": { "success": 1007 }
+        },
+        {
+          "route": "APP.REG.VENDOR_CREATE.BACKUP",
+          "label": "Vendor Creation Backup",
+          "blocking": true,
+          "order": 2
+        },
+        {
+          "route": "APP.REG.VENDOR_CREATE.EMAIL",
+          "label": "Vendor Creation Email",
+          "blocking": false,
+          "order": 2
         }
       ]
     }

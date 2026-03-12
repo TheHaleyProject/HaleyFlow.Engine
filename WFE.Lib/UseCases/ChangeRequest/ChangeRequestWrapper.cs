@@ -68,7 +68,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 "Cost review approved?",
                 PickEvent(evt.OnSuccessEvent, "4003"),
                 PickEvent(evt.OnFailureEvent, "4004"),
-                BusinessActionExecutionMode.SkipIfCompleted);
+                BusinessActionExecutionMode.ForceRun);
 
         [HookHandler("APP.CHANGE.SCHEDULE.REVIEW")]
         private Task<AckOutcome> OnScheduleReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
@@ -78,7 +78,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 "Schedule review approved?",
                 PickEvent(evt.OnSuccessEvent, "4005"),
                 PickEvent(evt.OnFailureEvent, "4006"),
-                BusinessActionExecutionMode.SkipIfCompleted);
+                BusinessActionExecutionMode.ForceRun);
 
         [HookHandler("APP.CHANGE.STEERING.DECIDE")]
         private Task<AckOutcome> OnSteeringDecisionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
@@ -88,7 +88,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 "Steering decision approved?",
                 PickEvent(evt.OnSuccessEvent, "4007"),
                 PickEvent(evt.OnFailureEvent, "4008"),
-                BusinessActionExecutionMode.SkipIfCompleted);
+                BusinessActionExecutionMode.ForceRun);
 
         [HookHandler("APP.CHANGE.REWORK.REQUEST")]
         private Task<AckOutcome> OnReworkRequestedAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
