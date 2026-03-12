@@ -3,7 +3,7 @@ using Haley.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Haley.Models;
-public class WorkFlowEngineControllerBase : ControllerBase {
+public abstract class WorkFlowEngineControllerBase : ControllerBase {
     private readonly IWorkFlowEngineService _service;
 
     public WorkFlowEngineControllerBase(IWorkFlowEngineService service) {

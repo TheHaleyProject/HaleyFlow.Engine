@@ -1,4 +1,5 @@
 using Haley.Abstractions;
+using Haley.Enums;
 using Haley.Models;
 using Haley.Services;
 using Microsoft.Extensions.Configuration;
@@ -17,21 +18,30 @@ namespace Haley.Utils {
             return new WorkFlowEngine(dal, input.Options);
         }
 
-        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, IConfiguration configuration, string sectionName = "WorkFlowEngine", bool autoStart = true) {
+        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, IConfiguration configuration, string sectionName = "WorkFlowEngine", bool autoStart = true, Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>>? resolveConsumerGuids = null) {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configuration);
             if (string.IsNullOrWhiteSpace(sectionName)) throw new ArgumentException("Section name is required.", nameof(sectionName));
 
             services.Configure<EngineServiceOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
+            ConfigureResolveConsumerGuids(services, resolveConsumerGuids);
             return AddWorkFlowEngineServiceCore(services, autoStart);
         }
 
-        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineServiceOptions> configureOptions, bool autoStart = true) {
+        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineServiceOptions> configureOptions, bool autoStart = true, Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>>? resolveConsumerGuids = null) {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configureOptions);
 
             services.Configure(configureOptions);
+            ConfigureResolveConsumerGuids(services, resolveConsumerGuids);
             return AddWorkFlowEngineServiceCore(services, autoStart);
+        }
+
+        private static void ConfigureResolveConsumerGuids(IServiceCollection services, Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>>? resolveConsumerGuids) {
+            if (resolveConsumerGuids == null) return;
+            services.PostConfigure<EngineServiceOptions>(options => {
+                options.ResolveConsumerGuids = resolveConsumerGuids;
+            });
         }
 
         static IServiceCollection AddWorkFlowEngineServiceCore(IServiceCollection services, bool autoStart) {
@@ -63,3 +73,6 @@ namespace Haley.Utils {
         }
     }
 }
+
+
+

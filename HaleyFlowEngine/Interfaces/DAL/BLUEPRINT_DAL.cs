@@ -27,6 +27,7 @@ namespace Haley.Abstractions {
         public Task<DbRow?> GetPolicyForDefinition(long definitionId, DbExecutionLoad load = default);
         public Task<DbRow?> GetPolicyForDefVersion(long defVersionId, DbExecutionLoad load = default);
     }
+
     internal interface IBlueprintWriteDAL {
         Task<int> EnsureEnvironmentByCodeAsync(int envCode, string envDisplayName, DbExecutionLoad load = default);
         Task<int> EnsureDefinitionByEnvIdAsync(int envId, string defDisplayName, string? description, DbExecutionLoad load = default);
@@ -41,12 +42,14 @@ namespace Haley.Abstractions {
         Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, DbExecutionLoad load = default);
         Task<DbRows> ListByPolicyIdAsync(long policyId, DbExecutionLoad load = default);
     }
+
     internal interface IConsumerDAL {
         Task<int?> GetIdByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);
         Task<int?> GetIdAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default);
         Task<int> UpsertBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);
         Task<int> UpdateBeatByIdAsync(int consumerId, DbExecutionLoad load = default);
         Task<IReadOnlyList<int>> ListAliveIdsByEnvIdAsync(int envId, int ttlSeconds, DbExecutionLoad load = default);
+        Task<IReadOnlyList<int>> ListAliveIdsAsync(int ttlSeconds, DbExecutionLoad load = default);
         Task<int> IsAliveByIdAsync(int consumerId, int ttlSeconds, DbExecutionLoad load = default);
         Task<int> IsAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default);
         Task<DateTime?> GetLastBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);

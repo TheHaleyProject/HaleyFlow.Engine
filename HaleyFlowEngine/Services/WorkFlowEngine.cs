@@ -56,32 +56,42 @@ namespace Haley.Services {
             StateMachine = new StateMachine(_dal, BlueprintManager);
             PolicyEnforcer =  new PolicyEnforcer(_dal);
 
-            // WHY ResolveConsumers is a callback and not a DB query:
-            //
-            // The engine stores consumer rows (via RegisterConsumerAsync) and knows they are alive (via
-            // BeatConsumerAsync), but it has NO knowledge of WHICH consumer handles WHICH definition.
-            // That mapping is entirely application-level — and intentionally so.
-            //
-            // Think of the real world: one environment might have 20 definitions (loan-approval, mortgage,
-            // onboarding, ...) and 5 consumer processes. Each process only cares about 2-3 definitions.
-            // A consumer doesn't register for all definitions — it subscribes only to the ones it handles.
-            //
-            // This is the responsibility of Haley.Flow.Hub (the orchestration layer that sits above the engine):
-            //   - Hub knows every consumer's subscriptions: consumer-A → [loan-approval, onboarding]
-            //   - When the engine asks "for defVersionId X, give me the consumer IDs", Hub answers that question
-            //   - The engine then uses those IDs to create ack_consumer rows → fan-out events → track delivery
-            //
-            // The callback signature is:
-            //   Func<LifeCycleConsumerType, long? defVersionId, CancellationToken, Task<IReadOnlyList<long>>>
-            //
-            // LifeCycleConsumerType distinguishes what kind of consumers are needed:
-            //   Transition — consumer IDs that should receive lifecycle transition events for this def
-            //   Hook       — consumer IDs that should receive hook events for this def (may differ)
-            //   Monitor    — consumer IDs the monitor should run resends for (defVersionId is null here —
-            //                the monitor just needs "all active consumers", not filtered by definition)
-            //
-            // If ResolveConsumers is not supplied, TriggerAsync will throw (no consumers = nothing to fan-out to).
-            var resolveConsumers = _opt.ResolveConsumers ?? ((LifeCycleConsumerType ty, long? id /* DefVersionId */, CancellationToken ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+            // Consumer resolution at the boundary should use natural keys, not DB surrogate IDs.
+            // Preferred contract:
+            //   ResolveConsumerGuids(type, envCode, defName) -> consumer GUIDs
+            // Engine maps GUIDs to numeric consumer IDs internally for ACK storage.
+            var resolveConsumers = _opt.ResolveConsumers;
+            if (_opt.ResolveConsumerGuids != null) {
+                var resolveConsumerGuids = _opt.ResolveConsumerGuids;
+                resolveConsumers = async (LifeCycleConsumerType ty, long? defVersionId, CancellationToken ct) => {
+                    ct.ThrowIfCancellationRequested();
+
+                    //All Consumers become monitors?? Really?
+                    if (ty == LifeCycleConsumerType.Monitor) {
+                        var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30;
+                        var ids = await _dal.Consumer.ListAliveIdsAsync(ttlSeconds, new DbExecutionLoad(ct));
+                        if (ids.Count == 0) return Array.Empty<long>();
+
+                        var arr = new long[ids.Count];
+                        for (var i = 0; i < ids.Count; i++) arr[i] = ids[i];
+                        return arr;
+                    }
+
+                    if (!defVersionId.HasValue || defVersionId.Value <= 0) return Array.Empty<long>();
+
+                    var bp = await BlueprintManager.GetBlueprintByVersionIdAsync(defVersionId.Value, ct);
+                    if (bp.EnvCode <= 0 || string.IsNullOrWhiteSpace(bp.DefName)) return Array.Empty<long>();
+
+                    var guids = await resolveConsumerGuids(ty, bp.EnvCode, bp.DefName, ct);
+                    return await ResolveConsumerIdsByGuidsAsync(bp.EnvCode, guids, ct);
+                };
+            }
+
+            resolveConsumers ??= ((LifeCycleConsumerType ty, long? id /* DefVersionId */, CancellationToken ct)
+                => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
+
+            // Keep legacy option populated so existing internals that read ResolveConsumers continue to work.
+            _opt.ResolveConsumers = resolveConsumers;
 
             // Monitor uses the same callback but without a defVersionId — it wants ALL active consumers
             // so it can resend overdue ACK rows for any of them, regardless of which definition they belong to.
@@ -325,6 +335,25 @@ namespace Haley.Services {
             return _reopenOrchestrator.ReopenAsync(instanceGuid, actor, ct);
         }
 
+        private async Task<IReadOnlyList<long>> ResolveConsumerIdsByGuidsAsync(int envCode, IReadOnlyList<string>? consumerGuids, CancellationToken ct) {
+            ct.ThrowIfCancellationRequested();
+            if (consumerGuids == null || consumerGuids.Count == 0) return Array.Empty<long>();
+
+            var ids = new HashSet<long>();
+            for (var i = 0; i < consumerGuids.Count; i++) {
+                ct.ThrowIfCancellationRequested();
+                var guid = consumerGuids[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(guid)) continue;
+
+                var consumerId = await BlueprintManager.ResolveConsumerIdAsync(envCode, guid, ct);
+                if (consumerId > 0) ids.Add(consumerId);
+            }
+
+            if (ids.Count == 0) return Array.Empty<long>();
+            var arr = new long[ids.Count];
+            ids.CopyTo(arr);
+            return arr;
+        }
         async Task<DbRow?> ResolveInstanceRowByKeyAsync(LifeCycleInstanceKey key, DbExecutionLoad load) {
             if (key == null) throw new ArgumentNullException(nameof(key));
 
@@ -392,3 +421,5 @@ namespace Haley.Services {
         public Task<int> RegisterEnvironmentAsync(int envCode, string? envDisplayName, CancellationToken ct) => BlueprintManager.EnsureEnvironmentAsync(envCode, envDisplayName, new DbExecutionLoad(ct));
     }
 }
+
+
