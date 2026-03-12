@@ -26,8 +26,8 @@ Admin API for Haley Flow Engine + Consumer monitoring.
 
 Set values in `appsettings.json`:
 
-- `WorkflowAdmin.EnvCode`
-- `WorkflowAdmin.EngineConnectionString`
-- `WorkflowAdmin.ConsumerConnectionString`
+- `WorkFlowEngine.*` (engine bootstrap/runtime options)
+- `WorkFlowConsumer.*` (consumer bootstrap/runtime options)
+  - `WorkFlowConsumer.wrapper_assemblies` controls wrapper discovery for test use-cases (for example: `"WFE.Lib"`).
 - `WorkflowAdmin.DefaultTake`
 - `WorkflowAdmin.MaxTake`

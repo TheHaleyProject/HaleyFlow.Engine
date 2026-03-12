@@ -22,11 +22,11 @@ namespace Haley.Utils {
             ArgumentNullException.ThrowIfNull(configuration);
             if (string.IsNullOrWhiteSpace(sectionName)) throw new ArgumentException("Section name is required.", nameof(sectionName));
 
-            services.Configure<EngineBootstrapOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
+            services.Configure<EngineServiceOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
             return AddWorkFlowEngineServiceCore(services, autoStart);
         }
 
-        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineBootstrapOptions> configureOptions, bool autoStart = true) {
+        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineServiceOptions> configureOptions, bool autoStart = true) {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configureOptions);
 
@@ -47,7 +47,7 @@ namespace Haley.Utils {
                 }
             }
 
-            services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<EngineBootstrapOptions>>().Value);
+            services.TryAddSingleton(sp => sp.GetRequiredService<IOptions<EngineServiceOptions>>().Value);
             services.TryAddSingleton<WorkFlowEngineService>();
             services.TryAddSingleton<IWorkFlowEngineService>(sp => sp.GetRequiredService<WorkFlowEngineService>());
             services.TryAddSingleton<IWorkFlowEngineAccessor>(sp => sp.GetRequiredService<WorkFlowEngineService>());
@@ -56,7 +56,7 @@ namespace Haley.Utils {
                 //to make the engine start without a manual call
                 //IHostedService is a multi-registration collectoin.
                 //TryAddEnumerable to ensure we dont add duplicate registration
-                services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WorkFlowEngineHostedService>());
+                services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WorkFlowEngineBootstrap>());
             }
 
             return services;

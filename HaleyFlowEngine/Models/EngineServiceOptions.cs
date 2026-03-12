@@ -5,7 +5,7 @@ namespace Haley.Models;
 
 // Engine host options only.
 // Consumer identity/environment options belong to consumer-side initiator options.
-public sealed class EngineBootstrapOptions : WorkFlowEngineOptions {
+public sealed class EngineServiceOptions : WorkFlowEngineOptions {
     [ConfigurationKeyName("adapter_key")]
     public string EngineAdapterKey { get; set; } = string.Empty;
 }

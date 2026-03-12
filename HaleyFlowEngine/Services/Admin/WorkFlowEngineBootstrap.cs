@@ -3,10 +3,10 @@ using Microsoft.Extensions.Hosting;
 
 namespace Haley.Services;
 
-internal sealed class WorkFlowEngineHostedService : IHostedService {
+internal sealed class WorkFlowEngineBootstrap : IHostedService {
     private readonly IWorkFlowEngineService _engineService;
 
-    public WorkFlowEngineHostedService(IWorkFlowEngineService engineService) {
+    public WorkFlowEngineBootstrap(IWorkFlowEngineService engineService) {
         _engineService = engineService ?? throw new ArgumentNullException(nameof(engineService));
     }
 
