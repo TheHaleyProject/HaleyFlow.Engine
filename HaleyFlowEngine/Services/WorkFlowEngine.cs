@@ -66,17 +66,13 @@ namespace Haley.Services {
                 resolveConsumers = async (LifeCycleConsumerType ty, long? defVersionId, CancellationToken ct) => {
                     ct.ThrowIfCancellationRequested();
 
-                    //All Consumers become monitors?? Really?
+                    // Monitor list must come from the caller policy. We do not implicitly treat
+                    // all alive consumers as monitors.
                     if (ty == LifeCycleConsumerType.Monitor) {
-                        var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30;
-                        var ids = await _dal.Consumer.ListAliveIdsAsync(ttlSeconds, new DbExecutionLoad(ct));
-                        if (ids.Count == 0) return Array.Empty<long>();
-
-                        var arr = new long[ids.Count];
-                        for (var i = 0; i < ids.Count; i++) arr[i] = ids[i];
-                        return arr;
+                        return await ResolveMonitorConsumerIdsByGuidsAsync(resolveConsumerGuids, ct);
                     }
 
+                    //Transition and Hooks need definition
                     if (!defVersionId.HasValue || defVersionId.Value <= 0) return Array.Empty<long>();
 
                     var bp = await BlueprintManager.GetBlueprintByVersionIdAsync(defVersionId.Value, ct);
@@ -93,8 +89,8 @@ namespace Haley.Services {
             // Keep legacy option populated so existing internals that read ResolveConsumers continue to work.
             _opt.ResolveConsumers = resolveConsumers;
 
-            // Monitor uses the same callback but without a defVersionId — it wants ALL active consumers
-            // so it can resend overdue ACK rows for any of them, regardless of which definition they belong to.
+            // Monitor uses the same callback without a defVersionId.
+            // The resolver policy decides which consumers should be monitored.
             var resolveMonitors = (LifeCycleConsumerType ty, CancellationToken ct) => resolveConsumers.Invoke(ty, null, ct);
 
             AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter);
@@ -335,6 +331,49 @@ namespace Haley.Services {
             return _reopenOrchestrator.ReopenAsync(instanceGuid, actor, ct);
         }
 
+        private async Task<IReadOnlyList<long>> ResolveMonitorConsumerIdsByGuidsAsync(Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>> resolveConsumerGuids, CancellationToken ct) {
+            ct.ThrowIfCancellationRequested();
+
+            var ttlSeconds = _opt.ConsumerTtlSeconds > 0 ? _opt.ConsumerTtlSeconds : 30;
+            var envCodes = await _dal.Consumer.ListAliveEnvCodesAsync(ttlSeconds, new DbExecutionLoad(ct));
+            if (envCodes.Count == 0) return Array.Empty<long>();
+
+            var monitorIds = new HashSet<long>();
+            for (var i = 0; i < envCodes.Count; i++) {
+                ct.ThrowIfCancellationRequested();
+
+                var envCode = envCodes[i];
+                if (envCode <= 0) continue;
+
+                IReadOnlyList<string>? guids;
+                try {
+                    guids = await resolveConsumerGuids(LifeCycleConsumerType.Monitor, envCode, null, ct);
+                } catch (OperationCanceledException) {
+                    throw;
+                } catch (Exception ex) {
+                    FireNotice(LifeCycleNotice.Warn("MONITOR_CONSUMER_RESOLVE_ERROR", "MONITOR_CONSUMER_RESOLVE_ERROR",
+                        $"Monitor consumer resolution failed for env={envCode}. Skipping this env.",
+                        new Dictionary<string, object?> {
+                            ["envCode"] = envCode,
+                            ["error"] = ex.Message
+                        }));
+                    continue;
+                }
+
+                if (guids == null || guids.Count == 0) continue;
+
+                var ids = await ResolveConsumerIdsByGuidsAsync(envCode, guids, ct);
+                for (var j = 0; j < ids.Count; j++) {
+                    var id = ids[j];
+                    if (id > 0) monitorIds.Add(id);
+                }
+            }
+
+            if (monitorIds.Count == 0) return Array.Empty<long>();
+            var arr = new long[monitorIds.Count];
+            monitorIds.CopyTo(arr);
+            return arr;
+        }
         private async Task<IReadOnlyList<long>> ResolveConsumerIdsByGuidsAsync(int envCode, IReadOnlyList<string>? consumerGuids, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
             if (consumerGuids == null || consumerGuids.Count == 0) return Array.Empty<long>();
@@ -345,8 +384,20 @@ namespace Haley.Services {
                 var guid = consumerGuids[i]?.Trim();
                 if (string.IsNullOrWhiteSpace(guid)) continue;
 
-                var consumerId = await BlueprintManager.ResolveConsumerIdAsync(envCode, guid, ct);
-                if (consumerId > 0) ids.Add(consumerId);
+                try {
+                    var consumerId = await BlueprintManager.ResolveConsumerIdAsync(envCode, guid, ct);
+                    if (consumerId > 0) ids.Add(consumerId);
+                } catch (OperationCanceledException) {
+                    throw;
+                } catch (Exception ex) {
+                    FireNotice(LifeCycleNotice.Warn("CONSUMER_RESOLVE_ERROR", "CONSUMER_RESOLVE_ERROR",
+                        $"Failed to resolve consumer guid '{guid}' in env={envCode}. Skipping this guid.",
+                        new Dictionary<string, object?> {
+                            ["envCode"] = envCode,
+                            ["consumerGuid"] = guid,
+                            ["error"] = ex.Message
+                        }));
+                }
             }
 
             if (ids.Count == 0) return Array.Empty<long>();
@@ -421,5 +472,3 @@ namespace Haley.Services {
         public Task<int> RegisterEnvironmentAsync(int envCode, string? envDisplayName, CancellationToken ct) => BlueprintManager.EnsureEnvironmentAsync(envCode, envDisplayName, new DbExecutionLoad(ct));
     }
 }
-
-

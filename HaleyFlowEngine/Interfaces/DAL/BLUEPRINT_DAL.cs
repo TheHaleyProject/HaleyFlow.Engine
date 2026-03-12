@@ -50,6 +50,7 @@ namespace Haley.Abstractions {
         Task<int> UpdateBeatByIdAsync(int consumerId, DbExecutionLoad load = default);
         Task<IReadOnlyList<int>> ListAliveIdsByEnvIdAsync(int envId, int ttlSeconds, DbExecutionLoad load = default);
         Task<IReadOnlyList<int>> ListAliveIdsAsync(int ttlSeconds, DbExecutionLoad load = default);
+        Task<IReadOnlyList<int>> ListAliveEnvCodesAsync(int ttlSeconds, DbExecutionLoad load = default);
         Task<int> IsAliveByIdAsync(int consumerId, int ttlSeconds, DbExecutionLoad load = default);
         Task<int> IsAliveByEnvIdAndGuidAsync(int envId, string consumerGuid, int ttlSeconds, DbExecutionLoad load = default);
         Task<DateTime?> GetLastBeatByEnvIdAndGuidAsync(int envId, string consumerGuid, DbExecutionLoad load = default);

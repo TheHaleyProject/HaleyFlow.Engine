@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using WFE.AdminApi.Configuration;
 using WFE.AdminApi.Services;
+using Haley.Utils;
 
 namespace WFE.AdminApi.Controllers;
 
@@ -30,7 +31,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         await _testBootstrap.EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
         var rows = await _consumerService.ListWorkflowsAsync(normalizedSkip, normalizedTake, ct);
-        return Ok(ToDictionaries(rows));
+        return Ok(rows.ToWorkflowDictionaries());
     }
 
     [HttpGet("consumer/inbox")]
@@ -39,7 +40,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         await _testBootstrap.EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
         var rows = await _consumerService.ListInboxAsync(status, normalizedSkip, normalizedTake, ct);
-        return Ok(ToDictionaries(rows));
+        return Ok(rows.ToInboxDictionaries());
     }
 
     [HttpGet("consumer/outbox")]
@@ -47,7 +48,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         await _testBootstrap.EnsureInitializedAsync(ct);
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
         var rows = await _consumerService.ListOutboxAsync(status, normalizedSkip, normalizedTake, ct);
-        return Ok(ToDictionaries(rows));
+        return Ok(rows.ToOutboxDictionaries());
     }
 
     [HttpGet("test/usecases")]
@@ -80,20 +81,6 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         var maxTake = _adminOptions.MaxTake > 0 ? _adminOptions.MaxTake : 500;
         if (normalizedTake > maxTake) normalizedTake = maxTake;
         return (normalizedSkip, normalizedTake);
-    }
-
-    private static IReadOnlyList<Dictionary<string, object?>> ToDictionaries(DbRows rows) {
-        var result = new List<Dictionary<string, object?>>(rows.Count);
-        for (var i = 0; i < rows.Count; i++) {
-            var row = rows[i];
-            var item = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in row) {
-                item[entry.Key] = entry.Value == DBNull.Value ? null : entry.Value;
-            }
-            result.Add(item);
-        }
-
-        return result;
     }
 
     public sealed class CreateTestEntitiesRequest {

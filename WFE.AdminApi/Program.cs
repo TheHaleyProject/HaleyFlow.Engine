@@ -4,12 +4,16 @@ using Haley.Models;
 using Haley.Utils;
 using Microsoft.Extensions.Options;
 using WFE.Test;
+using Haley.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
 var adminSection = builder.Configuration.GetSection("WorkflowAdmin");
 
 builder.Services.Configure<WorkflowAdminOptions>(adminSection);
-builder.Services.AddWorkFlowEngineService(builder.Configuration);
+builder.Services.AddWorkFlowEngineService(builder.Configuration, resolveConsumerGuids: async (ty,envCode,defName,cts) => {
+    //what ever is the value, at th moment, let us return the same guid for testing purpose.
+    return  new List<string> { "89c52807-5054-47fc-9dee-dbb8b42218cb" };
+});
 
 // If autoStart=true, consumer can start polling before the test definitions/policies import finishes.
 builder.Services.AddWorkFlowConsumerService(builder.Configuration, sectionName: "WorkFlowConsumer", autoStart: false, addDeferredInProcessProxy: true);

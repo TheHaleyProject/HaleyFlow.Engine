@@ -8,6 +8,7 @@ namespace Haley.Internal {
         public const string UPDATE_BEAT_BY_ID = @$"UPDATE consumer SET last_beat=CURRENT_TIMESTAMP WHERE id={CONSUMER_ID};";
         public const string LIST_ALIVE_IDS_BY_ENV_ID = @$"SELECT id FROM consumer WHERE env={ENV_ID} AND TIMESTAMPDIFF(SECOND, last_beat, CURRENT_TIMESTAMP) <= {TTL_SECONDS};";
         public const string LIST_ALIVE_IDS = @$"SELECT id FROM consumer WHERE TIMESTAMPDIFF(SECOND, last_beat, CURRENT_TIMESTAMP) <= {TTL_SECONDS};";
+        public const string LIST_ALIVE_ENV_CODES = @$"SELECT DISTINCT e.code AS env_code FROM consumer c JOIN environment e ON e.id = c.env WHERE TIMESTAMPDIFF(SECOND, c.last_beat, CURRENT_TIMESTAMP) <= {TTL_SECONDS};";
         public const string IS_ALIVE_BY_ID = @$"SELECT CASE WHEN TIMESTAMPDIFF(SECOND, last_beat, CURRENT_TIMESTAMP) <= {TTL_SECONDS} THEN 1 ELSE 0 END AS alive FROM consumer WHERE id={CONSUMER_ID};";
 
         public const string IS_ALIVE_BY_ENV_ID_AND_GUID = @$"SELECT CASE WHEN TIMESTAMPDIFF(SECOND, last_beat, CURRENT_TIMESTAMP) <= {TTL_SECONDS} THEN 1 ELSE 0 END AS alive FROM consumer WHERE env={ENV_ID} AND consumer_guid=lower(trim({CONSUMER_GUID})) LIMIT 1;";

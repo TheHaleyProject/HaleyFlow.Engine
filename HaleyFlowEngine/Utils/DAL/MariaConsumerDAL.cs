@@ -29,6 +29,10 @@ namespace Haley.Internal {
             return rows.Select(r => (int)r[KEY_ID]).ToArray();
         }
 
+        public async Task<IReadOnlyList<int>> ListAliveEnvCodesAsync(int ttlSeconds, DbExecutionLoad load = default) {
+            var rows = await Db.RowsAsync(QRY_CONSUMER.LIST_ALIVE_ENV_CODES, load, (TTL_SECONDS, ttlSeconds));
+            return rows.Select(r => (int)r[KEY_ENV_CODE]).ToArray();
+        }
         public Task<int> IsAliveByIdAsync(int consumerId, int ttlSeconds, DbExecutionLoad load = default)
             => Db.ScalarAsync<int>(QRY_CONSUMER.IS_ALIVE_BY_ID, load, (CONSUMER_ID, consumerId), (TTL_SECONDS, ttlSeconds));
 
@@ -55,6 +59,3 @@ namespace Haley.Internal {
 
     }
 }
-
-
-

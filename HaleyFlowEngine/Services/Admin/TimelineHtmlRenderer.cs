@@ -27,7 +27,7 @@ internal static class TimelineHtmlRenderer {
         WriteHead(sb);
 
         // Outer shell: flex column filling the full viewport
-        sb.Append("""<div class="max-w-3xl w-full mx-auto px-4" style="height:100vh;display:flex;flex-direction:column;padding-top:2.5rem">\n""");
+        sb.Append("""<div class="max-w-3xl w-full mx-auto px-4" style="height:100vh;display:flex;flex-direction:column;padding-top:2.5rem">""");
 
         if (root.TryGetProperty("instance", out var inst) &&
             root.TryGetProperty("timeline", out var tl) &&
