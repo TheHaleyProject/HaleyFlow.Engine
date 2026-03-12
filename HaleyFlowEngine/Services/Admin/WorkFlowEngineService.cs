@@ -6,7 +6,7 @@ using System.Diagnostics;
 
 namespace Haley.Services;
 
-public class WorkFlowEngineService : IWorkFlowEngineService, IWorkFlowEngineAccessor, IAsyncDisposable {
+public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
 
     private readonly EngineServiceOptions _options;
     private readonly AdapterGateway _agw;

@@ -53,7 +53,6 @@ public sealed class WorkflowTestBootstrap {
     private readonly WorkflowAdminOptions _adminOptions;
     private readonly ConsumerServiceOptions _consumerOptions;
     private readonly IWorkFlowEngineService _engineService;
-    private readonly IWorkFlowEngineAccessor _engineAccessor;
     private readonly IWorkFlowConsumerService _consumerService;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
@@ -64,12 +63,10 @@ public sealed class WorkflowTestBootstrap {
         IOptions<WorkflowAdminOptions> adminOptions,
         IOptions<ConsumerServiceOptions> consumerOptions,
         IWorkFlowEngineService engineService,
-        IWorkFlowEngineAccessor engineAccessor,
         IWorkFlowConsumerService consumerService) {
         _adminOptions = adminOptions?.Value ?? throw new ArgumentNullException(nameof(adminOptions));
         _consumerOptions = consumerOptions?.Value ?? throw new ArgumentNullException(nameof(consumerOptions));
         _engineService = engineService ?? throw new ArgumentNullException(nameof(engineService));
-        _engineAccessor = engineAccessor ?? throw new ArgumentNullException(nameof(engineAccessor));
         _consumerService = consumerService ?? throw new ArgumentNullException(nameof(consumerService));
     }
 
@@ -83,7 +80,7 @@ public sealed class WorkflowTestBootstrap {
             // Wrapper registration is consumer-side. Assemblies are resolved by WorkFlowConsumerService
             // from ConsumerBootstrapOptions.WrapperAssemblies before the consumer runtime starts.
             await _engineService.EnsureHostInitializedAsync(ct);
-            _engine = await _engineAccessor.GetEngineAsync(ct);
+            _engine = await _engineService.GetEngineAsync(ct);
 
             await ImportUseCasesAsync(ct);
             await _consumerService.EnsureHostInitializedAsync(ct);
