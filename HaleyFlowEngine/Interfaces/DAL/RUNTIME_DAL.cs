@@ -41,6 +41,6 @@ namespace Haley.Abstractions {
 
     internal interface ILifeCycleTimeoutDAL {
         Task<DbRows> ListDuePagedAsync(uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default);
-        Task<int> InsertIgnoreAsync(long entryLcId, DbExecutionLoad load = default);
+        Task<int> InsertIgnoreAsync(long entryLcId, int? maxRetry, DbExecutionLoad load = default);
     }
 }

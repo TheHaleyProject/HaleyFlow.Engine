@@ -93,15 +93,16 @@ namespace Haley.Services {
                 var stateRaw = t.TryGetProperty(KEY_STATE, out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
                 if (string.IsNullOrWhiteSpace(stateRaw)) continue;
 
-                var stateName = stateRaw.Normalize(true);             
+                var stateName = stateRaw.Normalize(true);
                 var durationMinutes = ParseTimeoutMinutes(t) ?? 0; // "P2D" -> 2880
                 var mode = ParseTimeoutMode(t);                         // 0 once, 1 repeat
                 var eventCode = ParseTimeoutEventCode(t);               // nullable
+                var maxRetry = ParseMaxRetry(t);                        // nullable; only relevant for mode=1 (repeat) Case B
 
                 // You can choose to skip invalid durations, or throw. I prefer throw during import.
                 if (durationMinutes <= 0) throw new ArgumentException($"Invalid timeout duration for state '{stateRaw}'.");
 
-                await _dal.BlueprintWrite.InsertAsync(policyId, stateName, durationMinutes, mode, eventCode, load);
+                await _dal.BlueprintWrite.InsertAsync(policyId, stateName, durationMinutes, mode, eventCode, maxRetry, load);
             }
         }
 
@@ -268,6 +269,11 @@ namespace Haley.Services {
             if (e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var c)) return c;
             if (e.ValueKind == JsonValueKind.String && int.TryParse(e.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cs)) return cs;
             return null;
+        }
+
+        static int? ParseMaxRetry(JsonElement t) {
+            var n = t.GetInt(KEY_MAX_RETRY) ?? t.GetInt(KEY_MAX_RETRY_CAMEL);
+            return n > 0 ? n : null;
         }
 
     }

@@ -39,7 +39,7 @@ namespace Haley.Abstractions {
         Task<long> EnsurePolicyByHashAsync(string hash, string content, DbExecutionLoad load = default);
         Task<int> AttachPolicyToDefinitionByEnvCodeAndDefNameAsync(int envCode, string defName, long policyId, DbExecutionLoad load = default);
         Task<int> DeleteByPolicyIdAsync(long policyId, DbExecutionLoad load = default);
-        Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, DbExecutionLoad load = default);
+        Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, int? maxRetry, DbExecutionLoad load = default);
         Task<DbRows> ListByPolicyIdAsync(long policyId, DbExecutionLoad load = default);
     }
 

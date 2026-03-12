@@ -802,8 +802,45 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
       <li>Otherwise: increment trigger count, set next <code>next_due</code>, fire <code>ACK_RETRY</code>, re-raise event</li>
     </ul>
 
-    <h4 class="mini-title">C) Policy-Defined Timeout Automation</h4>
-    <p>When a timeout is due, the engine auto-triggers the <code>timeout_event</code> through the same transactional pipeline as a normal application trigger. The <code>lc_timeout</code> table records completion for idempotency.</p>
+    <h4 class="mini-title">C) Policy-Defined Timeout Processing</h4>
+    <p>States with a <code>timeouts</code> policy rule are owned exclusively by this job — the stale scan (job A) skips them entirely. The <code>lc_timeout</code> table acts as an idempotency marker. Resolution in both cases is natural: once the instance transitions out, the query stops returning it (no explicit "mark resolved" step needed).</p>
+
+    <h5 style="margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--heading)">Case A — <code>timeout_event</code> is set</h5>
+    <p>The engine auto-moves the instance without human intervention:</p>
+    <ol>
+      <li><strong>INSERT into <code>lc_timeout</code> first</strong> (idempotent) — marker is written <em>before</em> <code>TriggerAsync</code> so a mid-process crash cannot cause a double-fire on the next tick</li>
+      <li><strong><code>TriggerAsync(entityId, event = timeout_event_code, actor = "engine.monitor")</code></strong> — goes through the full transactional pipeline: new lifecycle entry, hooks, ACKs, dispatch</li>
+      <li>Fire <code>TIMEOUT_FIRED</code> notice (Info) for observability</li>
+    </ol>
+
+    <h5 style="margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--heading)">Case B — no <code>timeout_event</code> (advisory escalation)</h5>
+    <p>The engine raises <code>STATE_TIMEOUT_EXCEEDED</code> notices on a schedule but does <strong>not</strong> auto-move the instance. Someone must act on the notice to advance the workflow.</p>
+    <p>The <code>lc_timeout</code> table tracks per-entry scheduling state. Field names mirror <code>ack_consumer</code> for consistency:</p>
+    <ul style="margin:6px 0 10px 18px;font-size:13px">
+      <li><code>trigger_count</code> — how many notices have been sent so far</li>
+      <li><code>last_trigger</code> — when the last notice was fired (audit)</li>
+      <li><code>next_due</code> — when the next notice should fire</li>
+    </ul>
+    <ol>
+      <li><strong>First occurrence:</strong> <code>INSERT lc_timeout(lc_id, trigger_count=1, last_trigger=now, next_due=now+DefaultStateStaleDuration)</code> + fire <code>STATE_TIMEOUT_EXCEEDED</code></li>
+      <li><strong>Subsequent ticks:</strong> if <code>next_due &lt;= UTC_NOW</code> → increment <code>trigger_count</code>, update <code>last_trigger</code> and <code>next_due</code>, fire notice again with <code>triggerCount</code> in Data</li>
+      <li><strong>If <code>max_retry</code> is defined on the timeout rule</strong> (or falls back to engine-level <code>MaxRetryCount</code>) and <code>trigger_count &gt;= max_retry</code>: call <code>FailWithMessageAsync(instance)</code> + fire <code>STATE_TIMEOUT_FAILED</code></li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">Repeat interval uses DefaultStateStaleDuration, not the policy duration</div>
+      The policy <code>timeout</code> duration is the <strong>initial grace period</strong> — how long to wait before the first notice. After that, <code>DefaultStateStaleDuration</code> (engine config) controls the repeat cadence (e.g. every 12 h). This way a 7-day grace period doesn't mean waiting another 7 days between each escalation notice.
+    </div>
+
+    <h5 style="margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--heading)">The <code>timeout_mode</code> field</h5>
+    <ul>
+      <li><code>once</code> (default) — Case A: fire event once. Case B: send one notice then stop (<code>trigger_count</code> capped at 1).</li>
+      <li><code>repeat</code> — Case A: not meaningful (instance moves state anyway). Case B: keep notifying using <code>next_due</code> scheduling at <code>DefaultStateStaleDuration</code> intervals.</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">Implementation status — job C is pending</div>
+      The infrastructure exists: <code>QRY_LC_TIMEOUT.LIST_DUE_PAGED</code>, <code>MariaLifeCycleTimeoutDAL</code>, and the <code>lc_timeout</code> table (with <code>trigger_count</code>, <code>last_trigger</code>, <code>next_due</code>) are all in place. What is missing: <code>IWorkFlowDAL.LcTimeout</code> property and the wiring in <code>MonitorOrchestrator.RunMonitorOnceInternalAsync</code>. The notice codes <code>TIMEOUT_FIRED</code>, <code>STATE_TIMEOUT_EXCEEDED</code>, and <code>STATE_TIMEOUT_FAILED</code> are reserved but not yet emitted.
+    </div>
   </section>
 
   <!-- ──────────────── COMPONENTS ──────────────── -->
@@ -1365,18 +1402,33 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
 
   <section class="doc-section" id="pol-timeouts">
     <h3 class="sub-title">6.7 Timeouts</h3>
+    <p>Timeout rules are defined in the policy JSON under the top-level <code>"timeouts"</code> array. Each rule applies to one state and determines what happens when an instance stays in that state longer than the configured duration.</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Field</th><th>Description</th></tr></thead>
+        <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><code>state</code></td><td>State name the timeout applies to</td></tr>
-          <tr><td><code>timeout</code></td><td>ISO 8601 duration: <code>"P2D"</code> = 2 days, <code>"PT30M"</code> = 30 min</td></tr>
-          <tr><td><code>timeout_minutes</code></td><td>Alternative to <code>timeout</code> — direct integer in minutes</td></tr>
-          <tr><td><code>timeout_mode</code></td><td><code>"once"</code> (default) or <code>"repeat"</code></td></tr>
-          <tr><td><code>timeout_event</code></td><td>Event code auto-triggered when timeout fires</td></tr>
+          <tr><td><code>state</code></td><td>Yes</td><td>State name the timeout applies to</td></tr>
+          <tr><td><code>timeout</code></td><td>Yes*</td><td>ISO 8601 duration: <code>"P2D"</code> = 2 days, <code>"PT30M"</code> = 30 min. Parsed at import time.</td></tr>
+          <tr><td><code>timeout_minutes</code></td><td>Yes*</td><td>Alternative to <code>timeout</code> — direct integer in minutes. Use one or the other.</td></tr>
+          <tr><td><code>timeout_mode</code></td><td>No</td><td><code>"once"</code> (default) or <code>"repeat"</code>. Controls re-fire behaviour — see below.</td></tr>
+          <tr><td><code>timeout_event</code></td><td>No</td><td>Event code auto-triggered by the monitor when the timeout fires (Case A). If omitted, a <code>STATE_TIMEOUT_EXCEEDED</code> notice is raised instead (Case B).</td></tr>
+          <tr><td><code>max_retry</code></td><td>No</td><td><em>Case B only.</em> Maximum number of <code>STATE_TIMEOUT_EXCEEDED</code> notices before the engine marks the instance Failed and fires <code>STATE_TIMEOUT_FAILED</code>. If omitted, falls back to the engine-level <code>MaxRetryCount</code>. Copied into <code>lc_timeout.max_retry</code> at insert time so the monitor never needs to re-join <code>timeouts</code>.</td></tr>
         </tbody>
       </table>
     </div>
+
+    <h4 class="mini-title">Two timeout behaviours</h4>
+    <p><strong>Case A — <code>timeout_event</code> is set:</strong> the monitor auto-triggers the event after the duration elapses. The instance moves without human intervention. An <code>lc_timeout</code> marker is written <em>before</em> the trigger for idempotency. The new lifecycle entry shows as a normal transition on the timeline.</p>
+    <p><strong>Case B — no <code>timeout_event</code>:</strong> the monitor raises <code>STATE_TIMEOUT_EXCEEDED</code> notices on a schedule. It does not auto-move the instance. The <code>lc_timeout</code> table tracks <code>trigger_count</code>, <code>last_trigger</code>, and <code>next_due</code> (same field pattern as <code>ack_consumer</code>) so re-noticing survives monitor restarts. The repeat cadence uses <code>DefaultStateStaleDuration</code> — not the policy <code>timeout</code> duration, which is only the initial grace period. Notices stop naturally when the instance transitions out of the state.</p>
+
+    <h4 class="mini-title"><code>timeout_mode</code> values</h4>
+    <ul style="margin:6px 0 0 18px">
+      <li><code>"once"</code> — Case A: fire once (standard). Case B: send one notice then stop.</li>
+      <li><code>"repeat"</code> — Case A: not meaningful (instance moves state anyway). Case B: keep notifying using <code>DefaultStateStaleDuration</code> as the repeat interval, rescheduling <code>next_due</code> after each notice. The policy <code>timeout</code> duration is the <strong>initial grace period only</strong> — not the repeat cadence.</li>
+    </ul>
+
+    <h4 class="mini-title">Mutual exclusivity with stale scan</h4>
+    <p>The monitor's stale scan (<code>STATE_STALE</code>) explicitly excludes states that have a timeout rule. If you configure a timeout, the stale scan will never fire for that state — the timeout job owns it entirely. This prevents duplicate notices for the same instance.</p>
   </section>
 
   <section class="doc-section" id="pol-lifecycle">
@@ -1409,8 +1461,8 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
           <tr><td><code>lc_data</code></td><td>Payload / actor per lifecycle entry</td><td><code>lc_id</code>, <code>actor</code>, <code>payload</code></td></tr>
           <tr><td><code>policy</code></td><td>Policy content (hashed)</td><td><code>id</code>, <code>hash</code>, <code>content</code></td></tr>
           <tr><td><code>def_policies</code></td><td>Policy ↔ definition link</td><td><code>definition</code>, <code>policy</code></td></tr>
-          <tr><td><code>timeouts</code></td><td>Timeout config per state+policy</td><td><code>policy_id</code>, <code>state_name</code>, <code>duration</code>, <code>mode</code>, <code>event_code</code></td></tr>
-          <tr><td><code>lc_timeout</code></td><td>Timeout processed tracking</td><td><code>lc_id</code></td></tr>
+          <tr><td><code>timeouts</code></td><td>Timeout config per state+policy</td><td><code>policy_id</code>, <code>state_name</code>, <code>duration</code> (minutes), <code>mode</code> (0=once,1=repeat), <code>event_code</code> (nullable), <code>max_retry</code> (nullable — Case B notice cap; NULL = use engine MaxRetryCount)</td></tr>
+          <tr><td><code>lc_timeout</code></td><td>Timeout processing marker per lifecycle entry. One row per lc entry that has been processed by the timeout job. Case A: row exists = event was fired (idempotency guard). Case B: row tracks repeat-notice scheduling.</td><td><code>lc_id</code> (PK), <code>created</code>, <code>trigger_count</code>, <code>last_trigger</code>, <code>next_due</code>, <code>max_retry</code> (copied from <code>timeouts.max_retry</code> at insert — avoids join on every monitor tick)</td></tr>
           <tr><td><code>consumer</code></td><td>Registered consumers + heartbeat</td><td><code>id</code>, <code>env</code>, <code>consumer_guid</code>, <code>last_beat</code></td></tr>
         </tbody>
       </table>
@@ -1842,7 +1894,10 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
           <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks were dispatched after all blocking hooks at the prior order completed</td><td><code>orderSeq</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; the originating ACK was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
-          <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance overdue in current state (no open ACKs, no policy timeout)</td><td><code>consumerId</code>, <code>instanceId</code>, <code>instanceGuid</code>, <code>stateName</code>, <code>staleSeconds</code></td></tr>
+          <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance overdue in current state (no open ACKs, no policy timeout configured). Fires only for states <em>without</em> a timeout rule.</td><td><code>consumerId</code>, <code>instanceId</code>, <code>instanceGuid</code>, <code>stateName</code>, <code>staleSeconds</code></td></tr>
+          <tr><td><code>TIMEOUT_FIRED</code></td><td><span class="badge info">Info</span></td><td><em>(Pending)</em> Monitor auto-triggered a timeout event (Case A — <code>timeout_event</code> set). Instance has been moved automatically.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>eventCode</code>, <code>lcId</code></td></tr>
+          <tr><td><code>STATE_TIMEOUT_EXCEEDED</code></td><td><span class="badge overdue">OverDue</span></td><td><em>(Pending)</em> Instance exceeded its policy-defined state deadline (Case B — no <code>timeout_event</code>). Fires repeatedly per schedule until instance transitions. <code>triggerCount</code> increments each time.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>triggerCount</code>, <code>staleSeconds</code></td></tr>
+          <tr><td><code>STATE_TIMEOUT_FAILED</code></td><td><span class="badge warn">Warn</span></td><td><em>(Pending)</em> Case B retry limit (<code>max_retry</code> on timeout rule, or engine <code>MaxRetryCount</code> if not set) reached — instance has been marked Failed by the engine.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>triggerCount</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -2053,38 +2108,73 @@ Console.WriteLine(ok.Applied); <span class="cm">// true</span>
 
   <section class="doc-section" id="ex-timeout">
     <h3 class="sub-title">Example 4 — Timeout Automation</h3>
-    <p>Define a timeout in the policy JSON. The monitor automatically triggers the event when the instance has been in that state past the configured duration — no application code needed to schedule it.</p>
-    <h4 class="mini-title">Policy JSON</h4>
+    <p>There are two timeout behaviours depending on whether <code>timeout_event</code> is specified. In both cases the stale scan is bypassed — states with a timeout rule are owned entirely by the timeout job.</p>
+
+    <h4 class="mini-title">Case A — Auto-transition (timeout_event set)</h4>
+    <p>The monitor fires <code>TriggerAsync</code> automatically after the duration elapses. No application code needed to schedule it. The transition appears on the timeline like any other transition.</p>
     <pre><code>{
   <span class="jk">"timeouts"</span>: [
     {
       <span class="jk">"state"</span>:         <span class="jv">"UnderReview"</span>,
-      <span class="jk">"timeout"</span>:       <span class="jv">"P2D"</span>,        <span class="cm">// ISO 8601: 2 days</span>
-      <span class="jk">"timeout_mode"</span>:  <span class="jv">"once"</span>,       <span class="cm">// default — fires once then stops</span>
-      <span class="jk">"timeout_event"</span>: <span class="jn">900</span>           <span class="cm">// event code 900 = "expire"</span>
+      <span class="jk">"timeout"</span>:       <span class="jv">"P2D"</span>,         <span class="cm">// ISO 8601: 2 days</span>
+      <span class="jk">"timeout_mode"</span>:  <span class="jv">"once"</span>,        <span class="cm">// fires once — instance moves, no re-fire needed</span>
+      <span class="jk">"timeout_event"</span>: <span class="jn">900</span>            <span class="cm">// event 900 = "Expire" → moves instance to Rejected</span>
+    },
+    {
+      <span class="jk">"state"</span>:         <span class="jv">"ReworkRequired"</span>,
+      <span class="jk">"timeout"</span>:       <span class="jv">"P7D"</span>,         <span class="cm">// 7 days to resubmit</span>
+      <span class="jk">"timeout_event"</span>: <span class="jn">4010</span>           <span class="cm">// ReworkExpired → Cancelled</span>
     }
   ]
+}</code><span class="lang-label">JSON</span></pre>
+    <pre><code><span class="cm">// Handle the resulting transition in your consumer wrapper:</span>
+[<span class="ty">TransitionHandler</span>(<span class="jn">900</span>)]
+<span class="kw">private</span> Task&lt;<span class="ty">AckOutcome</span>&gt; OnExpiredAsync(<span class="ty">ILifeCycleTransitionEvent</span> evt, <span class="ty">ConsumerContext</span> ctx) {
+    <span class="cm">// Instance was auto-moved to Rejected by the timeout monitor</span>
+    <span class="kw">return</span> Task.FromResult(<span class="ty">AckOutcome</span>.Processed);
 }
 
-<span class="cm">// For recurring reminders, use "repeat":</span>
-{ <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"timeout"</span>: <span class="jv">"PT6H"</span>, <span class="jk">"timeout_mode"</span>: <span class="jv">"repeat"</span>, <span class="jk">"timeout_event"</span>: <span class="jn">901</span> }</code><span class="lang-label">JSON</span></pre>
-    <pre><code><span class="cm">// Monitor fires TriggerAsync(event=900) automatically after 2 days.
-// Handle the resulting transition event in your consumer:</span>
-engine.EventRaised += <span class="kw">async</span> (e) => {
-    <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleTransitionEvent</span> t &amp;&amp; t.EventCode == <span class="jn">900</span>) {
-        <span class="cm">// Loan was force-moved to Rejected by timeout</span>
-        <span class="kw">await</span> _notifier.SendExpiredAsync(t.EntityId);
-        <span class="kw">await</span> engine.AckAsync(envCode, myGuid, t.AckGuid, <span class="ty">AckOutcome</span>.Processed);
+<span class="cm">// Observe via notice (optional):</span>
+engine.NoticeRaised += (n) => {
+    <span class="kw">if</span> (n.Code == <span class="st">"TIMEOUT_FIRED"</span>)
+        _logger.LogInformation(<span class="st">"Auto-timeout fired for {guid} event={code}"</span>,
+            n.Data[<span class="st">"instanceGuid"</span>], n.Data[<span class="st">"eventCode"</span>]);
+    <span class="kw">return</span> Task.CompletedTask;
+};</code><span class="lang-label">C#</span></pre>
+
+    <h4 class="mini-title">Case B — Advisory notices (no timeout_event)</h4>
+    <p>The instance is not moved automatically. The monitor fires <code>STATE_TIMEOUT_EXCEEDED</code> on a repeat schedule until someone advances the workflow. Set <code>max_retry</code> to fail the instance after N notices; if omitted the engine-level <code>MaxRetryCount</code> is used as the fallback.</p>
+    <pre><code>{
+  <span class="jk">"timeouts"</span>: [
+    {
+      <span class="jk">"state"</span>:        <span class="jv">"PendingApproval"</span>,
+      <span class="jk">"timeout"</span>:      <span class="jv">"P1D"</span>,          <span class="cm">// initial deadline: 1 day</span>
+      <span class="jk">"timeout_mode"</span>: <span class="jv">"repeat"</span>,       <span class="cm">// keep notifying on DefaultStateStaleDuration cadence</span>
+      <span class="jk">"max_retry"</span>:    <span class="jn">5</span>              <span class="cm">// after 5 notices, fail the instance</span>
+                                      <span class="cm">// omit to fall back to engine MaxRetryCount</span>
     }
+  ]
+}</code><span class="lang-label">JSON</span></pre>
+    <pre><code><span class="cm">// Handle escalation notices:</span>
+engine.NoticeRaised += (n) => {
+    <span class="kw">if</span> (n.Code == <span class="st">"STATE_TIMEOUT_EXCEEDED"</span>) {
+        <span class="kw">var</span> count = (<span class="ty">int</span>)n.Data[<span class="st">"triggerCount"</span>];
+        <span class="kw">var</span> stale = (<span class="ty">long</span>)n.Data[<span class="st">"staleSeconds"</span>];
+        _logger.LogWarning(<span class="st">"Approval overdue: {guid} count={n} stale={s}s"</span>,
+            n.Data[<span class="st">"instanceGuid"</span>], count, stale);
+        <span class="cm">// Escalate on third notice:</span>
+        <span class="kw">if</span> (count >= <span class="jn">3</span>) <span class="kw">await</span> _escalation.NotifyManagerAsync(n.Data[<span class="st">"entityId"</span>]);
+    }
+    <span class="kw">if</span> (n.Code == <span class="st">"STATE_TIMEOUT_FAILED"</span>)
+        _logger.LogError(<span class="st">"Instance {guid} failed after max timeout notices"</span>, n.Data[<span class="st">"instanceGuid"</span>]);
+    <span class="kw">return</span> Task.CompletedTask;
 };
 
-<span class="cm">// Stale warning (no policy timeout configured for a state):</span>
+<span class="cm">// For states without any timeout rule, the global stale scan fires STATE_STALE instead:</span>
 engine.NoticeRaised += (n) => {
-    <span class="kw">if</span> (n.Code == <span class="st">"STATE_STALE"</span>) {
-        <span class="kw">var</span> staleSeconds = (<span class="ty">long</span>)n.Data[<span class="st">"staleSeconds"</span>];
-        _logger.LogWarning(<span class="st">"Instance {guid} stuck for {s}s in {state}"</span>,
-            n.Data[<span class="st">"instanceGuid"</span>], staleSeconds, n.Data[<span class="st">"stateName"</span>]);
-    }
+    <span class="kw">if</span> (n.Code == <span class="st">"STATE_STALE"</span>)
+        _logger.LogWarning(<span class="st">"No timeout rule — instance {guid} stuck {s}s in {state}"</span>,
+            n.Data[<span class="st">"instanceGuid"</span>], n.Data[<span class="st">"staleSeconds"</span>], n.Data[<span class="st">"stateName"</span>]);
     <span class="kw">return</span> Task.CompletedTask;
 };</code><span class="lang-label">C#</span></pre>
   </section>

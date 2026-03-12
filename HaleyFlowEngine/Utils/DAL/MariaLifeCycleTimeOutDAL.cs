@@ -9,8 +9,8 @@ namespace Haley.Internal {
         public Task<DbRows> ListDuePagedAsync(uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_LC_TIMEOUT.LIST_DUE_PAGED, load, (FLAGS, excludedInstanceFlagsMask),(SKIP, skip),(TAKE, take));
 
-        public Task<int> InsertIgnoreAsync(long entryLcId, DbExecutionLoad load = default)
-            => Db.ExecAsync(QRY_LC_TIMEOUT.INSERT_IGNORE, load, (LC_ID, entryLcId));
+        public Task<int> InsertIgnoreAsync(long entryLcId, int? maxRetry, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_LC_TIMEOUT.INSERT_IGNORE, load, (LC_ID, entryLcId), (MAX_RETRY, maxRetry));
     }
 
 }

@@ -6,10 +6,69 @@ using System.Collections.Concurrent;
 using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services.Orchestrators {
-    // Executes monitor duties:
-    // - resend overdue lifecycle/hook events
-    // - suspend instances when max retry is exceeded for blocking paths
-    // - publish stale-default-state notices
+    // Executes monitor duties each tick, in order:
+    //
+    // A) STALE SCAN  (RaiseOverDueDefaultStateStaleNoticesAsync)
+    //    Fires STATE_STALE notices for instances stuck in a state with no open ACKs and NO policy
+    //    timeout rule. States that DO have a timeout rule are excluded — they are owned by job C.
+    //    Read-only: no DB mutations. In-memory throttle prevents flooding on every tick.
+    //
+    // B) ACK RE-DISPATCH  (ResendDispatchKindAsync, per consumer)
+    //    Resends overdue Pending and Delivered ACK rows. Handles down-consumer backoff (pushes
+    //    next_due forward without burning trigger_count). Suspends instances when a blocking hook
+    //    exhausts MaxRetryCount.
+    //
+    // C) POLICY TIMEOUT PROCESSING  ← PENDING IMPLEMENTATION
+    //    States with a timeouts policy rule are handled exclusively here; the stale scan skips them.
+    //    The infrastructure is in place: QRY_LC_TIMEOUT.LIST_DUE_PAGED, MariaLifeCycleTimeoutDAL,
+    //    and the lc_timeout table all exist. What is missing is the wiring in this orchestrator
+    //    and the IWorkFlowDAL.LcTimeout property.
+    //
+    //    Two distinct cases based on whether timeout_event is set in the policy rule:
+    //
+    //    Case A — timeout_event IS set (e.g. "P7D" → event 4010):
+    //      The engine auto-moves the instance without human intervention.
+    //      Flow:
+    //        1. INSERT INTO lc_timeout(lc_id) FIRST — idempotency marker before TriggerAsync.
+    //           If the process crashes after insert but before trigger, the next monitor tick
+    //           finds the marker and skips, preventing a double-fire.
+    //        2. TriggerAsync(entityId, event = timeout_event_code, actor = "engine.monitor",
+    //           AckRequired = false) — goes through the full transactional pipeline.
+    //        3. Fire TIMEOUT_FIRED notice (Info) for observability.
+    //      Resolution: instance moves to a new state → the old lc_id no longer satisfies
+    //        (l.to_state = i.current_state) in LIST_DUE_PAGED → query naturally stops returning it.
+    //
+    //    Case B — no timeout_event (advisory / escalation timeout):
+    //      The engine raises STATE_TIMEOUT_EXCEEDED notices repeatedly; it does NOT auto-move.
+    //      Someone must act on the notice to advance the workflow.
+    //      lc_timeout schema (mirrors ack_consumer field naming for consistency):
+    //        lc_id          BIGINT PK  — lifecycle entry that entered the timed state
+    //        created        DATETIME   — when the row was first created (first timeout processed)
+    //        trigger_count  INT        — how many STATE_TIMEOUT_EXCEEDED notices have been sent
+    //        last_trigger   DATETIME   — when the last notice was fired (for audit)
+    //        next_due       DATETIME   — when the next notice should fire (scheduled after each send)
+    //      Flow:
+    //        1. First time: INSERT lc_timeout(lc_id) with trigger_count=1, last_trigger=now,
+    //           next_due = now + DefaultStateStaleDuration  →  fire STATE_TIMEOUT_EXCEEDED notice.
+    //        2. Subsequent ticks: if next_due <= UTC_NOW → increment trigger_count, update
+    //           last_trigger and next_due, fire notice again (trigger_count in Data for escalation).
+    //        3. If max_notices is set on the timeout rule and trigger_count >= max_notices:
+    //           FailWithMessageAsync(instance)  →  fire STATE_TIMEOUT_FAILED notice.
+    //      Repeat interval: uses DefaultStateStaleDuration (engine config), NOT the policy duration.
+    //        policy duration = initial grace period (how long before first notice).
+    //        DefaultStateStaleDuration = repeat cadence after that (e.g. every 12h).
+    //      Resolution: instance transitions out naturally → l.to_state != i.current_state
+    //        → query stops returning it → notices stop. No "mark resolved" step needed.
+    //
+    //    mode field on the timeouts policy rule:
+    //      0 = Once   → Case A: fire event once (standard). Case B: send one notice then stop.
+    //      1 = Repeat → Case A: not meaningful (instance moves state regardless).
+    //                   Case B: keep notifying at DefaultStateStaleDuration intervals (next_due scheduling).
+    //
+    //    Notice codes to be emitted by job C (reserved, not yet wired):
+    //      TIMEOUT_FIRED           — Info    — Case A fired: auto-trigger was sent
+    //      STATE_TIMEOUT_EXCEEDED  — OverDue — Case B: instance exceeded its policy-defined deadline
+    //      STATE_TIMEOUT_FAILED    — Warn    — Case B: notice limit reached, instance marked Failed
     internal sealed class MonitorOrchestrator {
         private readonly IWorkFlowDAL _dal;
         private readonly WorkFlowEngineOptions _opt;
@@ -38,20 +97,36 @@ namespace Haley.Services.Orchestrators {
             await ResendDispatchKindAsync(consumerId, (int)AckStatus.Delivered, ct);
         }
 
-        // Full monitor tick:
-        // 1) stale notices
-        // 2) resolve monitor consumer set
-        // 3) per-consumer resend pass
+        // Full monitor tick runs three jobs in order (see class-level comment for full design):
+        //   A) Stale scan — STATE_STALE notices for states with no timeout rule
+        //   B) Per-consumer ACK re-dispatch — resend overdue Pending/Delivered ACK rows
+        //   C) Policy timeout processing — PENDING IMPLEMENTATION
+        //      (QRY_LC_TIMEOUT.LIST_DUE_PAGED + MariaLifeCycleTimeoutDAL are ready; wiring is not)
         public async Task RunMonitorOnceInternalAsync(Func<LifeCycleConsumerType, CancellationToken, Task<IReadOnlyList<long>>> consumersProvider, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
 
+            // A) Stale scan — read-only, fires STATE_STALE notices
             await RaiseOverDueDefaultStateStaleNoticesAsync(ct);
 
+            // B) ACK re-dispatch — per consumer
             var consumerList = await consumersProvider(LifeCycleConsumerType.Monitor, ct);
             for (var i = 0; i < consumerList.Count; i++) {
                 var consumerId = consumerList[i];
                 await RunMonitorOnceAsync(consumerId, ct);
             }
+
+                // C) Policy timeout processing — TODO: implement
+            // Call _dal.LcTimeout.ListDuePagedAsync(...) and for each result:
+            //   Case A (event_code != null):
+            //     INSERT lc_timeout(lc_id, trigger_count=1, last_trigger=now) — BEFORE TriggerAsync
+            //     TriggerAsync(entityId, event = timeout_event_code, actor = "engine.monitor")
+            //     Fire TIMEOUT_FIRED notice
+            //   Case B (event_code == null):
+            //     UPSERT lc_timeout: increment trigger_count, set last_trigger=now,
+            //       next_due = now + DefaultStateStaleDuration  (NOT the policy duration —
+            //       policy duration is the initial grace period; stale duration is the repeat cadence)
+            //     If trigger_count >= max_notices (policy rule): FailWithMessageAsync + STATE_TIMEOUT_FAILED
+            //     Else: fire STATE_TIMEOUT_EXCEEDED notice with trigger_count in Data
         }
 
         // Resend for one status class (Pending or Delivered) for one consumer.

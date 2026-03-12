@@ -82,6 +82,7 @@ namespace Haley.Internal {
         public const string KEY_TIMEOUT_MINUTES = "timeout_minutes";
         public const string KEY_TIMEOUT_MODE = "timeout_mode";
         public const string KEY_TIMEOUT_EVENT = "timeout_event";
+        public const string KEY_MAX_RETRY = "max_retry";
 
         // policy rule / emit keys
         public const string KEY_DATA = "data";
@@ -105,5 +106,6 @@ namespace Haley.Internal {
         public const string KEY_TIMEOUT_MINUTES_CAMEL = "timeoutMinutes";
         public const string KEY_TIMEOUT_MODE_CAMEL = "timeoutMode";
         public const string KEY_TIMEOUT_EVENT_CAMEL = "timeoutEventCode";
+        public const string KEY_MAX_RETRY_CAMEL = "maxRetry";
     }
 }

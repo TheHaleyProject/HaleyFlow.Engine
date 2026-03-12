@@ -153,7 +153,7 @@ namespace Haley.Internal {
 
         public Task<int> DeleteByPolicyIdAsync(long policyId, DbExecutionLoad load = default) => Db.ExecAsync(QRY_TIMEOUTS.DELETE_BY_POLICY_ID, load, (POLICY_ID, policyId));
 
-        public Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, DbExecutionLoad load = default) => Db.ExecAsync(QRY_TIMEOUTS.INSERT, load, (POLICY_ID, policyId), (STATE_NAME, stateName), (DURATION, duration), (MODE, mode), (EVENT_CODE, eventCode));
+        public Task<int> InsertAsync(long policyId, string stateName, int duration, int mode, int? eventCode, int? maxRetry, DbExecutionLoad load = default) => Db.ExecAsync(QRY_TIMEOUTS.INSERT, load, (POLICY_ID, policyId), (STATE_NAME, stateName), (DURATION, duration), (MODE, mode), (EVENT_CODE, eventCode), (MAX_RETRY, maxRetry));
 
         public Task<DbRows> ListByPolicyIdAsync(long policyId, DbExecutionLoad load = default)
             => Db.RowsAsync(QRY_TIMEOUTS.LIST_BY_POLICY_ID, load, (POLICY_ID, policyId));
