@@ -1,18 +1,19 @@
-using Haley.Abstractions;
-using Haley.Models;
-using Haley.Utils;
-using Haley.Enums;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
-using System.Text.Json.Nodes;
-using static Haley.Internal.KeyConstants;
-
 namespace Haley.Utils {
+    using System;
+    using System.Collections.Generic;
+    using System.Text.Json;
+    using System.Text.Json.Nodes;
+    using static Haley.Internal.KeyConstants;
+
+    /// <summary>
+    /// Defines the <see cref="InternalUtils" />
+    /// </summary>
     internal static class InternalUtils {
+        /// <summary>
+        /// The NormalizeConsumers
+        /// </summary>
+        /// <param name="consumerIds">The consumerIds<see cref="IReadOnlyList{long}?"/></param>
+        /// <returns>The <see cref="IReadOnlyList{long}"/></returns>
         public static IReadOnlyList<long> NormalizeConsumers(IReadOnlyList<long>? consumerIds) {
             if (consumerIds == null || consumerIds.Count == 0) return Array.Empty<long>();
 
@@ -28,11 +29,21 @@ namespace Haley.Utils {
             return result;
         }
 
+        /// <summary>
+        /// The NormalizeRuntimeName
+        /// </summary>
+        /// <param name="value">The value<see cref="string?"/></param>
+        /// <returns>The <see cref="string"/></returns>
         public static string NormalizeRuntimeName(string? value) {
             if (string.IsNullOrWhiteSpace(value)) return string.Empty;
             return System.Text.RegularExpressions.Regex.Replace(value.Trim(), @"\s+", " ").ToLowerInvariant();
         }
 
+        /// <summary>
+        /// The BuildDefinitionHashMaterial
+        /// </summary>
+        /// <param name="root">The root<see cref="JsonElement"/></param>
+        /// <returns>The <see cref="string"/></returns>
         public static string BuildDefinitionHashMaterial(this JsonElement root) {
             // keep ONLY states/events/transitions
             var obj = new JsonObject {
@@ -45,6 +56,11 @@ namespace Haley.Utils {
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
 
+        /// <summary>
+        /// The BuildPolicyHashMaterial
+        /// </summary>
+        /// <param name="root">The root<see cref="JsonElement"/></param>
+        /// <returns>The <see cref="string"/></returns>
         public static string BuildPolicyHashMaterial(this JsonElement root) {
             // keep ONLY policy_name/rules/params/timeouts (ignore "for")
             var obj = new JsonObject {
@@ -58,7 +74,12 @@ namespace Haley.Utils {
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
 
-        static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
+        /// <summary>
+        /// The BuildSanitizedStatesForHash
+        /// </summary>
+        /// <param name="root">The root<see cref="JsonElement"/></param>
+        /// <returns>The <see cref="JsonArray"/></returns>
+        internal static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
             if (!root.TryGetProperty(KEY_STATES, out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
                 return new JsonArray();
 
@@ -89,6 +110,5 @@ namespace Haley.Utils {
 
             return arr;
         }
-
     }
 }

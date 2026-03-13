@@ -23,10 +23,12 @@ namespace Haley.Internal {
             $@"SELECT hl.id AS hook_lc_id, hl.lc_id, hl.dispatched,
                       hr.name AS route, COALESCE(hr.label, '') AS label,
                       h.blocking, h.on_entry, h.order_seq,
-                      COUNT(ac.id) AS total_acks,
+                      COUNT(ac.ack_id) AS total_acks,
                       SUM(IF(ac.status = 3, 1, 0)) AS processed_acks,
                       SUM(IF(ac.status = 4, 1, 0)) AS failed_acks,
-                      MAX(COALESCE(ac.trigger_count, 0)) AS max_retries
+                      MAX(COALESCE(ac.trigger_count, 0)) AS max_retries,
+                      SUM(COALESCE(ac.trigger_count, 0)) AS total_triggers,
+                      MAX(ac.last_trigger) AS last_trigger
                FROM hook_lc hl
                JOIN hook h ON h.id = hl.hook_id
                JOIN hook_route hr ON hr.id = h.route_id
@@ -34,6 +36,11 @@ namespace Haley.Internal {
                LEFT JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
                WHERE h.instance_id = {INSTANCE_ID}
                GROUP BY hl.id, hl.lc_id, hl.dispatched, hr.name, hr.label, h.blocking, h.on_entry, h.order_seq
-               ORDER BY hl.lc_id ASC, hl.id ASC;";
+               ORDER BY hl.lc_id ASC,
+                        CASE WHEN h.order_seq > 0 THEN 0 ELSE 1 END ASC,
+                        h.order_seq ASC,
+                        h.on_entry DESC,
+                        hr.name ASC,
+                        hl.id ASC;";
     }
 }

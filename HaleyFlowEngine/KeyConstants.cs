@@ -68,12 +68,14 @@ namespace Haley.Internal {
         public const string KEY_IS_TERMINAL = "is_terminal";
         public const string KEY_RUNTIME_ID = "runtime_id";
         public const string KEY_LIFECYCLE_ID = "lifecycle_id";
+        public const string KEY_ORDER_NO = "order_no";
         public const string KEY_DEF_VERSION_NUM = "def_version_num";
         public const string KEY_LAST_EVENT = "last_event";
         public const string KEY_TOTAL_ACKS = "total_acks";
         public const string KEY_PROCESSED_ACKS = "processed_acks";
         public const string KEY_FAILED_ACKS = "failed_acks";
         public const string KEY_MAX_RETRIES = "max_retries";
+        public const string KEY_TOTAL_TRIGGERS = "total_triggers";
         // JSON output structure keys
         public const string KEY_INSTANCE = "instance";
         public const string KEY_TIMELINE = "timeline";

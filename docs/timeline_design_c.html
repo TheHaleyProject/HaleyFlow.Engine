@@ -127,6 +127,22 @@
     .da-dur { text-align:right; font-family:var(--mono); color:var(--muted); }
     .no-detail { font-size:11px; color:var(--light); font-style:italic; padding:10px 12px; background:#f0f7ff; }
 
+    /* hooks in detail panel */
+    .hk-section-hdr { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#0f766e; padding:6px 12px; background:#f0fdfa; border-top:1px solid #99f6e4; }
+    .hk-tbl { width:100%; border-collapse:collapse; }
+    .hk-tbl th { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#0f766e; padding:5px 12px; text-align:left; background:#f0fdfa; }
+    .hk-tbl td { padding:6px 12px; font-size:11px; border-top:1px solid #ccfbf1; }
+    .hk-tbl tr:hover td { background:#f0fdfa; }
+    .hk-route { font-family:var(--mono); color:#0f766e; font-weight:600; }
+    .hk-route-sub { font-family:var(--mono); font-size:10px; color:var(--light); }
+    .hk-sent { font-size:10px; color:var(--light); }
+    .hk-pill { display:inline-block; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:600; }
+    .hk-ok   { background:var(--green-lt); color:var(--green); border:1px solid var(--green-bd); }
+    .hk-fail { background:var(--red-lt);   color:var(--red);   border:1px solid var(--red-bd); }
+    .hk-pend { background:var(--amber-lt); color:var(--amber); border:1px solid var(--amber-bd); }
+    .hk-wait { background:#f3f4f6; color:var(--muted); border:1px solid var(--border); }
+    .hk-flag { font-size:9px; padding:1px 4px; border-radius:3px; background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4; }
+
     /* compact: hide certain columns */
     .compact .hide-compact { display:none !important; }
     .compact td, .compact th { padding:5px 10px; }
@@ -181,67 +197,83 @@ const DATA = {
     "created": "2026-03-09 02:21:39", "modified": "2026-03-09 03:12:05"
   },
   "timeline": [
-    { "lifecycle_id": 2000, "created": "2026-03-09 02:21:39",
+    { "lifecycle_id": 2000, "order_no": 1, "created": "2026-03-09 02:21:39",
       "from_state": "RequestLogged", "to_state": "ImpactAssessment",
       "event": "AutoStart", "event_code": 4000, "actor": "wfe.adminapi",
-      "is_initial": true, "is_terminal": false, "activities": [] },
-    { "lifecycle_id": 2008, "created": "2026-03-09 02:39:35",
+      "is_initial": true, "is_terminal": false, "activities": [], "hooks": [] },
+    { "lifecycle_id": 2008, "order_no": 2, "created": "2026-03-09 02:39:35",
       "from_state": "ImpactAssessment", "to_state": "CostReview",
       "event": "ImpactAccepted", "event_code": 4001, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2001, "state": "ImpactAssessment", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.impact.assess", "status": "approved",
-          "created": "2026-03-09 02:27:31", "modified": "2026-03-09 02:39:35" }
+        { "runtime_id": 2001, "lc_id": 2008, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.impact.assess", "label": "Impact Assessment", "status": "approved",
+          "created": "2026-03-09 02:27:31", "modified": "2026-03-09 02:39:35", "frozen": false }
+      ],
+      "hooks": [
+        { "hook_lc_id": 3001, "lc_id": 2008, "route": "app.notify.cost.team", "label": "Notify Cost Team",
+          "blocking": true, "on_entry": true, "order_seq": 1, "dispatched": true,
+          "total_acks": 2, "processed_acks": 2, "failed_acks": 0, "max_retries": 0,
+          "total_triggers": 2, "last_trigger": "2026-03-09 02:40:12" },
+        { "hook_lc_id": 3002, "lc_id": 2008, "route": "app.audit.log", "label": "",
+          "blocking": false, "on_entry": false, "order_seq": 2, "dispatched": true,
+          "total_acks": 1, "processed_acks": 0, "failed_acks": 0, "max_retries": 3,
+          "total_triggers": 4, "last_trigger": "2026-03-09 02:41:30" }
       ]},
-    { "lifecycle_id": 2011, "created": "2026-03-09 02:42:10",
+    { "lifecycle_id": 2011, "order_no": 3, "created": "2026-03-09 02:42:10",
       "from_state": "CostReview", "to_state": "ReworkRequired",
       "event": "CostRejected", "event_code": 4004, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2017, "state": "CostReview", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.cost.review", "status": "rejected",
-          "created": "2026-03-09 02:39:37", "modified": "2026-03-09 02:42:10" }
-      ]},
-    { "lifecycle_id": 2014, "created": "2026-03-09 02:50:00",
+        { "runtime_id": 2017, "lc_id": 2011, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.cost.review", "label": "Cost Review", "status": "rejected",
+          "created": "2026-03-09 02:39:37", "modified": "2026-03-09 02:42:10", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2014, "order_no": 4, "created": "2026-03-09 02:50:00",
       "from_state": "ReworkRequired", "to_state": "ImpactAssessment",
       "event": "ReworkDone", "event_code": 4002, "actor": "wfe.test.consumer",
-      "is_initial": false, "is_terminal": false, "activities": [] },
-    { "lifecycle_id": 2015, "created": "2026-03-09 02:57:14",
+      "is_initial": false, "is_terminal": false, "activities": [], "hooks": [] },
+    { "lifecycle_id": 2015, "order_no": 5, "created": "2026-03-09 02:57:14",
       "from_state": "ImpactAssessment", "to_state": "CostReview",
       "event": "ImpactAccepted", "event_code": 4001, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2021, "state": "ImpactAssessment", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.impact.assess", "status": "approved",
-          "created": "2026-03-09 02:51:02", "modified": "2026-03-09 02:57:14" }
-      ]},
-    { "lifecycle_id": 2018, "created": "2026-03-09 03:01:22",
+        { "runtime_id": 2021, "lc_id": 2015, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.impact.assess", "label": "Impact Assessment", "status": "approved",
+          "created": "2026-03-09 02:51:02", "modified": "2026-03-09 02:57:14", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2018, "order_no": 6, "created": "2026-03-09 03:01:22",
       "from_state": "CostReview", "to_state": "ScheduleReview",
       "event": "CostAccepted", "event_code": 4003, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2027, "state": "CostReview", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.cost.review", "status": "approved",
-          "created": "2026-03-09 02:57:30", "modified": "2026-03-09 03:01:22" }
-      ]},
-    { "lifecycle_id": 2022, "created": "2026-03-09 03:06:44",
+        { "runtime_id": 2027, "lc_id": 2018, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.cost.review", "label": "Cost Review", "status": "approved",
+          "created": "2026-03-09 02:57:30", "modified": "2026-03-09 03:01:22", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2022, "order_no": 7, "created": "2026-03-09 03:06:44",
       "from_state": "ScheduleReview", "to_state": "SteeringDecision",
       "event": "ScheduleAccepted", "event_code": 4005, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2033, "state": "ScheduleReview", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.schedule.review", "status": "approved",
-          "created": "2026-03-09 03:01:40", "modified": "2026-03-09 03:06:44" }
-      ]},
-    { "lifecycle_id": 2025, "created": "2026-03-09 03:12:05",
+        { "runtime_id": 2033, "lc_id": 2022, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.schedule.review", "label": "Schedule Review", "status": "approved",
+          "created": "2026-03-09 03:01:40", "modified": "2026-03-09 03:06:44", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2025, "order_no": 8, "created": "2026-03-09 03:12:05",
       "from_state": "SteeringDecision", "to_state": "Approved",
       "event": "SteeringApproved", "event_code": 4007, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": true,
       "activities": [
-        { "runtime_id": 2040, "state": "SteeringDecision", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.steering.decide", "status": "approved",
-          "created": "2026-03-09 03:07:10", "modified": "2026-03-09 03:12:05" }
+        { "runtime_id": 2040, "lc_id": 2025, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.steering.decide", "label": "Steering Decision", "status": "approved",
+          "created": "2026-03-09 03:07:10", "modified": "2026-03-09 03:12:05", "frozen": false }
+      ],
+      "hooks": [
+        { "hook_lc_id": 3010, "lc_id": 2025, "route": "app.workflow.complete", "label": "Workflow Complete",
+          "blocking": false, "on_entry": false, "order_seq": 1, "dispatched": true,
+          "total_acks": 3, "processed_acks": 3, "failed_acks": 0, "max_retries": 0,
+          "total_triggers": 3, "last_trigger": "2026-03-09 03:12:30" }
       ]}
   ]
 };
@@ -290,22 +322,58 @@ function renderHeader() {
   </div>`;
 }
 
+function hooksHtml(hooks) {
+  if (!hooks || !hooks.length) return '';
+  const rows = hooks.map(h => {
+    const display = h.label || h.route;
+    const sub     = h.label ? `<div class="hk-route-sub">${h.route}</div>` : '';
+    const ackCls  = !h.dispatched ? 'hk-wait' : h.failed_acks > 0 ? 'hk-fail'
+                  : h.total_acks > 0 && h.processed_acks === h.total_acks ? 'hk-ok' : 'hk-pend';
+    const ackLbl  = !h.dispatched ? 'Not Dispatched' : h.failed_acks > 0 ? `Failed ${h.failed_acks}/${h.total_acks}`
+                  : h.total_acks > 0 ? `ACKed ${h.processed_acks}/${h.total_acks}` : 'Dispatched';
+    const sentTxt = h.last_trigger ? `<div class="hk-sent">Last sent: ${fmt(h.last_trigger)}</div>` : '';
+    const flags = [
+      h.blocking ? `<span class="hk-flag">blocking</span>` : '',
+      !h.on_entry ? `<span class="hk-flag" style="background:#fffbeb;color:#92400e;border-color:#fde68a">on-exit</span>` : '',
+      h.total_triggers > 0 ? `<span class="hk-flag">${h.total_triggers}× sent</span>` : ''
+    ].filter(Boolean).join(' ');
+    return `<tr>
+      <td style="color:var(--light);font-family:var(--mono);width:32px;text-align:center">#${h.order_seq}</td>
+      <td><div class="hk-route">${display}</div>${sub}${sentTxt}</td>
+      <td><span class="hk-pill ${ackCls}">${ackLbl}</span></td>
+      <td>${flags}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="hk-section-hdr">Hooks / Emits</div>
+    <table class="hk-tbl">
+      <thead><tr><th>#</th><th>Route</th><th>Status</th><th>Flags</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 function detailHtml(item) {
-  if (!item.activities.length)
-    return `<td colspan="8" class="detail-cell"><p class="no-detail">No activities recorded.</p></td>`;
-  const rows = item.activities.map(a => `
+  const hasActs  = item.activities.length > 0;
+  const hasHooks = item.hooks && item.hooks.length > 0;
+  if (!hasActs && !hasHooks)
+    return `<td colspan="8" class="detail-cell"><p class="no-detail">No activities or hooks recorded.</p></td>`;
+
+  const actRows = hasActs ? item.activities.map(a => `
     <tr>
       <td class="da-activity">${a.activity}</td>
       <td class="da-actor">${a.actor_id}</td>
       <td><span class="da-pill ${pillClass(a.status)}">${a.status}</span></td>
       <td class="da-dur">${dur(a.created,a.modified)}</td>
-    </tr>`).join('');
+    </tr>`).join('') : '';
+
+  const actTable = hasActs ? `<table class="detail-acts-table">
+    <thead><tr><th>Activity</th><th>Actor</th><th>Status</th><th style="text-align:right">Duration</th></tr></thead>
+    <tbody>${actRows}</tbody>
+  </table>` : '';
+
   return `<td colspan="8" class="detail-cell">
     <div class="detail-inner">
-      <table class="detail-acts-table">
-        <thead><tr><th>Activity</th><th>Actor</th><th>Status</th><th style="text-align:right">Duration</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      ${actTable}
+      ${hooksHtml(item.hooks)}
     </div>
   </td>`;
 }
@@ -375,7 +443,7 @@ function buildRows(filter) {
         <span class="evt-code">evt:${item.event_code}</span>
       </td>
       <td class="col-actor hide-compact">${item.actor}</td>
-      <td class="col-acts hide-compact">${hasActs ? `<span class="acts-badge">${item.activities.length}</span>` : `<span class="acts-none">—</span>`}</td>
+      <td class="col-acts hide-compact">${hasActs || hasRejected ? `<span class="acts-badge">${item.activities.length}${item.hooks.length ? `+${item.hooks.length}h` : ''}</span>` : `<span class="acts-none">—</span>`}</td>
       <td class="col-dur">${stepDur}</td>
       <td class="col-expand"><span class="exp-icon" id="ei-${idx}">›</span></td>
     </tr>

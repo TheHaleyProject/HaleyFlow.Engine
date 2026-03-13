@@ -979,9 +979,9 @@
 	<diagram_group name="Default" id="48fbc34e-d9ba-40f0-9d1c-b4226926c6c7" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
-			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="475" y="114" />
-			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1178" />
-			<entity schema="lcstate" name="activity_status" color="00FF00" x="475" y="1235" />
+			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="114" />
+			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1197" />
+			<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="1254" />
 			<entity schema="lcstate" name="category" color="1A4D4D" x="969" y="437" />
 			<entity schema="lcstate" name="consumer" color="0000FF" x="950" y="1121" />
 			<entity schema="lcstate" name="def_policies" color="0000FF" x="703" y="969" />
@@ -1000,8 +1000,8 @@
 			<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="456" y="437" />
 			<entity schema="lcstate" name="lifecycle" color="FFFF00" x="247" y="646" />
 			<entity schema="lcstate" name="policy" color="0000FF" x="722" y="1311" />
-			<entity schema="lcstate" name="runtime" color="00FF00" x="266" y="1159" />
-			<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1330" />
+			<entity schema="lcstate" name="runtime" color="00FF00" x="247" y="1178" />
+			<entity schema="lcstate" name="runtime_data" color="00FF00" x="57" y="1349" />
 			<entity schema="lcstate" name="state" color="1A4D4D" x="931" y="209" />
 			<entity schema="lcstate" name="timeouts" color="0000FF" x="703" y="1102" />
 			<entity schema="lcstate" name="transition" color="1A4D4D" x="703" y="190" />

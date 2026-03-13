@@ -11,14 +11,15 @@ namespace Haley.Services;
 /// into a self-contained, browser-ready HTML page.
 /// Design: Light Glass (Design A) — pure CSS, no external frameworks.
 /// </summary>
-internal static class TimelineHtmlRenderer {
+internal static class LightGlassTLR {
 
-    public static string Render(string timelineJson, string? displayName = null, TimelineDetail detail = TimelineDetail.Detailed) {
+    public static string Render(string timelineJson, string? displayName = null, TimelineDetail detail = TimelineDetail.Detailed, string? color = null) {
         using var doc = JsonDocument.Parse(timelineJson);
         var root = doc.RootElement;
+        var pageTitle = BuildPageTitle(root);
 
         var sb = new StringBuilder(16_000);
-        WriteHead(sb);
+        WriteHead(sb, pageTitle, color);
 
         sb.Append("""
 <div class="shell">
@@ -71,14 +72,16 @@ internal static class TimelineHtmlRenderer {
 
     // ── Head ─────────────────────────────────────────────────────────────────
 
-    private static void WriteHead(StringBuilder sb) {
+    private static void WriteHead(StringBuilder sb, string pageTitle, string? color) {
         sb.Append("""
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Workflow Timeline</title>
+""");
+        sb.Append($"  <title>{E(pageTitle)}</title>\n");
+        sb.Append("""
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -272,6 +275,23 @@ internal static class TimelineHtmlRenderer {
       btn.textContent = on ? '\u229e Expanded' : '\u229f Compact';
     }
   </script>
+""");
+        if (RendererColors.TryParse(color, out var c))
+            sb.Append($@"  <style>
+    :root {{ --accent: {c.Base}; --accent2: {c.Dark}; }}
+    .hdr {{ background: linear-gradient(135deg, {c.Light} 0%, #ffffff 100%) !important; }}
+    .hdr::before {{ background: radial-gradient(ellipse at 80% 20%, rgba({c.R},{c.G},{c.B},.06) 0%, transparent 60%) !important; }}
+    .tl-card:hover {{ border-color: {c.Border}; box-shadow: 0 4px 16px rgba({c.R},{c.G},{c.B},.10); }}
+    .card-banner:hover {{ background: linear-gradient(90deg, {c.Light} 0%, {c.Border} 100%) !important; }}
+    .code-badge {{ background: {c.Light}; border-color: {c.Border}; }}
+    .btn.active {{ background: {c.Light}; }}
+    .dot-normal {{ background: {c.Light}; }}
+    .dot-end {{ background: {c.Light}; border-color: {c.Dark}; color: {c.Dark}; }}
+    .tag-end, .banner-tag.tag-end {{ background: {c.Light}; border-color: {c.Border}; }}
+    .status-completed {{ background: {c.Light}; color: {c.Dark}; border-color: {c.Border}; }}
+  </style>
+");
+        sb.Append("""
 </head>
 <body>
 """);
@@ -356,6 +376,7 @@ internal static class TimelineHtmlRenderer {
         var evtName    = SplitCamel(S(item, "event"));
         var evtCode    = S(item, "event_code");
         var lcId       = S(item, "lifecycle_id");
+        var orderNo    = S(item, "order_no");
         var actor      = S(item, "actor");
         var created    = Fmt(S(item, "created"));
         var isInitial  = B(item, "is_initial");
@@ -390,6 +411,7 @@ internal static class TimelineHtmlRenderer {
     <div class="tl-card" id="card-{idx}">
       <div class="compact-row" onclick="toggleCard({idx})">
         <div class="cr-line1">
+          <span class="cr-step" style="color:var(--muted);font-size:10px">#{E(orderNo)}</span>
           <span class="cr-step">{E(fromState)}</span>
           <span class="cr-arrow">→</span>
           <span class="cr-step">{E(toState)}</span>
@@ -420,6 +442,7 @@ internal static class TimelineHtmlRenderer {
             <span class="event-name">{E(evtName)}</span>
             <span class="code-badge">evt:{E(evtCode)}</span>
             <span class="lc-badge">lc:{E(lcId)}</span>
+            <span class="lc-badge" style="background:#fdf4ff;color:#7e22ce;border-color:#e9d5ff">#{E(orderNo)}</span>
           </div>
           <div class="actor-text">{E(actor)}</div>
         </div>
@@ -502,17 +525,20 @@ internal static class TimelineHtmlRenderer {
         <div class="hooks-hdr">Hooks / Emits</div>
 """);
 
-        foreach (var h in hooks.EnumerateArray()) {
-            var route      = S(h, "route");
-            var label      = S(h, "label");
-            var display    = !string.IsNullOrWhiteSpace(label) ? label : route;
-            var blocking   = B(h, "blocking");
-            var onEntry    = B(h, "on_entry");
-            var dispatched = B(h, "dispatched");
-            var total      = h.TryGetProperty("total_acks",     out var tv) ? tv.GetInt32() : 0;
-            var processed  = h.TryGetProperty("processed_acks", out var pv) ? pv.GetInt32() : 0;
-            var failed     = h.TryGetProperty("failed_acks",    out var fv) ? fv.GetInt32() : 0;
-            var retries    = h.TryGetProperty("max_retries",    out var rv) ? rv.GetInt32() : 0;
+        foreach (var h in OrderHooks(hooks)) {
+            var route        = S(h, "route");
+            var label        = S(h, "label");
+            var display      = !string.IsNullOrWhiteSpace(label) ? label : route;
+            var blocking     = B(h, "blocking");
+            var onEntry      = B(h, "on_entry");
+            var dispatched   = B(h, "dispatched");
+            var orderSeq     = S(h, "order_seq");
+            var lastTrigger  = Fmt(S(h, "last_trigger"));
+            var total        = h.TryGetProperty("total_acks",      out var tv) ? tv.GetInt32() : 0;
+            var processed    = h.TryGetProperty("processed_acks",  out var pv) ? pv.GetInt32() : 0;
+            var failed       = h.TryGetProperty("failed_acks",     out var fv) ? fv.GetInt32() : 0;
+            var retries      = h.TryGetProperty("max_retries",     out var rv) ? rv.GetInt32() : 0;
+            var totalTrigger = h.TryGetProperty("total_triggers",  out var ttv) ? ttv.GetInt32() : 0;
 
             var ackCls = !dispatched ? "hk-wait"
                        : failed > 0  ? "hk-fail"
@@ -524,17 +550,23 @@ internal static class TimelineHtmlRenderer {
                        : "Dispatched";
 
             var badges = new StringBuilder();
-            if (blocking)        badges.Append("""<span class="hk-badge">blocking</span>""");
-            if (!onEntry)        badges.Append("""<span class="hk-badge" style="background:#fef9c3;color:#854d0e;border-color:#fde047">on-exit</span>""");
-            if (retries > 0)     badges.Append($"""<span class="hk-badge" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">{retries} retr{(retries != 1 ? "ies" : "y")}</span>""");
+            if (blocking)           badges.Append("""<span class="hk-badge">blocking</span>""");
+            if (!onEntry)           badges.Append("""<span class="hk-badge" style="background:#fef9c3;color:#854d0e;border-color:#fde047">on-exit</span>""");
+            if (retries > 0)        badges.Append($"""<span class="hk-badge" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">{retries} retr{(retries != 1 ? "ies" : "y")}</span>""");
+            if (totalTrigger > 0)   badges.Append($"""<span class="hk-badge" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0">{totalTrigger} sent</span>""");
 
             var metaText = string.IsNullOrWhiteSpace(label) ? string.Empty : $"""<div class="hook-meta">{E(route)}</div>""";
+            var rawLastTrigger  = S(h, "last_trigger");
+            var triggerTimeHtml = !string.IsNullOrWhiteSpace(rawLastTrigger)
+                ? $"""<div class="hook-meta">Last sent: {E(lastTrigger)}</div>"""
+                : string.Empty;
 
             sb.Append($"""
         <div class="hook-row">
           <div style="flex:1;min-width:0">
-            <div class="hook-route">{E(display)}</div>
+            <div class="hook-route"><span style="color:var(--muted);font-size:9px;margin-right:5px">#{E(orderSeq)}</span>{E(display)}</div>
             {metaText}
+            {triggerTimeHtml}
           </div>
           <div class="hook-pills">
             <span class="hook-ack {ackCls}">{E(ackLbl)}</span>
@@ -562,6 +594,37 @@ internal static class TimelineHtmlRenderer {
     private static bool B(JsonElement el, string key) {
         if (!el.TryGetProperty(key, out var v)) return false;
         return v.ValueKind == JsonValueKind.True;
+    }
+
+    private static string BuildPageTitle(JsonElement root) {
+        if (!root.TryGetProperty("instance", out var inst)) return "WFE-TL-UNKNOWN";
+        var guid = S(inst, "guid");
+        return string.IsNullOrWhiteSpace(guid) ? "WFE-TL-UNKNOWN" : $"WFE-TL-{guid}";
+    }
+
+    // Order the hook list so ordered emits read in actual execution sequence.
+    // Unordered items are placed after explicit order values.
+    private static IEnumerable<JsonElement> OrderHooks(JsonElement hooks) {
+        if (hooks.ValueKind != JsonValueKind.Array) yield break;
+
+        var items = hooks.EnumerateArray()
+            .OrderBy(ParseHookOrder)
+            .ThenByDescending(h => B(h, "on_entry"))
+            .ThenBy(h => S(h, "route"), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        for (var i = 0; i < items.Count; i++)
+            yield return items[i];
+    }
+
+    private static int ParseHookOrder(JsonElement hook) {
+        if (!hook.TryGetProperty("order_seq", out var value)) return int.MaxValue;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsedNumber))
+            return parsedNumber > 0 ? parsedNumber : int.MaxValue;
+
+        return int.TryParse(value.ToString(), out var parsedText) && parsedText > 0
+            ? parsedText
+            : int.MaxValue;
     }
 
     private static string E(string s) => WebUtility.HtmlEncode(s);

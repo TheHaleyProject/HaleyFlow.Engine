@@ -26,8 +26,8 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
     }
 
     [HttpGet("timeline/html")]
-    public async Task<IActionResult> GetTimelineHtml([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] string? name, [FromQuery] TimelineDetail detail = TimelineDetail.Detailed, CancellationToken ct = default) {
-        var html = await _service.GetTimelineHtmlAsync(envCode, defName, entityId, instanceGuid, name, detail, ct);
+    public async Task<IActionResult> GetTimelineHtml([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] string? name, [FromQuery] TimelineDetail detail = TimelineDetail.Detailed, [FromQuery] HtmlTimelineDesign design = HtmlTimelineDesign.LightGlass, [FromQuery] string? color = null, CancellationToken ct = default) {
+        var html = await _service.GetTimelineHtmlAsync(envCode, defName, entityId, instanceGuid, name, detail, design, color, ct);
         if (string.IsNullOrWhiteSpace(html)) return NotFound();
         return Content(html, "text/html");
     }

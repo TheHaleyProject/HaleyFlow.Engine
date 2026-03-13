@@ -151,6 +151,22 @@
     .act-dur     { font-size: 10px; color: var(--muted); }
     .no-acts     { font-size: 11px; color: var(--muted); font-style: italic; padding: 6px 2px; }
 
+    /* hooks */
+    .hooks-hdr { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#0f766e; font-weight:700; margin:10px 0 6px; padding-top:8px; border-top:1px dashed var(--border); }
+    .hook-row { display:flex; align-items:flex-start; gap:10px; padding:7px 10px; border-radius:8px; margin-bottom:5px; background:#f0fdf9; border:1px solid #99f6e4; }
+    .hook-row:last-child { margin-bottom:0; }
+    .hook-row:hover { background:#ccfbf1; }
+    .hook-seq { font-size:9px; font-weight:700; color:#0f766e; background:#ccfbf1; border:1px solid #5eead4; border-radius:4px; padding:1px 5px; flex-shrink:0; margin-top:1px; }
+    .hook-route { font-size:11px; font-family:monospace; color:#0f766e; font-weight:600; }
+    .hook-sub { font-size:10px; color:var(--muted); margin-top:2px; }
+    .hook-pills { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; margin-left:auto; }
+    .hook-ack { font-size:10px; font-weight:600; padding:2px 7px; border-radius:12px; }
+    .hk-ok   { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+    .hk-fail { background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
+    .hk-pend { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+    .hk-wait { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+    .hk-badge { font-size:9px; padding:1px 5px; border-radius:4px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+
     /* step gap */
     .tl-gap { display: flex; align-items: center; gap: 8px; padding: 0 0 8px 56px; }
     .tl-gap-line { flex: 1; height: 1px; background: var(--border); max-width: 80px; }
@@ -210,67 +226,83 @@ const DATA = {
     "created": "2026-03-09 02:21:39", "modified": "2026-03-09 03:12:05"
   },
   "timeline": [
-    { "lifecycle_id": 2000, "created": "2026-03-09 02:21:39",
+    { "lifecycle_id": 2000, "order_no": 1, "created": "2026-03-09 02:21:39",
       "from_state": "RequestLogged", "to_state": "ImpactAssessment",
       "event": "AutoStart", "event_code": 4000, "actor": "wfe.adminapi",
-      "is_initial": true, "is_terminal": false, "activities": [] },
-    { "lifecycle_id": 2008, "created": "2026-03-09 02:39:35",
+      "is_initial": true, "is_terminal": false, "activities": [], "hooks": [] },
+    { "lifecycle_id": 2008, "order_no": 2, "created": "2026-03-09 02:39:35",
       "from_state": "ImpactAssessment", "to_state": "CostReview",
       "event": "ImpactAccepted", "event_code": 4001, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2001, "state": "ImpactAssessment", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.impact.assess", "status": "approved",
-          "created": "2026-03-09 02:27:31", "modified": "2026-03-09 02:39:35" }
+        { "runtime_id": 2001, "lc_id": 2008, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.impact.assess", "label": "Impact Assessment", "status": "approved",
+          "created": "2026-03-09 02:27:31", "modified": "2026-03-09 02:39:35", "frozen": false }
+      ],
+      "hooks": [
+        { "hook_lc_id": 3001, "lc_id": 2008, "route": "app.notify.cost.team", "label": "Notify Cost Team",
+          "blocking": true, "on_entry": true, "order_seq": 1, "dispatched": true,
+          "total_acks": 2, "processed_acks": 2, "failed_acks": 0, "max_retries": 0,
+          "total_triggers": 2, "last_trigger": "2026-03-09 02:40:12" },
+        { "hook_lc_id": 3002, "lc_id": 2008, "route": "app.audit.log", "label": "",
+          "blocking": false, "on_entry": false, "order_seq": 2, "dispatched": true,
+          "total_acks": 1, "processed_acks": 0, "failed_acks": 0, "max_retries": 3,
+          "total_triggers": 4, "last_trigger": "2026-03-09 02:41:30" }
       ]},
-    { "lifecycle_id": 2011, "created": "2026-03-09 02:42:10",
+    { "lifecycle_id": 2011, "order_no": 3, "created": "2026-03-09 02:42:10",
       "from_state": "CostReview", "to_state": "ReworkRequired",
       "event": "CostRejected", "event_code": 4004, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2017, "state": "CostReview", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.cost.review", "status": "rejected",
-          "created": "2026-03-09 02:39:37", "modified": "2026-03-09 02:42:10" }
-      ]},
-    { "lifecycle_id": 2014, "created": "2026-03-09 02:50:00",
+        { "runtime_id": 2017, "lc_id": 2011, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.cost.review", "label": "Cost Review", "status": "rejected",
+          "created": "2026-03-09 02:39:37", "modified": "2026-03-09 02:42:10", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2014, "order_no": 4, "created": "2026-03-09 02:50:00",
       "from_state": "ReworkRequired", "to_state": "ImpactAssessment",
       "event": "ReworkDone", "event_code": 4002, "actor": "wfe.test.consumer",
-      "is_initial": false, "is_terminal": false, "activities": [] },
-    { "lifecycle_id": 2015, "created": "2026-03-09 02:57:14",
+      "is_initial": false, "is_terminal": false, "activities": [], "hooks": [] },
+    { "lifecycle_id": 2015, "order_no": 5, "created": "2026-03-09 02:57:14",
       "from_state": "ImpactAssessment", "to_state": "CostReview",
       "event": "ImpactAccepted", "event_code": 4001, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2021, "state": "ImpactAssessment", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.impact.assess", "status": "approved",
-          "created": "2026-03-09 02:51:02", "modified": "2026-03-09 02:57:14" }
-      ]},
-    { "lifecycle_id": 2018, "created": "2026-03-09 03:01:22",
+        { "runtime_id": 2021, "lc_id": 2015, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.impact.assess", "label": "Impact Assessment", "status": "approved",
+          "created": "2026-03-09 02:51:02", "modified": "2026-03-09 02:57:14", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2018, "order_no": 6, "created": "2026-03-09 03:01:22",
       "from_state": "CostReview", "to_state": "ScheduleReview",
       "event": "CostAccepted", "event_code": 4003, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2027, "state": "CostReview", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.cost.review", "status": "approved",
-          "created": "2026-03-09 02:57:30", "modified": "2026-03-09 03:01:22" }
-      ]},
-    { "lifecycle_id": 2022, "created": "2026-03-09 03:06:44",
+        { "runtime_id": 2027, "lc_id": 2018, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.cost.review", "label": "Cost Review", "status": "approved",
+          "created": "2026-03-09 02:57:30", "modified": "2026-03-09 03:01:22", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2022, "order_no": 7, "created": "2026-03-09 03:06:44",
       "from_state": "ScheduleReview", "to_state": "SteeringDecision",
       "event": "ScheduleAccepted", "event_code": 4005, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": false,
       "activities": [
-        { "runtime_id": 2033, "state": "ScheduleReview", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.schedule.review", "status": "approved",
-          "created": "2026-03-09 03:01:40", "modified": "2026-03-09 03:06:44" }
-      ]},
-    { "lifecycle_id": 2025, "created": "2026-03-09 03:12:05",
+        { "runtime_id": 2033, "lc_id": 2022, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.schedule.review", "label": "Schedule Review", "status": "approved",
+          "created": "2026-03-09 03:01:40", "modified": "2026-03-09 03:06:44", "frozen": false }
+      ], "hooks": [] },
+    { "lifecycle_id": 2025, "order_no": 8, "created": "2026-03-09 03:12:05",
       "from_state": "SteeringDecision", "to_state": "Approved",
       "event": "SteeringApproved", "event_code": 4007, "actor": "wfe.test.consumer",
       "is_initial": false, "is_terminal": true,
       "activities": [
-        { "runtime_id": 2040, "state": "SteeringDecision", "actor_id": "wfe.test.consumer",
-          "activity": "app.change.steering.decide", "status": "approved",
-          "created": "2026-03-09 03:07:10", "modified": "2026-03-09 03:12:05" }
+        { "runtime_id": 2040, "lc_id": 2025, "actor_id": "wfe.test.consumer",
+          "activity": "app.change.steering.decide", "label": "Steering Decision", "status": "approved",
+          "created": "2026-03-09 03:07:10", "modified": "2026-03-09 03:12:05", "frozen": false }
+      ],
+      "hooks": [
+        { "hook_lc_id": 3010, "lc_id": 2025, "route": "app.workflow.complete", "label": "Workflow Complete",
+          "blocking": false, "on_entry": false, "order_seq": 1, "dispatched": true,
+          "total_acks": 3, "processed_acks": 3, "failed_acks": 0, "max_retries": 0,
+          "total_triggers": 3, "last_trigger": "2026-03-09 03:12:30" }
       ]}
   ]
 };
@@ -359,6 +391,38 @@ function renderActs(acts) {
     </div>`).join('');
 }
 
+// ── Hooks ────────────────────────────────────────────────────
+function renderHooks(hooks) {
+  if (!hooks || !hooks.length) return '';
+  const rows = hooks.map(h => {
+    const display = h.label || h.route;
+    const sub     = h.label ? `<div class="hook-sub">${h.route}</div>` : '';
+    const ackCls  = !h.dispatched ? 'hk-wait' : h.failed_acks > 0 ? 'hk-fail'
+                  : h.total_acks > 0 && h.processed_acks === h.total_acks ? 'hk-ok' : 'hk-pend';
+    const ackLbl  = !h.dispatched ? 'Not Dispatched' : h.failed_acks > 0 ? `Failed (${h.failed_acks}/${h.total_acks})`
+                  : h.total_acks > 0 ? `ACKed ${h.processed_acks}/${h.total_acks}` : 'Dispatched';
+    const lastSent = h.last_trigger ? `<div class="hook-sub">Sent: ${fmt(h.last_trigger)}</div>` : '';
+    const badges = [
+      h.blocking ? `<span class="hk-badge">blocking</span>` : '',
+      !h.on_entry ? `<span class="hk-badge" style="background:#fef9c3;color:#854d0e;border-color:#fde047">on-exit</span>` : '',
+      h.total_triggers > 0 ? `<span class="hk-badge" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0">${h.total_triggers} sent</span>` : '',
+      h.max_retries > 0 ? `<span class="hk-badge" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">${h.max_retries} retr.</span>` : ''
+    ].join('');
+    return `<div class="hook-row">
+      <span class="hook-seq">#${h.order_seq}</span>
+      <div style="flex:1;min-width:0">
+        <div class="hook-route">${display}</div>
+        ${sub}${lastSent}
+      </div>
+      <div class="hook-pills">
+        <span class="hook-ack ${ackCls}">${ackLbl}</span>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end">${badges}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="hooks-hdr">Hooks / Emits</div>${rows}`;
+}
+
 // ── Timeline item ────────────────────────────────────────────
 function renderItem(item, idx, total, nextItem, prevTerminal) {
   const isLast = idx === total - 1;
@@ -386,6 +450,7 @@ function renderItem(item, idx, total, nextItem, prevTerminal) {
       <!-- compact two-liner: click to expand this row while in compact mode -->
       <div class="compact-row" onclick="toggleCard(${idx})">
         <div class="cr-line1">
+          <span style="font-size:10px;color:var(--muted);font-weight:600">#${item.order_no}</span>
           <span class="cr-step">${item.from_state}</span>
           <span class="cr-arrow">→</span>
           <span class="cr-step">${item.to_state}</span>
@@ -426,8 +491,8 @@ function renderItem(item, idx, total, nextItem, prevTerminal) {
           ${item.activities.length ? `<div class="act-count">${item.activities.length} activit${item.activities.length>1?'ies':'y'}</div>` : ''}
         </div>
       </div>
-      <!-- activities — hidden when card is .collapsed -->
-      <div class="card-acts">${renderActs(item.activities)}</div>
+      <!-- activities & hooks — hidden when card is .collapsed -->
+      <div class="card-acts">${renderActs(item.activities)}${renderHooks(item.hooks)}</div>
     </div>
   </div>
   ${gapHtml}`;

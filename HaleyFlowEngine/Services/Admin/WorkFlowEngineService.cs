@@ -33,10 +33,16 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         return await _engine!.GetTimelineJsonAsync(key, detail, ct);
     }
 
-    public async Task<string?> GetTimelineHtmlAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, string? displayName, TimelineDetail detail, CancellationToken ct) {
+    public async Task<string?> GetTimelineHtmlAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, string? displayName, TimelineDetail detail, HtmlTimelineDesign design, string? color, CancellationToken ct) {
         var json = await GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, detail, ct);
         if (string.IsNullOrWhiteSpace(json)) return null;
-        return TimelineHtmlRenderer.Render(json, displayName?.Trim(), detail);
+        var c = color?.Trim();
+        return design switch {
+            HtmlTimelineDesign.FlowSteps    => FlowStepsTLR.Render(json, displayName?.Trim(), detail, c),
+            HtmlTimelineDesign.AuditLog     => AuditLogTLR.Render(json, displayName?.Trim(), detail, c),
+            HtmlTimelineDesign.ControlBoard => ControlBoardTLR.Render(json, displayName?.Trim(), detail, c),
+            _                               => LightGlassTLR.Render(json, displayName?.Trim(), detail, c),
+        };
     }
 
     public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(int? envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, CancellationToken ct) {
