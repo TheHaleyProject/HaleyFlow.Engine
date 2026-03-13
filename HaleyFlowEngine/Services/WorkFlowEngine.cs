@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Haley.Internal;
 using static Haley.Internal.KeyConstants;
 using static Haley.Internal.QueryFields;
 
@@ -200,12 +201,12 @@ namespace Haley.Services {
             return await _dal.Instance.SetContextAsync(instanceId, context, load);
         }
 
-        public async Task<string?> GetTimelineJsonAsync(LifeCycleInstanceKey key, CancellationToken ct = default) {
+        public async Task<string?> GetTimelineJsonAsync(LifeCycleInstanceKey key, TimelineDetail detail = TimelineDetail.Detailed, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             var load = new DbExecutionLoad(ct);
             var row = await ResolveInstanceRowByKeyAsync(key, load);
             if (row == null) return null;
-            return await _dal.LifeCycle.GetTimelineJsonByInstanceIdAsync(row.GetLong(KEY_ID), load);
+            return await TimelineBuilder.BuildAsync(_dal, row.GetLong(KEY_ID), detail, ct);
         }
 
         public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(int envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, CancellationToken ct = default) {

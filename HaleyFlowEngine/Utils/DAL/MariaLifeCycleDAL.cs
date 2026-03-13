@@ -20,5 +20,17 @@ namespace Haley.Internal {
 
         public Task<string?> GetTimelineJsonByInstanceIdAsync(long instanceId, DbExecutionLoad load = default)
             => Db.ScalarAsync<string?>(QRY_INSTANCE.GET_TIMELINE_JSON_BY_INSTANCE_ID, load, (INSTANCE_ID, instanceId));
+
+        public Task<DbRow?> GetInstanceForTimelineAsync(long instanceId, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_INSTANCE.GET_FOR_TIMELINE, load, (INSTANCE_ID, instanceId));
+
+        public Task<DbRows> ListLifecyclesForTimelineAsync(long instanceId, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_LIFECYCLE.LIST_FOR_TIMELINE, load, (INSTANCE_ID, instanceId));
+
+        public Task<DbRows> ListActivitiesForTimelineAsync(long instanceId, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_RUNTIME.LIST_FOR_TIMELINE, load, (INSTANCE_ID, instanceId));
+
+        public Task<DbRows> ListHooksForTimelineAsync(long instanceId, DbExecutionLoad load = default)
+            => Db.RowsAsync(QRY_HOOK_LC.LIST_FOR_TIMELINE, load, (INSTANCE_ID, instanceId));
     }
 }

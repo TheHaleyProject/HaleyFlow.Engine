@@ -16,5 +16,24 @@ namespace Haley.Internal {
         // Used to populate RunCount on ILifeCycleHookEvent so consumers can detect reruns.
         public const string COUNT_DISPATCHED_BY_HOOK_ID =
             $@"SELECT COUNT(*) AS cnt FROM hook_lc WHERE hook_id = {HOOK_ID} AND dispatched = 1;";
+
+        // Flat list for TimelineBuilder (Admin detail) — all hook_lc rows for an instance with
+        // aggregated ACK stats. ACK status: 3=Processed, 4=Failed.
+        public const string LIST_FOR_TIMELINE =
+            $@"SELECT hl.id AS hook_lc_id, hl.lc_id, hl.dispatched,
+                      hr.name AS route, COALESCE(hr.label, '') AS label,
+                      h.blocking, h.on_entry, h.order_seq,
+                      COUNT(ac.id) AS total_acks,
+                      SUM(IF(ac.status = 3, 1, 0)) AS processed_acks,
+                      SUM(IF(ac.status = 4, 1, 0)) AS failed_acks,
+                      MAX(COALESCE(ac.trigger_count, 0)) AS max_retries
+               FROM hook_lc hl
+               JOIN hook h ON h.id = hl.hook_id
+               JOIN hook_route hr ON hr.id = h.route_id
+               LEFT JOIN hook_ack ha ON ha.hook_id = hl.id
+               LEFT JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
+               WHERE h.instance_id = {INSTANCE_ID}
+               GROUP BY hl.id, hl.lc_id, hl.dispatched, hr.name, hr.label, h.blocking, h.on_entry, h.order_seq
+               ORDER BY hl.lc_id ASC, hl.id ASC;";
     }
 }

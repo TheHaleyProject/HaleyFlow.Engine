@@ -58,6 +58,30 @@ namespace Haley.Internal {
         public const string KEY_HASH = "hash";
         public const string KEY_HOOK_LC_ID = "hook_lc_id";
         public const string KEY_RUN_COUNT = "run_count";
+        public const string KEY_MODIFIED = "modified";
+        public const string KEY_MESSAGE = "message";
+        public const string KEY_ACTOR = "actor";
+        public const string KEY_ACTOR_ID = "actor_id";
+        public const string KEY_ACTIVITY = "activity";
+        public const string KEY_FROZEN = "frozen";
+        public const string KEY_DISPATCHED = "dispatched";
+        public const string KEY_IS_TERMINAL = "is_terminal";
+        public const string KEY_RUNTIME_ID = "runtime_id";
+        public const string KEY_LIFECYCLE_ID = "lifecycle_id";
+        public const string KEY_DEF_VERSION_NUM = "def_version_num";
+        public const string KEY_LAST_EVENT = "last_event";
+        public const string KEY_TOTAL_ACKS = "total_acks";
+        public const string KEY_PROCESSED_ACKS = "processed_acks";
+        public const string KEY_FAILED_ACKS = "failed_acks";
+        public const string KEY_MAX_RETRIES = "max_retries";
+        // JSON output structure keys
+        public const string KEY_INSTANCE = "instance";
+        public const string KEY_TIMELINE = "timeline";
+        public const string KEY_ACTIVITIES = "activities";
+        public const string KEY_HOOKS = "hooks";
+        public const string KEY_OTHER_ACTIVITIES = "other_activities";
+        public const string KEY_INSTANCE_STATUS = "instance_status";
+        public const string KEY_INSTANCE_MESSAGE = "instance_message";
 
         // blueprint structure keys
         public const string KEY_DEFINITION = "definition";

@@ -78,6 +78,11 @@ namespace Haley.Abstractions {
         Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstancePagedAsync(long instanceId, int skip, int take, DbExecutionLoad load = default);
         Task<string?> GetTimelineJsonByInstanceIdAsync(long instanceId, DbExecutionLoad load = default);
+        // TimelineBuilder queries — small focused fetches assembled in C#.
+        Task<DbRow?> GetInstanceForTimelineAsync(long instanceId, DbExecutionLoad load = default);
+        Task<DbRows> ListLifecyclesForTimelineAsync(long instanceId, DbExecutionLoad load = default);
+        Task<DbRows> ListActivitiesForTimelineAsync(long instanceId, DbExecutionLoad load = default);
+        Task<DbRows> ListHooksForTimelineAsync(long instanceId, DbExecutionLoad load = default);
     }
 
     internal interface ILifeCycleDataDAL {

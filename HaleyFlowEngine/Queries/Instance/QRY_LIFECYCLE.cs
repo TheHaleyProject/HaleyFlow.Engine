@@ -10,6 +10,21 @@ namespace Haley.Internal {
         public const string LIST_BY_INSTANCE = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC;";
         public const string LIST_BY_INSTANCE_PAGED = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC LIMIT {TAKE} OFFSET {SKIP};";
 
+        // Timeline fetch — lifecycle rows with joined state/event names. Ordered oldest-first for display.
+        public const string LIST_FOR_TIMELINE =
+            $@"SELECT l.id AS lifecycle_id, COALESCE(l.occurred, l.created) AS created,
+                      sf.display_name AS from_state, IF((sf.flags & 1) <> 0, 1, 0) AS is_initial,
+                      st.display_name AS to_state,  IF((st.flags & 2) <> 0, 1, 0) AS is_terminal,
+                      ev.display_name AS event, ev.code AS event_code,
+                      ld.actor
+               FROM lifecycle l
+               JOIN state sf ON sf.id = l.from_state
+               JOIN state st ON st.id = l.to_state
+               JOIN events ev ON ev.id = l.event
+               LEFT JOIN lc_data ld ON ld.lc_id = l.id
+               WHERE l.instance_id = {INSTANCE_ID}
+               ORDER BY l.id ASC;";
+
         // occurred is NULL for normal flow; set only for replay/late-join scenarios
         public const string INSERT = $@"INSERT INTO lifecycle (from_state, to_state, event, instance_id, occurred) VALUES ({FROM_ID}, {TO_ID}, {EVENT_ID}, {INSTANCE_ID}, {OCCURRED}); SELECT LAST_INSERT_ID() AS id;";
 

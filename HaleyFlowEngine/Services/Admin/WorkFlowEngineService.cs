@@ -27,16 +27,16 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         return await _engine!.GetInstanceDataAsync(key, ct);
     }
 
-    public async Task<string?> GetTimelineJsonAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, CancellationToken ct) {
+    public async Task<string?> GetTimelineJsonAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, TimelineDetail detail, CancellationToken ct) {
         await EnsureInitializedAsync(ct);
         var key = BuildInstanceKey(envCode, defName, entityId, instanceGuid);
-        return await _engine!.GetTimelineJsonAsync(key, ct);
+        return await _engine!.GetTimelineJsonAsync(key, detail, ct);
     }
 
-    public async Task<string?> GetTimelineHtmlAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, string? displayName, CancellationToken ct) {
-        var json = await GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, ct);
+    public async Task<string?> GetTimelineHtmlAsync(int? envCode, string? defName, string? entityId, string? instanceGuid, string? displayName, TimelineDetail detail, CancellationToken ct) {
+        var json = await GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, detail, ct);
         if (string.IsNullOrWhiteSpace(json)) return null;
-        return TimelineHtmlRenderer.Render(json, displayName?.Trim());
+        return TimelineHtmlRenderer.Render(json, displayName?.Trim(), detail);
     }
 
     public async Task<IReadOnlyList<InstanceRefItem>> GetInstanceRefsAsync(int? envCode, string defName, LifeCycleInstanceFlag flags, int skip, int take, CancellationToken ct) {

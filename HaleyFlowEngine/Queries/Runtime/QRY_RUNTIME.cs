@@ -31,6 +31,19 @@ namespace Haley.Internal {
         public const string FREEZE = $@"UPDATE runtime SET frozen = 1, modified = CURRENT_TIMESTAMP() WHERE id = {ID};";
         public const string UNFREEZE = $@"UPDATE runtime SET frozen = 0, modified = CURRENT_TIMESTAMP() WHERE id = {ID};";
 
+        // Flat list for TimelineBuilder — activities with joined names + label, ordered by lc_id then id.
+        public const string LIST_FOR_TIMELINE =
+            $@"SELECT r.id AS runtime_id, r.lc_id,
+                      act.display_name AS activity, COALESCE(hr.label, '') AS label,
+                      r.actor_id, ast.display_name AS status,
+                      r.created, r.modified, r.frozen
+               FROM runtime r
+               JOIN activity act ON act.id = r.activity
+               JOIN activity_status ast ON ast.id = r.status
+               LEFT JOIN hook_route hr ON hr.name = act.display_name
+               WHERE r.instance_id = {INSTANCE_ID}
+               ORDER BY r.lc_id ASC, r.id ASC;";
+
         public const string DELETE = $@"DELETE FROM runtime WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM runtime WHERE instance_id = {INSTANCE_ID};";
     }

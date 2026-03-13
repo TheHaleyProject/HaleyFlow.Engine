@@ -19,15 +19,15 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
     }
 
     [HttpGet("timeline")]
-    public async Task<IActionResult> GetTimeline([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, CancellationToken ct) {
-        var timelineJson = await _service.GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, ct);
+    public async Task<IActionResult> GetTimeline([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] TimelineDetail detail = TimelineDetail.Detailed, CancellationToken ct = default) {
+        var timelineJson = await _service.GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, detail, ct);
         if (string.IsNullOrWhiteSpace(timelineJson)) return NotFound();
         return Content(timelineJson, "application/json");
     }
 
     [HttpGet("timeline/html")]
-    public async Task<IActionResult> GetTimelineHtml([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] string? name, CancellationToken ct) {
-        var html = await _service.GetTimelineHtmlAsync(envCode, defName, entityId, instanceGuid, name, ct);
+    public async Task<IActionResult> GetTimelineHtml([FromQuery] int? envCode, [FromQuery] string? defName, [FromQuery] string? entityId, [FromQuery] string? instanceGuid, [FromQuery] string? name, [FromQuery] TimelineDetail detail = TimelineDetail.Detailed, CancellationToken ct = default) {
+        var html = await _service.GetTimelineHtmlAsync(envCode, defName, entityId, instanceGuid, name, detail, ct);
         if (string.IsNullOrWhiteSpace(html)) return NotFound();
         return Content(html, "text/html");
     }
