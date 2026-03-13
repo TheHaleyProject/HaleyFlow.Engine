@@ -161,7 +161,4 @@ namespace Haley.Internal {
         public Task<int> UpsertHookRouteLabelAsync(string name, string label, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_HOOK_ROUTE.UPSERT_LABEL, load, (ROUTE, name), (LABEL, label));
     }
-
 }
-
-

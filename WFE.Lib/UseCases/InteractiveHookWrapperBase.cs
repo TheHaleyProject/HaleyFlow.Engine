@@ -11,13 +11,11 @@ namespace WFE.Test.UseCases;
 public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
     private static readonly SemaphoreSlim PromptLock = new(1, 1);
 
-    protected readonly IWorkFlowEngineAccessor EngineAccessor;
     protected readonly UseCaseRuntimeOptions Options;
 
     protected abstract string DefinitionName { get; }
 
-    protected InteractiveHookWrapperBase(IWorkFlowEngineAccessor engineAccessor, UseCaseRuntimeOptions options) {
-        EngineAccessor = engineAccessor ?? throw new ArgumentNullException(nameof(engineAccessor));
+    protected InteractiveHookWrapperBase(IWorkFlowEngineAccessor engineAccessor, UseCaseRuntimeOptions options) : base(engineAccessor) {
         Options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
