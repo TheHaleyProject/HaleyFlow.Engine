@@ -10,6 +10,19 @@ namespace WFE.Test.UseCases.ChangeRequest {
     [LifeCycleDefinition(DefinitionNameConst)]
     public sealed class ChangeRequestWrapper : InteractiveHookWrapperBase {
         public const string DefinitionNameConst = "ProjectChangeRequest";
+        private const int ACTION_IMPACT_AUDIT_LOG = 4101;
+        private const int ACTION_IMPACT_NOTIFY_REQUESTOR = 4102;
+        private const int ACTION_COST_LOCAL_BACKUP = 4103;
+        private const int ACTION_COST_EMAIL_STAKEHOLDERS = 4104;
+        private const int ACTION_SCHEDULE_AUDIT_LOG = 4105;
+        private const int ACTION_SCHEDULE_CALENDAR_UPDATE = 4106;
+        private const int ACTION_STEERING_MINUTES_ARCHIVE = 4107;
+        private const int ACTION_STEERING_NOTIFY_WATCHERS = 4108;
+        private const int ACTION_REWORK_LOCAL_BACKUP = 4109;
+        private const int ACTION_REWORK_EMAIL_REQUESTOR = 4110;
+        private const int ACTION_REWORK_EXPIRED = 4111;
+        private const int ACTION_REWORK_EXPIRED_NOTIFY = 4112;
+
         protected override string DefinitionName => DefinitionNameConst;
 
         public ChangeRequestWrapper(IWorkFlowEngineAccessor engineAccessor, UseCaseRuntimeOptions options)
@@ -60,6 +73,14 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 PickEvent(evt.OnFailureEvent, "4002"),
                 ResolveExecutionModeFromParams(evt));
 
+        [HookHandler("APP.CHANGE.IMPACT.AUDIT.LOG")]
+        private Task<AckOutcome> OnImpactAuditLogAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_IMPACT_AUDIT_LOG, "Impact audit log");
+
+        [HookHandler("APP.CHANGE.IMPACT.NOTIFY.REQUESTOR")]
+        private Task<AckOutcome> OnImpactNotifyRequestorAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_IMPACT_NOTIFY_REQUESTOR, "Impact requestor notification");
+
         [HookHandler("APP.CHANGE.COST.REVIEW")]
         private Task<AckOutcome> OnCostReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
@@ -69,6 +90,14 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 PickEvent(evt.OnSuccessEvent, "4003"),
                 PickEvent(evt.OnFailureEvent, "4004"),
                 BusinessActionExecutionMode.ForceRun);
+
+        [HookHandler("APP.CHANGE.COST.LOCAL.BACKUP")]
+        private Task<AckOutcome> OnCostLocalBackupAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_COST_LOCAL_BACKUP, "Cost review backup");
+
+        [HookHandler("APP.CHANGE.COST.EMAIL.STAKEHOLDERS")]
+        private Task<AckOutcome> OnCostEmailStakeholdersAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_COST_EMAIL_STAKEHOLDERS, "Cost review stakeholder email");
 
         [HookHandler("APP.CHANGE.SCHEDULE.REVIEW")]
         private Task<AckOutcome> OnScheduleReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
@@ -80,6 +109,14 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 PickEvent(evt.OnFailureEvent, "4006"),
                 BusinessActionExecutionMode.ForceRun);
 
+        [HookHandler("APP.CHANGE.SCHEDULE.AUDIT.LOG")]
+        private Task<AckOutcome> OnScheduleAuditLogAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_SCHEDULE_AUDIT_LOG, "Schedule audit log");
+
+        [HookHandler("APP.CHANGE.SCHEDULE.CALENDAR.UPDATE")]
+        private Task<AckOutcome> OnScheduleCalendarUpdateAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_SCHEDULE_CALENDAR_UPDATE, "Project calendar update");
+
         [HookHandler("APP.CHANGE.STEERING.DECIDE")]
         private Task<AckOutcome> OnSteeringDecisionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
@@ -90,6 +127,14 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 PickEvent(evt.OnFailureEvent, "4008"),
                 BusinessActionExecutionMode.ForceRun);
 
+        [HookHandler("APP.CHANGE.STEERING.MINUTES.ARCHIVE")]
+        private Task<AckOutcome> OnSteeringMinutesArchiveAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_STEERING_MINUTES_ARCHIVE, "Steering minutes archive");
+
+        [HookHandler("APP.CHANGE.STEERING.NOTIFY.WATCHERS")]
+        private Task<AckOutcome> OnSteeringNotifyWatchersAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_STEERING_NOTIFY_WATCHERS, "Steering watcher notification");
+
         [HookHandler("APP.CHANGE.REWORK.REQUEST")]
         private Task<AckOutcome> OnReworkRequestedAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
             => ConfirmAndTriggerAsync(
@@ -99,6 +144,22 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 PickEvent(evt.OnSuccessEvent, "4009"),
                 null,
                 BusinessActionExecutionMode.SkipIfCompleted);
+
+        [HookHandler("APP.CHANGE.REWORK.LOCAL.BACKUP")]
+        private Task<AckOutcome> OnReworkLocalBackupAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_REWORK_LOCAL_BACKUP, "Rework backup");
+
+        [HookHandler("APP.CHANGE.REWORK.EMAIL.REQUESTOR")]
+        private Task<AckOutcome> OnReworkEmailRequestorAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_REWORK_EMAIL_REQUESTOR, "Rework requestor email");
+
+        [HookHandler("APP.CHANGE.REWORK.EXPIRED")]
+        private Task<AckOutcome> OnReworkExpiredAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_REWORK_EXPIRED, "Rework expiry processing");
+
+        [HookHandler("APP.CHANGE.REWORK.EXPIRED.NOTIFY")]
+        private Task<AckOutcome> OnReworkExpiredNotifyAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
+            => HandleSideEffectAsync(evt, ctx, ACTION_REWORK_EXPIRED_NOTIFY, "Rework expiry notification");
 
         [TransitionHandler(4000)]
         private Task<AckOutcome> OnAutoStartTransitionAsync(ILifeCycleTransitionEvent evt, ConsumerContext ctx) {
@@ -130,6 +191,32 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 new { route = evt.Route, entity = evt.EntityId, decision = yes ? "yes" : (hasFailurePath ? "no" : "retry") },
                 ct);
 
+        // Side-effect hooks are intentionally idempotent. If the same ack is re-delivered,
+        // BusinessAction prevents us from replaying backup/email/log work for the same entity.
+        private async Task<AckOutcome> HandleSideEffectAsync(ILifeCycleHookEvent evt, ConsumerContext ctx, int actionCode, string actionName) {
+            var execution = await ExecuteBusinessActionAsync(
+                ctx,
+                evt.DefinitionId,
+                evt.EntityId,
+                actionCode,
+                async token => {
+                    Console.WriteLine($"[CONSUMER] side-effect route={evt.Route} action={actionName} entity={evt.EntityId}");
+                    await UpsertRuntimeStatusAsync(
+                        evt,
+                        "Processed",
+                        new { route = evt.Route, entity = evt.EntityId, action = actionName },
+                        token);
+                    return new { route = evt.Route, entity = evt.EntityId, action = actionName };
+                },
+                BusinessActionExecutionMode.SkipIfCompleted);
+
+            if (!execution.Executed) {
+                Console.WriteLine($"[CONSUMER] side-effect route={evt.Route} already completed; reusing prior result.");
+            }
+
+            return AckOutcome.Processed;
+        }
+
         private static BusinessActionExecutionMode ResolveExecutionModeFromParams(ILifeCycleHookEvent evt) {
             // Example override:
             // params: { "forceBusinessAction": true } => ForceRun
@@ -137,7 +224,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             for (var i = 0; i < evt.Params.Count; i++) {
                 var data = evt.Params[i]?.Data;
                 if (data == null || data.Count < 1) continue;
-                if (TryReadBool(data, "forceBusinessAction", out var force) && force) {
+                if (TryReadBool(data, "forceRerun", out var force) && force) {
                     return BusinessActionExecutionMode.ForceRun;
                 }
             }
