@@ -368,6 +368,7 @@
         <button class="nav-item" onclick="gotoSection('hosted-options')">EngineServiceOptions</button>
         <button class="nav-item" onclick="gotoSection('admin-api')">Admin REST API <span class="badge-new">NEW</span></button>
         <button class="nav-item" onclick="gotoSection('timeline-html')">Timeline HTML Rendering <span class="badge-new">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('engine-proxy')">Engine Proxy Architecture <span class="badge-new">NEW</span></button>
       </div>
     </div>
 
@@ -2581,8 +2582,117 @@ consumer.EventRaised += <span class="kw">async</span> (e) => {
   </section>
 
 
+  <!-- ENGINE PROXY ARCHITECTURE -->
+  <section id="engine-proxy" class="doc-section">
+    <div class="section-label">Integration</div>
+    <h2 class="section-title">Engine Proxy Architecture</h2>
+
+    <p>
+      The engine exposes all its capabilities through <code>IWorkFlowEngine</code>, but consumers
+      must never hold a direct reference to it. Instead, every engine interaction goes through
+      <code>ILifeCycleEngineProxy</code> — a single abstraction that isolates the consumer from
+      wherever the engine happens to be running.
+    </p>
+
+    <div class="callout tip">
+      <div class="callout-title">Core Rule</div>
+      The consumer package (<code>Haley.Flow.Consumer</code>) has zero knowledge of
+      <code>IWorkFlowEngine</code> or <code>IWorkFlowEngineAccessor</code>.
+      It only ever holds an <code>ILifeCycleEngineProxy</code>.
+    </div>
+
+    <h3 class="sub-title">Why a Proxy?</h3>
+    <p>
+      The consumer is designed to be deployment-agnostic. The proxy registration is the only thing
+      that changes between deployment topologies — the consumer service itself never changes:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Deployment</th><th>Proxy</th><th>Where proxy lives</th><th>How it works</th></tr></thead>
+        <tbody>
+          <tr><td>In-process (same host)</td><td><code>InProcessEngineProxy</code></td><td>Engine package</td><td>Direct method calls + in-memory channels for events</td></tr>
+          <tr><td>Deferred in-process</td><td><code>DeferredInProcessEngineProxy</code></td><td>Engine package</td><td>Same as above but engine resolved lazily on first call</td></tr>
+          <tr><td>Remote (separate host)</td><td><code>HttpEngineProxy</code> (future)</td><td>Consumer package</td><td>HTTP calls to engine's REST API endpoints</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub-title">Why InProcessEngineProxy lives in the Engine project</h3>
+    <p>
+      <code>InProcessEngineProxy</code> holds a direct reference to <code>IWorkFlowEngine</code>
+      — that direct coupling is precisely why it cannot live in the consumer package.
+      The engine project is the only one allowed to know about engine internals.
+      An <code>HttpEngineProxy</code> (future) makes only HTTP calls and has no engine dependency,
+      so it can live in the consumer package.
+    </p>
+
+    <h3 class="sub-title">ILifeCycleEngineProxy surface</h3>
+    <p>The proxy exposes the complete surface the consumer needs, split across three concerns:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Inherited from</th><th>Covers</th></tr></thead>
+        <tbody>
+          <tr><td><code>ILifeCycleConsumerBus</code></td><td>Registration, heartbeat, ACK, blueprint import, <code>GetDefinitionIdAsync</code></td></tr>
+          <tr><td><code>ILifeCycleRuntimeBus</code></td><td>Trigger, timeline, instance data &amp; context, runtime log, list/suspend/resume/reopen/fail, pending ACKs</td></tr>
+          <tr><td>Own members</td><td><code>GetDueTransitionsAsync</code>, <code>GetDueHooksAsync</code>, <code>NoticeRaised</code> event</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Engine-management operations (<code>StartMonitorAsync</code>, <code>GetHealthAsync</code>,
+      etc.) are intentionally <strong>not</strong> on the proxy — they are engine-internal concerns.
+    </p>
+
+    <h3 class="sub-title">Event delivery vs on-demand queries</h3>
+    <p>
+      <code>GetDueTransitionsAsync</code> and <code>GetDueHooksAsync</code> look like queries
+      but they are fundamentally different from every other method on the proxy:
+    </p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title"><span class="card-icon">⚡</span> Event delivery (push → pull)</div>
+        <p style="font-size:13px;margin:0">
+          <code>GetDueTransitions/HooksAsync</code><br><br>
+          Exist because the engine has <code>EventRaised</code>. When the engine fires an event
+          (on trigger, monitor resend, hook advancement), it must reach the consumer somehow.
+          <br><br>
+          In-process: events are written into unbounded in-memory channels. Consumer drains them on each poll tick.
+          <br><br>
+          HTTP: server-side per-consumer buffer (long-poll or receipt DB). Consumer drains it with the same call.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="card-icon">🔍</span> On-demand queries</div>
+        <p style="font-size:13px;margin:0">
+          All <code>ILifeCycleRuntimeBus</code> methods<br><br>
+          The consumer initiates these. No event was fired. Examples: fetch a timeline to email it,
+          list pending ACKs for a dashboard, upsert a runtime status log from a wrapper,
+          suspend/resume/reopen an instance.
+          <br><br>
+          In-process: direct call to engine. HTTP: POST/GET to engine's REST endpoint.
+          Consumer never knows the difference.
+        </p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">Common confusion</div>
+      <code>ListPendingAcksAsync</code> (on-demand query) is NOT the same as
+      <code>GetDueTransitionsAsync</code> (event delivery). The former is a consumer asking
+      "what's unresolved in the engine DB right now?". The latter is the engine's events
+      arriving at the consumer through the proxy's buffering mechanism.
+    </div>
+
+    <h3 class="sub-title">Registering the proxy (in-process)</h3>
+    <pre><code><span class="cm">// In your host's DI registration (same process as engine):</span>
+<span class="cm">// Use DeferredInProcessEngineProxy if the engine may not be ready at registration time.</span>
+services.<span class="fn">AddSingleton</span>&lt;<span class="ty">ILifeCycleEngineProxy</span>, <span class="ty">DeferredInProcessEngineProxy</span>&gt;();
+
+<span class="cm">// Consumer registration (consumer package sees only the proxy interface):</span>
+services.<span class="fn">AddSingleton</span>&lt;<span class="ty">IWorkFlowConsumerService</span>, <span class="ty">WorkFlowConsumerService</span>&gt;();</code><span class="lang-label">C#</span></pre>
+  </section>
+
   <hr class="divider">
-  <p style="text-align:center;color:var(--text-muted);font-size:12px">Haley Workflow Engine — v0.8 — March 2026 — hook_lc refactor + Consumer SDK + RunCount</p>
+  <p style="text-align:center;color:var(--text-muted);font-size:12px">Haley Workflow Engine — v0.8 — March 2026 — hook_lc refactor + Consumer SDK + RunCount + Proxy Architecture</p>
 
 </div><!-- content-inner -->
 </main>

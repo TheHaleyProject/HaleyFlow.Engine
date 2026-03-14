@@ -11,8 +11,8 @@ namespace WFE.Test.UseCases.PaperlessReview {
         public const string DefinitionNameConst = "PaperlessReview";
         protected override string DefinitionName => DefinitionNameConst;
 
-        public PaperlessReviewWrapper(IWorkFlowEngineAccessor engineAccessor, UseCaseRuntimeOptions options)
-            : base(engineAccessor, options) { }
+        public PaperlessReviewWrapper(ILifeCycleExecution engine, UseCaseRuntimeOptions options)
+            : base(engine, options) { }
 
         public async Task<string?> TryStartRandomEntityAsync(string sourceUseCase, CancellationToken ct) {
             var timeout = Options.ConfirmationTimeout;
@@ -29,8 +29,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
             }
 
             var entityId = Guid.NewGuid().ToString("N");
-            var engine = await EngineAccessor.GetEngineAsync(ct);
-            var trigger = await engine.TriggerAsync(new LifeCycleTriggerRequest {
+            var trigger = await Engine.TriggerAsync(new LifeCycleTriggerRequest {
                 EnvCode = Options.EnvCode,
                 DefName = DefinitionNameConst,
                 EntityId = entityId,

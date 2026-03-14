@@ -15,7 +15,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
 
     protected abstract string DefinitionName { get; }
 
-    protected InteractiveHookWrapperBase(IWorkFlowEngineAccessor engineAccessor, UseCaseRuntimeOptions options) : base(engineAccessor) {
+    protected InteractiveHookWrapperBase(ILifeCycleExecution engine, UseCaseRuntimeOptions options) : base(engine) {
         Options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
@@ -102,8 +102,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
             }
         };
 
-        var engine = await EngineAccessor.GetEngineAsync(ctx.CancellationToken);
-        var result = await engine.TriggerAsync(request, ctx.CancellationToken);
+        var result = await Engine.TriggerAsync(request, ctx.CancellationToken);
         Console.WriteLine($"[CONSUMER] route={evt.Route} -> event={nextEventCode} applied={result.Applied} reason={result.Reason}");
         return AckOutcome.Processed;
     }

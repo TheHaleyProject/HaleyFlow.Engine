@@ -25,8 +25,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         protected override string DefinitionName => DefinitionNameConst;
 
-        public ChangeRequestWrapper(IWorkFlowEngineAccessor engineAccessor, UseCaseRuntimeOptions options)
-            : base(engineAccessor, options) { }
+        public ChangeRequestWrapper(ILifeCycleExecution engine, UseCaseRuntimeOptions options)
+            : base(engine, options) { }
 
         public async Task<string?> TryStartRandomEntityAsync(string sourceUseCase, CancellationToken ct) {
             var timeout = Options.ConfirmationTimeout;
@@ -43,8 +43,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             }
 
             var entityId = Guid.NewGuid().ToString("N");
-            var engine = await EngineAccessor.GetEngineAsync(ct);
-            var trigger = await engine.TriggerAsync(new LifeCycleTriggerRequest {
+            var trigger = await Engine.TriggerAsync(new LifeCycleTriggerRequest {
                 EnvCode = Options.EnvCode,
                 DefName = DefinitionNameConst,
                 EntityId = entityId,
@@ -267,8 +266,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
             string status,
             object? data,
             CancellationToken ct) {
-            var engine = await EngineAccessor.GetEngineAsync(ct);
-            return await engine.UpsertRuntimeAsync(new RuntimeLogByNameRequest {
+            return await Engine.UpsertRuntimeAsync(new RuntimeLogByNameRequest {
                 Instance = new LifeCycleInstanceKey { InstanceGuid = evt.InstanceGuid },
                 Activity = evt.Route,
                 Status = status,
