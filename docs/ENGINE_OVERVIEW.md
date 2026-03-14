@@ -247,10 +247,17 @@ A **consumer** is any application instance that processes events. Identified by 
 2. `BeatConsumerAsync(envCode, guid)` — updates `last_beat`. Call every ~10 seconds.
 3. Monitor skips consumers where `TIMESTAMPDIFF(SECOND, last_beat, UTC_NOW) > ttlSeconds`.
 
-**Consumer types** (resolved via the `ResolveConsumers` delegate you provide):
+**Consumer types** (resolved via the `ResolveConsumerGuids` delegate you provide):
 - `Transition` — receives lifecycle transition events, resolved per `def_version_id`
 - `Hook` — receives hook events, resolved per `def_version_id`
 - `Monitor` — used by the internal monitor scan loop
+
+**`ResolveConsumerGuids` delegate signature:**
+```csharp
+Func<LifeCycleConsumerType type, int envCode, string? defName, CancellationToken ct,
+     Task<IReadOnlyList<string>>>
+```
+The delegate is called by the engine to look up which consumer GUIDs handle a given `(type, envCode, defName)` combination. Return the GUIDs of live consumer processes that should receive events for that definition. This is **required** for trigger operations to succeed — if no consumers are resolvable, the trigger is rejected.
 
 ---
 
@@ -354,31 +361,154 @@ Monitor loop (background)
 
 ---
 
-## 17. Quick-Start Checklist
+## 17. Hosted Service Layer — `WorkFlowEngineService`
 
+For ASP.NET Core / Worker Service hosts, the engine is wrapped in `WorkFlowEngineService`, which:
+- Lazy-initializes the raw `IWorkFlowEngine` on first use (thread-safe, double-checked lock).
+- Auto-starts the monitor loop on first use (`StartMonitorAsync`).
+- Exposes a clean `IWorkFlowEngineService` abstraction for controllers and application code.
+- Exposes `IWorkFlowEngineAccessor` for consumer-side wrappers that need to call `TriggerAsync`.
+
+**DI registration:**
+```csharp
+// From appsettings.json section "WorkFlowEngine":
+//   adapter_key, AckGateEnabled, MonitorInterval, etc.
+builder.Services.AddWorkFlowEngineService(
+    builder.Configuration,
+    sectionName: "WorkFlowEngine",       // default
+    autoStart: true,                     // register IHostedService bootstrap
+    resolveConsumerGuids: async (type, envCode, defName, ct) => {
+        // Return GUIDs of consumers that handle this definition.
+        // Called by the engine at trigger time to resolve ACK targets.
+        return await myRegistry.GetConsumerGuidsAsync(type, envCode, defName, ct);
+    });
+```
+
+Registered interfaces:
+- `IWorkFlowEngineService` — full service API (queries, admin operations, timeline)
+- `IWorkFlowEngineAccessor` — minimal accessor for consumer wrappers (`TriggerAsync`, `UpsertRuntimeAsync`)
+
+**`EngineServiceOptions` (from appsettings):**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `adapter_key` | string | DB adapter key for the engine's `lcstate` database |
+| `AckGateEnabled` | bool | Enable ACK gate check before each transition (default false) |
+| `MonitorInterval` | TimeSpan | How often the monitor loop ticks (default 30s) |
+| `MaxRetryCount` | int | Max ACK delivery attempts before failure/suspension |
+| `DefaultStateStaleDuration` | TimeSpan | How long before a state triggers STATE_STALE notice |
+| `ConsumerTtlSeconds` | int | Seconds since last heartbeat before consumer is considered down |
+
+---
+
+## 18. Admin REST API — `WorkFlowEngineControllerBase`
+
+Inherit `WorkFlowEngineControllerBase` in your own controller to expose the full admin API with no boilerplate. It requires `IWorkFlowEngineService` injected via the constructor.
+
+```csharp
+[ApiController]
+[Route("api/wfe")]
+public class MyEngineController : WorkFlowEngineControllerBase {
+    public MyEngineController(IWorkFlowEngineService service) : base(service) { }
+}
+```
+
+**Endpoints provided:**
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `instance` | Fetch a single instance by `instanceGuid` or `(envCode, defName, entityId)` |
+| GET | `timeline` | Get timeline JSON for an instance |
+| GET | `timeline/html` | Get rendered timeline HTML page |
+| GET | `refs` | List `InstanceRefItem` rows for a definition (filterable by flags) |
+| GET | `entities` | List instances with status projection (paged) |
+| GET | `instances` | List instances filtered by status flags (paged) |
+| GET | `pending-acks` | List pending ACK rows for an environment |
+| GET | `summary` | Quick counts: total/running instances, pending ACKs |
+| GET | `health` | Engine health check (returns 200 healthy or 503 unhealthy) |
+| POST | `runtime/ensure-started` | Force-initializes the engine (useful for readiness probes) |
+| POST | `instance/suspend` | Suspend an active instance by GUID |
+| POST | `instance/resume` | Resume a suspended instance by GUID |
+| POST | `instance/fail` | Mark an instance as Failed by GUID |
+| POST | `instance/reopen` | Reopen a terminal instance (Failed/Completed/Archived) |
+
+**Timeline HTML endpoint parameters:**
+
+| Query Param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `envCode` | int? | — | Environment code (required when `instanceGuid` not provided) |
+| `defName` | string? | — | Definition name |
+| `entityId` | string? | — | External entity ref |
+| `instanceGuid` | string? | — | Direct instance GUID lookup (overrides env/def/entity) |
+| `name` | string? | — | Display name shown in the rendered page header |
+| `detail` | `TimelineDetail` | `Detailed` | Level of detail: `Summary`, `Detailed`, `Admin` |
+| `design` | `HtmlTimelineDesign` | `LightGlass` | Visual design: `LightGlass`, `FlowSteps`, `AuditLog`, `ControlBoard` |
+| `color` | string? | — | Accent hex color e.g. `%23e05a2b` (URL-encoded `#E05A2B`). Overrides brand colors in all designs. |
+
+---
+
+## 19. Timeline HTML Rendering
+
+`GetTimelineHtmlAsync` returns a self-contained HTML page (single file, no external dependencies) suitable for embedding in an iframe or returning directly from an API endpoint.
+
+**Four designs:**
+
+| `HtmlTimelineDesign` | Style | Best for |
+|----------------------|-------|----------|
+| `LightGlass` (0) | Card-per-transition with glass morphism | General purpose |
+| `FlowSteps` (1) | Horizontal progress rail + transition cards | Multi-step linear flows |
+| `AuditLog` (2) | Compact table view | Auditing and compliance |
+| `ControlBoard` (3) | Operational dashboard: sidebar state path, rich detail cards | Ops teams |
+
+**Accent color theming:**
+Pass a `#RRGGBB` hex string as `color`. Each renderer derives four shades automatically:
+- `Base` — as-is (primary accent)
+- `Dark` — ×0.75 (for text on light backgrounds)
+- `Light` — 8% tint blend with white (element backgrounds)
+- `Border` — 25% tint blend with white (borders)
+
+Semantic colors (green = success, red = failed, amber = suspended) are **never** overridden — only the brand/accent color shifts. If `color` is omitted or invalid, the design's built-in defaults apply unchanged.
+
+**`TimelineDetail` levels:**
+
+| Level | What's included |
+|-------|----------------|
+| `Summary` | State transitions only, no activities or hooks |
+| `Detailed` | Transitions + business action (runtime) rows |
+| `Admin` | Everything: transitions + runtime + full hook dispatch detail (times, ACK counts, order) |
+
+---
+
+## 20. Quick-Start Checklist
+
+### Option A — Raw engine (Worker Service or manual setup)
 ```csharp
 // 1. Build engine
 var engine = new WorkFlowEngine(dal, new WorkFlowBootStrapOptions {
-    AckGateEnabled = true,          // optional: block new transitions until prior ACKs resolve
+    AckGateEnabled = true,
     DefaultStateStaleDuration = TimeSpan.FromHours(24),
 });
 
-// 2. Subscribe to events and notices
+// 2. Wire ResolveConsumers
+engine.ResolveConsumers = async (type, envCode, defName, ct) =>
+    await myRegistry.GetGuidsAsync(type, envCode, defName, ct);
+
+// 3. Subscribe to events and notices
 engine.EventRaised  += HandleEventAsync;
 engine.NoticeRaised += HandleNoticeAsync;
 
-// 3. Import schema and policy (idempotent — safe to call on every startup)
+// 4. Import schema and policy (idempotent — safe to call on every startup)
 await engine.BlueprintImporter.ImportDefinitionJsonAsync(defJson);
 await engine.BlueprintImporter.ImportPolicyJsonAsync(policyJson);
 
-// 4. Register consumer and start heartbeat
+// 5. Register consumer and start heartbeat
 var consumerId = await engine.RegisterConsumerAsync(envCode, myGuid);
 _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token));  // beat every ~10s
 
-// 5. Start monitor
+// 6. Start monitor
 await engine.StartMonitorAsync(cts.Token);
 
-// 6. Trigger a transition
+// 7. Trigger a transition
 var result = await engine.TriggerAsync(new LifeCycleTriggerRequest {
     EnvCode     = envCode,
     DefName     = "loan-approval",
@@ -391,8 +521,54 @@ var result = await engine.TriggerAsync(new LifeCycleTriggerRequest {
     SkipAckGate = false          // set true to bypass the ACK gate for this call only
 });
 
-// 7. In event handler — ACK after processing
+// 8. In event handler — ACK after processing
 await engine.AckAsync(envCode, myGuid, ackGuid, AckOutcome.Processed);
 // ↑ if ackGuid belongs to a grouped hook and all siblings are Processed,
 //   HOOK_GROUP_COMPLETE notice fires automatically
+```
+
+### Option B — Hosted service (ASP.NET Core)
+```csharp
+// Program.cs
+builder.Services.AddWorkFlowEngineService(
+    builder.Configuration,          // reads from "WorkFlowEngine" section
+    resolveConsumerGuids: async (type, envCode, defName, ct) =>
+        new List<string> { myConsumerGuid });
+
+// appsettings.json
+{
+  "WorkFlowEngine": {
+    "adapter_key": "engine-db",
+    "AckGateEnabled": true,
+    "MonitorInterval": "00:00:30",
+    "MaxRetryCount": 5,
+    "ConsumerTtlSeconds": 120
+  }
+}
+
+// Controller — inherit the base to get all admin endpoints for free
+[ApiController]
+[Route("api/wfe")]
+public class WorkFlowController : WorkFlowEngineControllerBase {
+    public WorkFlowController(IWorkFlowEngineService svc) : base(svc) { }
+}
+
+// Accessing the engine from application code
+public class LoanService {
+    private readonly IWorkFlowEngineAccessor _engine;
+    public LoanService(IWorkFlowEngineAccessor engine) { _engine = engine; }
+
+    public async Task SubmitAsync(string loanId, string actor) {
+        var eng = await _engine.GetEngineAsync();
+        await eng.TriggerAsync(new LifeCycleTriggerRequest {
+            EnvCode     = 1,
+            DefName     = "loan-approval",
+            ExternalRef = loanId,
+            Event       = "submit",
+            RequestId   = Guid.NewGuid().ToString(),
+            Actor       = actor,
+            AckRequired = true
+        });
+    }
+}
 ```

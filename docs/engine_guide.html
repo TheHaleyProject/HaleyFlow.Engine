@@ -362,6 +362,16 @@
     </div>
 
     <div class="nav-section">
+      <button class="nav-group-btn" onclick="toggleGroup(this)">Hosted Service &amp; API <span class="caret">▾</span></button>
+      <div class="nav-items">
+        <button class="nav-item" onclick="gotoSection('hosted-service')">WorkFlowEngineService <span class="badge-new">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('hosted-options')">EngineServiceOptions</button>
+        <button class="nav-item" onclick="gotoSection('admin-api')">Admin REST API <span class="badge-new">NEW</span></button>
+        <button class="nav-item" onclick="gotoSection('timeline-html')">Timeline HTML Rendering <span class="badge-new">NEW</span></button>
+      </div>
+    </div>
+
+    <div class="nav-section">
       <button class="nav-group-btn" onclick="toggleGroup(this)">Reference <span class="caret">▾</span></button>
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('ref-notices')">Notice Codes</button>
@@ -1876,6 +1886,236 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
     </div>
   </section>
 
+  <!-- ──────────────── HOSTED SERVICE ──────────────── -->
+  <section class="doc-section" id="hosted-service">
+    <div class="section-label">Hosted Service &amp; API</div>
+    <h2 class="section-title">Hosted Service Layer — WorkFlowEngineService</h2>
+    <p>The hosted service layer wraps the raw engine in a DI-friendly, <code>IHostedService</code>-compatible facade. It handles lazy initialization, monitor startup, and exposes the engine via injected interfaces — so application code never needs to touch <code>WorkFlowEngineMaker</code> or <code>StartMonitorAsync</code> directly.</p>
+
+    <h3 class="sub-title" id="hosted-service-reg">DI Registration</h3>
+    <p>Call one of the two overloads on your <code>IServiceCollection</code>:</p>
+    <pre><code><span class="cm">// Overload 1 — from IConfiguration (reads a named section)</span>
+services.<span class="fn">AddWorkFlowEngineService</span>(
+    configuration,
+    sectionName:          <span class="st">"WorkFlowEngine"</span>,  <span class="cm">// appsettings key</span>
+    autoStart:            <span class="nb">true</span>,              <span class="cm">// register IHostedService bootstrap</span>
+    resolveConsumerGuids: ResolveConsumersAsync  <span class="cm">// REQUIRED delegate — see below</span>
+);
+
+<span class="cm">// Overload 2 — from Action&lt;EngineServiceOptions&gt;</span>
+services.<span class="fn">AddWorkFlowEngineService</span>(
+    options => {
+        options.adapter_key                = <span class="st">"maria"</span>;
+        options.AckGateEnabled             = <span class="nb">true</span>;
+        options.MonitorInterval            = TimeSpan.FromSeconds(<span class="jn">15</span>);
+        options.MaxRetryCount              = <span class="jn">5</span>;
+        options.DefaultStateStaleDuration  = TimeSpan.FromHours(<span class="jn">24</span>);
+        options.ConsumerTtlSeconds         = <span class="jn">120</span>;
+    },
+    autoStart:            <span class="nb">true</span>,
+    resolveConsumerGuids: ResolveConsumersAsync
+);</code><span class="lang-label">C#</span></pre>
+
+    <p>Both overloads register:</p>
+    <ul>
+      <li><code>IWorkFlowEngineService</code> — full engine operations surface</li>
+      <li><code>IWorkFlowEngineAccessor</code> — lightweight read-only accessor for queries and timeline</li>
+      <li>An <code>IHostedService</code> bootstrap that initializes the engine and starts the monitor on application startup (when <code>autoStart: true</code>)</li>
+    </ul>
+
+    <div class="callout tip">
+      <div class="callout-title">Lazy initialization</div>
+      The engine initializes on first use if <code>autoStart</code> is <code>false</code>. The monitor starts automatically as part of initialization regardless of how initialization is triggered. You can also force-initialize explicitly via the Admin API (<code>POST runtime/ensure-started</code>).
+    </div>
+
+    <h3 class="sub-title" id="hosted-options">EngineServiceOptions Configuration</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>adapter_key</code></td><td>string</td><td><em>required</em></td><td>Storage adapter identifier (e.g. <code>"maria"</code> for MariaDB). Must match a registered adapter gateway.</td></tr>
+          <tr><td><code>AckGateEnabled</code></td><td>bool</td><td><code>false</code></td><td>When <code>true</code>, new transitions are blocked while the prior lifecycle entry still has pending consumer ACKs.</td></tr>
+          <tr><td><code>MonitorInterval</code></td><td>TimeSpan</td><td>15 seconds</td><td>How often the background monitor runs its stale scan, ACK retry pass, and timeout checks.</td></tr>
+          <tr><td><code>MaxRetryCount</code></td><td>int</td><td>5</td><td>Maximum delivery attempts for a hook or transition before the consumer row is marked failed (or instance suspended if blocking).</td></tr>
+          <tr><td><code>DefaultStateStaleDuration</code></td><td>TimeSpan</td><td>24 hours</td><td>Duration an instance may remain in a non-terminal state before a <code>STATE_STALE</code> notice fires. Set to zero to disable.</td></tr>
+          <tr><td><code>ConsumerTtlSeconds</code></td><td>int</td><td>120</td><td>Freshness window for consumer heartbeats. If a consumer's last beat is older than this, the engine treats it as down and skips dispatch to it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub-title">ResolveConsumerGuids Delegate</h3>
+    <p>This delegate is called by the engine at trigger time to discover which consumers should receive events for a given definition. It is <strong>required</strong> — without it the engine cannot deliver events to any consumer.</p>
+    <pre><code><span class="cm">// Delegate signature:</span>
+<span class="ty">Func</span>&lt;<span class="ty">LifeCycleConsumerType</span> type, <span class="kw">int</span> envCode, <span class="ty">string</span>? defName,
+     <span class="ty">CancellationToken</span> ct, <span class="ty">Task</span>&lt;<span class="ty">IReadOnlyList</span>&lt;<span class="ty">string</span>&gt;&gt;&gt;
+
+<span class="cm">// Example implementation — return a fixed list of consumer GUIDs</span>
+<span class="kw">static async</span> <span class="ty">Task</span>&lt;<span class="ty">IReadOnlyList</span>&lt;<span class="ty">string</span>&gt;&gt; ResolveConsumersAsync(
+    <span class="ty">LifeCycleConsumerType</span> type, <span class="kw">int</span> envCode, <span class="ty">string</span>? defName, <span class="ty">CancellationToken</span> ct)
+{
+    <span class="cm">// Look up from config, registry, or static list:</span>
+    <span class="kw">return</span> defName <span class="kw">switch</span> {
+        <span class="st">"loan-approval"</span> =&gt; [<span class="st">"loan-consumer-guid"</span>, <span class="st">"audit-consumer-guid"</span>],
+        _               =&gt; [<span class="st">"default-consumer-guid"</span>]
+    };
+}</code><span class="lang-label">C#</span></pre>
+    <div class="callout warn">
+      <div class="callout-title">REQUIRED for trigger operations</div>
+      <code>ResolveConsumerGuids</code> is called every time <code>TriggerAsync</code> fires. If the delegate returns an empty list, no <code>ack_consumer</code> rows are created and no consumers will receive the event. Return the GUIDs of all consumer processes that should handle events for the given definition and environment.
+    </div>
+  </section>
+
+  <!-- ──────────────── ADMIN REST API ──────────────── -->
+  <section class="doc-section" id="admin-api">
+    <div class="section-label">Hosted Service &amp; API</div>
+    <h2 class="section-title">Admin REST API — WorkFlowEngineControllerBase</h2>
+    <p>Inherit <code>WorkFlowEngineControllerBase</code> to expose all admin and monitoring endpoints with zero boilerplate. The base class injects <code>IWorkFlowEngineAccessor</code> automatically.</p>
+    <pre><code><span class="cm">// Minimal controller — all endpoints are inherited</span>
+[<span class="ty">ApiController</span>]
+[<span class="ty">Route</span>(<span class="st">"api/workflow"</span>)]
+<span class="kw">public class</span> <span class="ty">WorkflowAdminController</span> : <span class="ty">WorkFlowEngineControllerBase</span>
+{
+    <span class="cm">// No additional code required.</span>
+    <span class="cm">// Add [Authorize], route overrides, or extra endpoints here if needed.</span>
+}</code><span class="lang-label">C#</span></pre>
+
+    <h3 class="sub-title">Endpoint Reference</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge info">GET</span></td><td><code>instance</code></td><td>Fetch an instance by <code>instanceGuid</code>, or by <code>(envCode, defName, entityId)</code>. Returns full instance data.</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>timeline</code></td><td>Timeline as a JSON object — ordered list of lifecycle entries with transitions, hooks, and runtime activities.</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>timeline/html</code></td><td>Self-contained HTML timeline page. See <a href="#" onclick="gotoSection('timeline-html');return false;">Timeline HTML Rendering</a> for design and query params.</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>refs</code></td><td>Paged list of <code>InstanceRefItem</code> rows for a definition. Supports <code>flags</code> filter (e.g. running only).</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>entities</code></td><td>Paged list of instances with a status projection. Filter by <code>defName</code>, <code>envCode</code>, and running/all.</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>instances</code></td><td>Paged list of instances by <code>status</code> flags (terminal, running, suspended, failed).</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>pending-acks</code></td><td>Paged list of pending ACK rows for an environment. Useful for monitoring backlogs.</td></tr>
+          <tr><td><span class="badge info">GET</span></td><td><code>summary</code></td><td>Quick counts: total instances, running instances, pending ACKs for an environment.</td></tr>
+          <tr><td><span class="badge ok">GET</span></td><td><code>health</code></td><td>Returns <code>200 OK</code> when the engine is initialized and the monitor is running; <code>503 Service Unavailable</code> otherwise.</td></tr>
+          <tr><td><span class="badge warn">POST</span></td><td><code>runtime/ensure-started</code></td><td>Force-initializes the engine if it has not yet started. Idempotent — safe to call repeatedly.</td></tr>
+          <tr><td><span class="badge warn">POST</span></td><td><code>instance/suspend</code></td><td>Suspend a running instance by GUID. Sets status to Suspended and stops event dispatch.</td></tr>
+          <tr><td><span class="badge warn">POST</span></td><td><code>instance/resume</code></td><td>Resume a previously suspended instance by GUID. Re-enables event dispatch.</td></tr>
+          <tr><td><span class="badge warn">POST</span></td><td><code>instance/fail</code></td><td>Forcibly mark an instance as Failed by GUID regardless of current state.</td></tr>
+          <tr><td><span class="badge warn">POST</span></td><td><code>instance/reopen</code></td><td>Reopen a terminal instance (Failed, Completed, or Archived). Creates a new lifecycle entry with fresh <code>hook_lc</code> rows. RunCount increments on next hook dispatch.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">All GET endpoints accept either instanceGuid or (envCode + defName + entityId)</div>
+      Providing <code>instanceGuid</code> directly is always the fastest lookup path — it resolves in a single primary-key index scan. The <code>(envCode, defName, entityId)</code> triplet goes through a definition-name resolution step first.
+    </div>
+  </section>
+
+  <!-- ──────────────── TIMELINE HTML ──────────────── -->
+  <section class="doc-section" id="timeline-html">
+    <div class="section-label">Hosted Service &amp; API</div>
+    <h2 class="section-title">Timeline HTML Rendering</h2>
+    <p>The engine can produce a self-contained HTML timeline page for any workflow instance. The page has no external dependencies — all CSS and JS is inline. Suitable for embedding in iframes, serving directly from the Admin API, or generating for audit exports.</p>
+
+    <h3 class="sub-title">API Signature</h3>
+    <pre><code>Task&lt;<span class="ty">string</span>&gt; <span class="fn">GetTimelineHtmlAsync</span>(
+    <span class="kw">int</span>                 envCode,
+    <span class="ty">string</span>?            defName,
+    <span class="ty">string</span>?            entityId,
+    <span class="ty">string</span>?            instanceGuid,
+    <span class="ty">string</span>?            displayName,  <span class="cm">// shown in the page header</span>
+    <span class="ty">TimelineDetail</span>    detail,
+    <span class="ty">HtmlTimelineDesign</span> design,
+    <span class="ty">string</span>?            color,        <span class="cm">// accent hex e.g. "#3b82f6"</span>
+    <span class="ty">CancellationToken</span>  ct
+);</code><span class="lang-label">C#</span></pre>
+
+    <h3 class="sub-title">Design Options (HtmlTimelineDesign)</h3>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title"><span class="card-icon">◈</span> LightGlass (0)</div>
+        <ul>
+          <li>Glass morphism cards with blur and transparency</li>
+          <li>General purpose — works for most workflows</li>
+          <li>Light background with layered card depth</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="card-icon">→</span> FlowSteps (1)</div>
+        <ul>
+          <li>Horizontal progress rail connecting steps</li>
+          <li>Best for linear flows with distinct phases</li>
+          <li>Shows current step highlighted on the rail</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="card-icon">≡</span> AuditLog (2)</div>
+        <ul>
+          <li>Compact table-style layout</li>
+          <li>Optimised for compliance and audit exports</li>
+          <li>Maximises information density</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="card-icon">⊞</span> ControlBoard (3)</div>
+        <ul>
+          <li>Operational dashboard with sidebar state path</li>
+          <li>Rich detail cards with hook dispatch metadata</li>
+          <li>Best for operations teams monitoring live instances</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="sub-title">Detail Levels (TimelineDetail)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Level</th><th>Content shown</th></tr></thead>
+        <tbody>
+          <tr><td><code>Summary</code></td><td>Transitions only — state changes with actor, event name, and timestamp. Lightest output.</td></tr>
+          <tr><td><code>Detailed</code></td><td>Transitions plus runtime activities (step tracking, business actions) and hook dispatch entries.</td></tr>
+          <tr><td><code>Admin</code></td><td>Everything in Detailed, plus full hook dispatch metadata: exact dispatch and ACK timestamps, ACK counts, order numbers, consumer GUIDs. Use for debugging or compliance.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub-title">Accent Color Theming</h3>
+    <p>Pass a <code>#RRGGBB</code> hex string as the <code>color</code> parameter (URL-encode the <code>#</code> as <code>%23</code> when used as a query string). The renderer derives four shades automatically:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Shade</th><th>Derivation</th><th>Usage</th></tr></thead>
+        <tbody>
+          <tr><td>Base</td><td>Passed value as-is</td><td>Primary accent — buttons, active states, borders</td></tr>
+          <tr><td>Dark</td><td>Base × 0.75 (brightness)</td><td>Hover states, pressed buttons</td></tr>
+          <tr><td>Light</td><td>8% tint toward white</td><td>Card backgrounds, highlight bands</td></tr>
+          <tr><td>Border</td><td>25% tint toward white</td><td>Card borders, dividers</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">Semantic colors are never overridden</div>
+      Green (success / Processed), red (failed / Failed), and amber (suspended / Suspended) are hardcoded semantic colors in the template. The accent color only affects non-semantic UI chrome such as the header, progress rail, and active state indicators.
+    </div>
+
+    <h3 class="sub-title">REST Query Parameters (<code>GET timeline/html</code>)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>envCode</code></td><td>int</td><td>Environment code. Required when resolving by name.</td></tr>
+          <tr><td><code>defName</code></td><td>string</td><td>Definition name. Use with <code>entityId</code> as an alternative to <code>instanceGuid</code>.</td></tr>
+          <tr><td><code>entityId</code></td><td>string</td><td>External business key. Use with <code>defName</code>.</td></tr>
+          <tr><td><code>instanceGuid</code></td><td>string</td><td>Direct instance GUID. Fastest lookup — bypasses name resolution.</td></tr>
+          <tr><td><code>name</code></td><td>string</td><td>Display name shown in the page header.</td></tr>
+          <tr><td><code>detail</code></td><td>int / string</td><td><code>0</code>=Summary, <code>1</code>=Detailed, <code>2</code>=Admin. Default: <code>Detailed</code>.</td></tr>
+          <tr><td><code>design</code></td><td>int / string</td><td><code>0</code>=LightGlass, <code>1</code>=FlowSteps, <code>2</code>=AuditLog, <code>3</code>=ControlBoard. Default: <code>LightGlass</code>.</td></tr>
+          <tr><td><code>color</code></td><td>string</td><td>Accent hex color. URL-encode the <code>#</code> — e.g. <code>color=%233b82f6</code> for blue.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <pre><code><span class="cm">// Example: open a ControlBoard timeline for a loan instance</span>
+GET /api/workflow/timeline/html
+    ?instanceGuid=abc-123-def
+    &amp;design=3
+    &amp;detail=1
+    &amp;name=Loan%20Application
+    &amp;color=%232563eb</code><span class="lang-label">HTTP</span></pre>
+  </section>
   <!-- ──────────────── REFERENCE ──────────────── -->
   <section class="doc-section" id="ref-notices">
     <div class="section-label">Reference</div>
@@ -2339,6 +2579,7 @@ consumer.EventRaised += <span class="kw">async</span> (e) => {
       </table>
     </div>
   </section>
+
 
   <hr class="divider">
   <p style="text-align:center;color:var(--text-muted);font-size:12px">Haley Workflow Engine — v0.8 — March 2026 — hook_lc refactor + Consumer SDK + RunCount</p>
