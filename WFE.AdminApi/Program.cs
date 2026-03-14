@@ -14,9 +14,10 @@ builder.Services.AddWorkFlowEngineService(builder.Configuration, resolveConsumer
     //what ever is the value, at th moment, let us return the same guid for testing purpose.
     return  new List<string> { "89c52807-5054-47fc-9dee-dbb8b42218cb" };
 });
+builder.Services.AddInProcessEngineProxy();
 
 // If autoStart=true, consumer can start polling before the test definitions/policies import finishes.
-builder.Services.AddWorkFlowConsumerService(builder.Configuration, sectionName: "WorkFlowConsumer", autoStart: false, addDeferredInProcessProxy: true);
+builder.Services.AddWorkFlowConsumerService(builder.Configuration, sectionName: "WorkFlowConsumer", autoStart: false);
 
 builder.Services.AddSingleton(sp => BuildUseCaseRuntimeOptions(
     sp.GetRequiredService<IOptions<WorkflowAdminOptions>>().Value,

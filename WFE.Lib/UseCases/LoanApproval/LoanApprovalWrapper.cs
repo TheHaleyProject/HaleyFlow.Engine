@@ -11,8 +11,8 @@ namespace WFE.Test.UseCases.LoanApproval {
         public const string DefinitionNameConst = "LoanApproval";
         protected override string DefinitionName => DefinitionNameConst;
 
-        public LoanApprovalWrapper(ILifeCycleExecution engine, UseCaseRuntimeOptions options)
-            : base(engine, options) { }
+        public LoanApprovalWrapper(UseCaseRuntimeOptions options)
+            : base(options) { }
 
         public async Task<string?> TryStartRandomEntityAsync(string sourceUseCase, CancellationToken ct) {
             var timeout = Options.ConfirmationTimeout;

@@ -15,7 +15,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
 
     protected abstract string DefinitionName { get; }
 
-    protected InteractiveHookWrapperBase(ILifeCycleExecution engine, UseCaseRuntimeOptions options) : base(engine) {
+    protected InteractiveHookWrapperBase(UseCaseRuntimeOptions options) {
         Options = options ?? throw new ArgumentNullException(nameof(options));
     }
 

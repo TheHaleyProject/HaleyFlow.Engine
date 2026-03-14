@@ -11,8 +11,8 @@ namespace WFE.Test.UseCases.PaperlessReview {
         public const string DefinitionNameConst = "PaperlessReview";
         protected override string DefinitionName => DefinitionNameConst;
 
-        public PaperlessReviewWrapper(ILifeCycleExecution engine, UseCaseRuntimeOptions options)
-            : base(engine, options) { }
+        public PaperlessReviewWrapper(UseCaseRuntimeOptions options)
+            : base(options) { }
 
         public async Task<string?> TryStartRandomEntityAsync(string sourceUseCase, CancellationToken ct) {
             var timeout = Options.ConfirmationTimeout;

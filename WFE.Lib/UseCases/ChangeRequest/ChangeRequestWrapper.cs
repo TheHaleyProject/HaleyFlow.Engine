@@ -25,8 +25,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         protected override string DefinitionName => DefinitionNameConst;
 
-        public ChangeRequestWrapper(ILifeCycleExecution engine, UseCaseRuntimeOptions options)
-            : base(engine, options) { }
+        public ChangeRequestWrapper(UseCaseRuntimeOptions options)
+            : base(options) { }
 
         public async Task<string?> TryStartRandomEntityAsync(string sourceUseCase, CancellationToken ct) {
             var timeout = Options.ConfirmationTimeout;

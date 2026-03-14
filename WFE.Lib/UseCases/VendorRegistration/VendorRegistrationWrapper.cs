@@ -11,8 +11,8 @@ namespace WFE.Test.UseCases.VendorRegistration {
         public const string DefinitionNameConst = "VendorRegistration";
         protected override string DefinitionName => DefinitionNameConst;
 
-        public VendorRegistrationWrapper(ILifeCycleExecution engine, UseCaseRuntimeOptions options)
-            : base(engine, options) { }
+        public VendorRegistrationWrapper(UseCaseRuntimeOptions options)
+            : base(options) { }
 
         public async Task<string?> TryStartRandomEntityAsync(string sourceUseCase, CancellationToken ct) {
             var timeout = Options.ConfirmationTimeout;

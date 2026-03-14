@@ -44,6 +44,17 @@ namespace Haley.Utils {
             });
         }
 
+        /// <summary>
+        /// Registers <see cref="InProcessEngineProxy"/> as <see cref="ILifeCycleEngineProxy"/>.
+        /// Call this on the host that runs both the engine and the consumer in the same process.
+        /// Requires <see cref="IWorkFlowEngineAccessor"/> to already be registered
+        /// (i.e. call after <see cref="AddWorkFlowEngineService"/>).
+        /// </summary>
+        public static IServiceCollection AddInProcessEngineProxy(this IServiceCollection services) {
+            services.TryAddSingleton<ILifeCycleEngineProxy, InProcessEngineProxy>();
+            return services;
+        }
+
         static IServiceCollection AddWorkFlowEngineServiceCore(IServiceCollection services, bool autoStart) {
             var hasIAdapter = services.Any(s => s.ServiceType == typeof(IAdapterGateway));
             var hasAdapter = services.Any(s => s.ServiceType == typeof(AdapterGateway));
