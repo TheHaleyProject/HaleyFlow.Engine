@@ -36,10 +36,9 @@ namespace Haley.Services {
         internal IRuntimeEngine Runtime { get; }
         internal IEngineCare Care { get; }
         internal ILifeCycleMonitor Monitor { get; }
-        private readonly TriggerOrchestrator _triggerOrchestrator;
+        private readonly InstanceOrchestrator _instanceOrchestrator;
         private readonly AckOutcomeOrchestrator _ackOutcomeOrchestrator;
         private readonly MonitorOrchestrator _monitorOrchestrator;
-        private readonly ReopenOrchestrator _reopenOrchestrator;
         private readonly MaintenanceOrchestrator _maintenanceOrchestrator;
 
         // Two public events that the host application subscribes to:
@@ -99,10 +98,9 @@ namespace Haley.Services {
 
             Runtime = new RuntimeEngine(_dal);
             Care = new EngineCare(_dal.EngineCare, AckManager);
-            _triggerOrchestrator = new TriggerOrchestrator(_dal, _opt, BlueprintManager, StateMachine, PolicyEnforcer, AckManager, DispatchEventsSafeAsync, FireNotice);
+            _instanceOrchestrator = new InstanceOrchestrator(_dal, _opt, BlueprintManager, StateMachine, PolicyEnforcer, AckManager, DispatchEventsSafeAsync, FireNotice);
             _ackOutcomeOrchestrator = new AckOutcomeOrchestrator(_dal, AckManager, DispatchEventsSafeAsync, FireNotice);
             _monitorOrchestrator = new MonitorOrchestrator(_dal, _opt, AckManager, FireEvent, FireNotice);
-            _reopenOrchestrator = new ReopenOrchestrator(_dal, BlueprintManager, TriggerAsync);
             _maintenanceOrchestrator = new MaintenanceOrchestrator(_dal, _opt.MaxRetryCount);
 
             // The monitor is a background periodic loop. Every MonitorInterval it:
@@ -144,7 +142,7 @@ namespace Haley.Services {
         //  10. Fire events AFTER commit — fire-and-forget; the monitor handles missed deliveries
         // -----------------------------------------------------------------------
         public Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
-            return _triggerOrchestrator.TriggerAsync(req, ct);
+            return _instanceOrchestrator.TriggerAsync(req, ct);
         }
 
         public Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
@@ -365,7 +363,7 @@ namespace Haley.Services {
         //   5. Find the auto-start event: the first defined transition out of the initial state.
         //   6. Call TriggerAsync with that event — creates the lifecycle row, fires hooks, fans out ACKs.
         public Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
-            return _reopenOrchestrator.ReopenAsync(instanceGuid, actor, ct);
+            return _instanceOrchestrator.ReopenAsync(instanceGuid, actor, ct);
         }
 
         public Task<bool> UnsuspendAsync(string instanceGuid, string actor, CancellationToken ct = default)

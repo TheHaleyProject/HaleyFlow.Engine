@@ -6,7 +6,7 @@ using static Haley.Internal.KeyConstants;
 
 namespace Haley.Services.Orchestrators {
     // Handles all administrative instance state mutations that do NOT go through the
-    // normal trigger pipeline (those live in TriggerOrchestrator / ReopenOrchestrator).
+    // normal instance trigger/reopen pipeline (those live in InstanceOrchestrator).
     //
     // Operations owned here:
     //

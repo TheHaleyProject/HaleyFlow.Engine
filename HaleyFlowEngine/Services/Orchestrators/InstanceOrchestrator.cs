@@ -3,13 +3,15 @@ using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
 using static Haley.Internal.KeyConstants;
-using static Haley.Internal.QueryFields;
 
 namespace Haley.Services.Orchestrators {
-    // Owns the full TriggerAsync orchestration flow that was previously in WorkFlowEngine.
-    // This class coordinates state transition, ACK creation, hook emission, and post-commit dispatch.
+    // Owns instance-scoped lifecycle operations that were previously split across
+    // separate trigger and reopen orchestrators.
+    // Responsibilities:
+    // - TriggerAsync: state transition, ACK creation, hook emission, and post-commit dispatch
+    // - ReopenAsync: terminal-instance reset and optional auto-start bootstrap trigger
     // It does not own low-level persistence rules; those stay inside DAL/StateMachine/Policy services.
-    internal sealed class TriggerOrchestrator {
+    internal sealed class InstanceOrchestrator {
         private readonly IWorkFlowDAL _dal;
         private readonly WorkFlowEngineOptions _opt;
         private readonly IBlueprintManager _blueprintManager;
@@ -21,7 +23,7 @@ namespace Haley.Services.Orchestrators {
 
         // Dependencies are passed in from WorkFlowEngine so behavior stays identical after extraction.
         // dispatchEventsAsync and fireNotice are callbacks to engine-level event/notice pipelines.
-        public TriggerOrchestrator(IWorkFlowDAL dal, WorkFlowEngineOptions opt, IBlueprintManager blueprintManager, IStateMachine stateMachine, IPolicyEnforcer policyEnforcer, IAckManager ackManager, Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync, Action<LifeCycleNotice> fireNotice) {
+        public InstanceOrchestrator(IWorkFlowDAL dal, WorkFlowEngineOptions opt, IBlueprintManager blueprintManager, IStateMachine stateMachine, IPolicyEnforcer policyEnforcer, IAckManager ackManager, Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync, Action<LifeCycleNotice> fireNotice) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _opt = opt ?? throw new ArgumentNullException(nameof(opt));
             _blueprintManager = blueprintManager ?? throw new ArgumentNullException(nameof(blueprintManager));
@@ -258,5 +260,68 @@ namespace Haley.Services.Orchestrators {
             }
         }
 
+        // Reopen flow:
+        // 1. Resolve instance and validate terminal flags.
+        // 2. Reset to initial state and clear terminal/suspended flags.
+        // 3. Find auto-start transition from initial state.
+        // 4. If present, reuse TriggerAsync with normal ACKed dispatch and SkipAckGate=true.
+        public async Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentNullException(nameof(instanceGuid));
+            if (string.IsNullOrWhiteSpace(actor)) throw new ArgumentNullException(nameof(actor));
+
+            var load = new DbExecutionLoad(ct);
+            var instanceRow = await _dal.Instance.GetByGuidAsync(instanceGuid, load);
+            if (instanceRow == null) throw new InvalidOperationException($"Instance not found: {instanceGuid}");
+
+            var instanceId = instanceRow.GetLong(KEY_ID);
+            var currentFlags = (uint)instanceRow.GetLong(KEY_FLAGS);
+            var entityId = instanceRow.GetString(KEY_ENTITY_ID) ?? string.Empty;
+            var defVersionId = instanceRow.GetLong(KEY_DEF_VERSION);
+
+            const uint terminalCheck = (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed | LifeCycleInstanceFlag.Archived);
+            if ((currentFlags & terminalCheck) == 0) {
+                return new LifeCycleTriggerResult {
+                    Applied = false,
+                    InstanceGuid = instanceGuid,
+                    InstanceId = instanceId,
+                    Reason = "NotTerminal",
+                    LifecycleAckGuids = Array.Empty<string>(),
+                    HookAckGuids = Array.Empty<string>()
+                };
+            }
+
+            var bp = await _blueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
+            if (bp == null) throw new InvalidOperationException($"Blueprint not found for def_version {defVersionId}.");
+
+            const uint clearMask = (uint)(LifeCycleInstanceFlag.Completed | LifeCycleInstanceFlag.Failed
+                                        | LifeCycleInstanceFlag.Archived | LifeCycleInstanceFlag.Suspended);
+            await _dal.Instance.ForceResetToStateAsync(instanceId, bp.InitialStateId, clearMask, load);
+
+            var autoStart = bp.Transitions.FirstOrDefault(kv => kv.Key.Item1 == bp.InitialStateId);
+            if (autoStart.Value == null) {
+                return new LifeCycleTriggerResult {
+                    Applied = true,
+                    InstanceGuid = instanceGuid,
+                    InstanceId = instanceId,
+                    ToState = bp.StatesById.TryGetValue(bp.InitialStateId, out var init) ? (init.Name ?? string.Empty) : string.Empty,
+                    Reason = "ResetToInitial",
+                    LifecycleAckGuids = Array.Empty<string>(),
+                    HookAckGuids = Array.Empty<string>()
+                };
+            }
+
+            bp.EventsById.TryGetValue(autoStart.Value.EventId, out var autoStartEvent);
+
+            return await TriggerAsync(new LifeCycleTriggerRequest {
+                DefName = bp.DefName,
+                EnvCode = bp.EnvCode,
+                EntityId = entityId,
+                Event = autoStartEvent?.Name ?? string.Empty,
+                Actor = actor,
+                AckRequired = true,
+                SkipAckGate = true
+            }, ct);
+        }
     }
 }
