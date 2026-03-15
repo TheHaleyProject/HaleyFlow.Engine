@@ -219,6 +219,9 @@ internal static class FlowStepsTLR {
 
     /* ── Compact ── */
     .compact .detail-only { display: none !important; }
+    .compact .step.force-open .detail-only { display: block !important; }
+    .compact .step { cursor: pointer; }
+    .compact .step.force-open { box-shadow: 0 2px 12px rgba(37,99,235,.12); }
     .compact-row { display: none; align-items: center; gap: 8px; padding: 9px 14px; }
     .compact .compact-row { display: flex; }
     .cr-states { display: flex; align-items: center; gap: 7px; flex: 1; flex-wrap: wrap; }
@@ -234,6 +237,13 @@ internal static class FlowStepsTLR {
       var on   = area.classList.toggle('compact');
       btn.classList.toggle('active', on);
       btn.textContent = on ? '\u229e Expanded' : '\u229f Compact';
+      if (!on) area.querySelectorAll('.step.force-open').forEach(function(s) { s.classList.remove('force-open'); });
+    }
+    function toggleFlowStep(idx) {
+      var area = document.getElementById('steps-area');
+      if (!area || !area.classList.contains('compact')) return;
+      var step = document.getElementById('step-' + idx);
+      if (step) step.classList.toggle('force-open');
     }
     function scrollToStep(idx) {
       var el = document.getElementById('step-' + idx);
@@ -365,7 +375,7 @@ internal static class FlowStepsTLR {
 
         sb.Append($"""
   <div class="step" id="step-{idx}">
-    <div class="step-hdr">
+    <div class="step-hdr" onclick="toggleFlowStep({idx})">
       <div class="step-num {numCls}">{idx + 1}</div>
       <div class="step-transition">
         <span class="from-chip">{E(fromState)}</span>

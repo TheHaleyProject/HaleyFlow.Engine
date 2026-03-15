@@ -8,8 +8,8 @@ namespace Haley.Services;
 
 /// <summary>
 /// Converts a timeline JSON string into a self-contained HTML page.
-/// Design: Control Board (D) — operational summary rail, state path sidebar,
-/// and rich transition cards with activity and hook panels.
+/// Design: Control Board (D) — fixed control card, scrollable left rail summary,
+/// sticky right-side filter bar, and rich transition cards with activity and hook panels.
 /// Primary theme uses green accents.
 /// </summary>
 internal static class ControlBoardTLR {
@@ -33,18 +33,26 @@ internal static class ControlBoardTLR {
             var loops = CountLoops(items);
             var activityCount = CountActivities(items);
             var hookCount = detail >= TimelineDetail.Admin ? CountHooks(items) : 0;
+            var boardTitle = !string.IsNullOrWhiteSpace(displayName) ? displayName : S(inst, "entity_id");
 
             sb.Append("""
   <aside class="side">
 """);
             WriteInstanceCard(sb, inst, displayName, count, totalDur);
-            WriteFilterPanel(sb, count);
+            sb.Append("""
+    <div class="side-scroll">
+""");
             WriteSummary(sb, inst, count, activityCount, hookCount, loops, totalDur);
             WriteStatePath(sb, items, S(inst, "current_state"));
             sb.Append("""
+    </div>
   </aside>
 
   <section class="board">
+""");
+            WriteBoardHeader(sb, boardTitle);
+            WriteFilterPanel(sb, count);
+            sb.Append("""
     <div class="entries" id="entries-area">
 """);
 
@@ -115,13 +123,21 @@ internal static class ControlBoardTLR {
     }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-thumb { background: #c2d8c7; border-radius: 999px; }
-    .shell { max-width: 1440px; margin: 16px auto; padding: 0 16px 32px; display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 16px; align-items: start; }
+    .shell { max-width: 1680px; margin: 16px auto; padding: 0 16px 32px; display: grid; grid-template-columns: 384px minmax(0,1fr); gap: 18px; align-items: start; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); }
     .pad { padding: 18px; }
     .instance-card { display: flex; flex-direction: column; gap: 8px; }
     .inst-entity { font-size: 20px; font-weight: 900; line-height: 1.15; overflow-wrap: anywhere; }
-    .inst-guid { font-size: 11px; font-family: Consolas, monospace; color: var(--muted); overflow-wrap: anywhere; }
-    .inst-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .inst-id-row { display: flex; flex-direction: column; gap: 1px; }
+    .inst-id-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 800; color: var(--muted); }
+    .inst-guid { font-size: 11px; font-family: Consolas, monospace; color: var(--text); overflow-wrap: anywhere; }
+    .inst-status-block { margin-top: 6px; text-align: center; padding: 14px 10px; border-radius: 16px; font-size: 22px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .inst-status-block.s-active    { background: var(--brand-soft);  color: var(--brand-deep); }
+    .inst-status-block.s-completed { background: var(--blue-soft);   color: var(--blue-text); }
+    .inst-status-block.s-failed    { background: var(--red-soft);    color: var(--red-text); }
+    .inst-status-block.s-suspended { background: var(--amber-soft);  color: var(--amber-text); }
+    .inst-status-block.s-none      { background: #edf4ef;            color: var(--muted); }
+    .inst-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: center; }
     .inst-chip { padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; color: var(--brand-deep); background: var(--brand-soft-2); border: 1px solid var(--line); }
     .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; font-weight: 800; color: var(--brand-deep); margin-bottom: 8px; }
     .entity { font-size: 28px; line-height: 1.02; font-weight: 900; }
@@ -134,15 +150,21 @@ internal static class ControlBoardTLR {
     .stat-v { margin-top: 6px; font-size: 18px; font-weight: 900; line-height: 1.15; overflow-wrap: anywhere; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 900; }
     .s-active { background: var(--brand-soft); color: var(--brand-deep); }
-    .s-completed { background: var(--blue-soft); color: var(--blue-text); }
+    .s-completed {
+      background: var(--blue-soft); color: var(--blue-text);
+      padding: 10px 16px; font-size: 13px; letter-spacing: .12em;
+      box-shadow: inset 0 0 0 1px rgba(36,84,181,.16);
+    }
     .s-failed { background: var(--red-soft); color: var(--red-text); }
     .s-suspended { background: var(--amber-soft); color: var(--amber-text); }
     .s-none { background: #edf4ef; color: var(--muted); }
-    .side { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; }
-    .filter-panel, .summary-panel, .state-panel { display: flex; flex-direction: column; flex: 0 0 auto; }
-    .filter-list { display: grid; gap: 10px; }
-    .filter-panel .btn { width: 100%; justify-content: center; }
-    .filter-footer { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); font-weight: 700; }
+    .side {
+      position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px);
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .instance-card { flex: 0 0 auto; }
+    .side-scroll { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; }
+    .summary-panel, .state-panel { display: flex; flex-direction: column; flex: 0 0 auto; }
     .panel-title { font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--brand-deep); font-weight: 800; margin-bottom: 12px; }
     .summary-list { display: grid; gap: 10px; }
     .summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px dashed var(--line); font-size: 13px; }
@@ -155,8 +177,14 @@ internal static class ControlBoardTLR {
     .state-name { font-size: 13px; font-weight: 900; }
     .state-meta { margin-top: 4px; font-size: 11px; color: var(--muted); }
     .state-count { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-deep); font-size: 11px; font-weight: 900; flex-shrink: 0; }
-    .board { min-width: 0; display: flex; flex-direction: column; }
-    .btn { border: 1px solid var(--line); background: #ffffff; color: var(--muted); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all .15s ease; }
+    .board { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    .board-head { padding: 22px 24px; }
+    .board-title { font-size: clamp(1.45rem, 2vw, 2.1rem); line-height: 1.08; font-weight: 900; overflow-wrap: anywhere; }
+    .board-toolbar-stick { position: sticky; top: 16px; z-index: 8; }
+    .board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .toolbar-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+    .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: #ffffff; color: var(--muted); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all .15s ease; }
     .btn:hover { border-color: var(--brand); color: var(--brand-deep); }
     .btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
     .entries { display: flex; flex-direction: column; gap: 18px; padding-bottom: 24px; }
@@ -195,11 +223,16 @@ internal static class ControlBoardTLR {
     .activity-label { margin-top: 4px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
     .activity-meta { margin-top: 6px; font-size: 11px; color: var(--muted); font-family: Consolas, monospace; overflow-wrap: anywhere; }
     .stamp { padding: 7px 10px; border-radius: 999px; min-width: 88px; text-align: center; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
-    .approved { background: var(--brand-soft); color: var(--brand-deep); }
+    .approved {
+      background: var(--brand-soft); color: var(--brand-deep);
+      min-width: 108px; padding: 9px 14px; font-size: 11px; letter-spacing: .11em;
+      box-shadow: inset 0 0 0 1px rgba(24,132,57,.14);
+    }
     .rejected { background: var(--red-soft); color: var(--red-text); }
     .pending { background: var(--amber-soft); color: var(--amber-text); }
     .other { background: #edf4ef; color: var(--muted); }
-    .hook-card { border: 1px solid var(--brand-soft); background: var(--panel-soft); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 10px 12px; }
+    .hook-card { border: 1px solid var(--brand-soft); background: var(--panel-soft); display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 10px 12px; }
+    .hook-seq-col { font-size: 13px; font-weight: 900; color: var(--brand-deep); font-family: Consolas, monospace; text-align: center; }
     .hook-main { min-width: 0; }
     .hook-route { font-size: 12px; font-weight: 800; color: var(--brand-deep); font-family: Consolas, monospace; line-height: 1.2; overflow-wrap: anywhere; }
     .hook-label { margin-top: 2px; font-size: 11px; color: var(--muted); line-height: 1.2; overflow-wrap: anywhere; }
@@ -225,7 +258,7 @@ internal static class ControlBoardTLR {
     .entries.compact .event-sub.full-sub { display: none; }
     .entries.compact .compact-sub { display: block; }
     .entries.compact .entry-tag { font-size: 9px; }
-    .entries.compact .hook-card { grid-template-columns: 1fr; }
+    .entries.compact .hook-card { grid-template-columns: 28px 1fr; }
     .entries.compact .hook-side { justify-items: start; text-align: left; }
     .entries.compact .hook-meta { justify-content: flex-start; flex-wrap: wrap; white-space: normal; }
     .entries.compact .entry .flow,
@@ -234,12 +267,14 @@ internal static class ControlBoardTLR {
     .entries.compact .entry.force-open .flow { display: flex; }
     .entries.compact .entry.force-open .meta-line { display: flex; }
     .entries.compact .entry.force-open .detail-stack { display: grid; }
-    .entries.compact .entry.force-open .hook-card { grid-template-columns: minmax(0, 1fr) auto; }
+    .entries.compact .entry.force-open .hook-card { grid-template-columns: 28px minmax(0, 1fr) auto; }
     .entries.compact .entry.force-open .hook-side { justify-items: end; text-align: right; }
     .entries.compact .entry.force-open .hook-meta { justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
     @media (max-width: 1120px) {
       .shell { grid-template-columns: 1fr; }
       .side { position: static; max-height: none; }
+      .side-scroll { max-height: none; overflow: visible; padding-right: 0; }
+      .board-toolbar-stick { position: static; }
     }
     @media (max-width: 760px) {
       .shell { padding: 14px; }
@@ -255,7 +290,7 @@ internal static class ControlBoardTLR {
   </style>
   <script>
     function setControlBoardFilter(mode, btn) {
-      document.querySelectorAll('.filter-panel .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.board-toolbar .filter-btn').forEach(function(b) { b.classList.remove('active'); });
       if (btn) btn.classList.add('active');
 
       var visible = 0;
@@ -292,7 +327,7 @@ internal static class ControlBoardTLR {
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-      var active = document.querySelector('.filter-panel .filter-btn.active');
+      var active = document.querySelector('.board-toolbar .filter-btn.active');
       setControlBoardFilter('all', active);
     });
   </script>
@@ -331,11 +366,11 @@ internal static class ControlBoardTLR {
       <section class="panel pad instance-card">
         <div class="eyebrow">Control board</div>
         <div class="inst-entity">{E(label)}</div>
-        <div class="inst-guid">{E(entityId)}</div>
-        <div class="inst-guid">{E(guid)}</div>
-        <div class="inst-guid">{E(defName)} v{E(defVer)}</div>
+        <div class="inst-id-row"><span class="inst-id-label">Entity</span><span class="inst-guid">{E(entityId)}</span></div>
+        <div class="inst-id-row"><span class="inst-id-label">Instance</span><span class="inst-guid">{E(guid)}</span></div>
+        <div class="inst-id-row"><span class="inst-id-label">Definition</span><span class="inst-guid">{E(defName)} v{E(defVer)}</span></div>
+        <div class="inst-status-block {statusCls}">{E(status)}</div>
         <div class="inst-chips">
-          <span class="status-pill {statusCls}">{E(status)}</span>
           <span class="inst-chip">{E(curState)}</span>
           <span class="inst-chip">{count} transition{(count == 1 ? string.Empty : "s")}</span>
           <span class="inst-chip">{E(totalDur)} total</span>
@@ -345,22 +380,31 @@ internal static class ControlBoardTLR {
 """);
     }
 
+    private static void WriteBoardHeader(StringBuilder sb, string title) {
+        sb.Append($"""
+    <section class="panel board-head">
+      <div class="board-title">{E(title)}</div>
+    </section>
+""");
+    }
+
     private static void WriteFilterPanel(StringBuilder sb, int visibleCount) {
         sb.Append($"""
-      <section class="panel pad filter-panel">
-        <div class="panel-title">View filters</div>
-        <div class="filter-list">
+    <div class="board-toolbar-stick">
+      <section class="panel pad board-toolbar">
+        <div class="toolbar-status">
+          <span>Current view</span>
+          <span id="board-visible">{visibleCount} visible</span>
+        </div>
+        <div class="toolbar-actions">
           <button class="btn filter-btn active" onclick="setControlBoardFilter('all', this)">All entries</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('hooks', this)">Has hooks</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('loop', this)">Loop / re-entry</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('edge', this)">Initial / terminal</button>
           <button class="btn" id="board-compact-btn" onclick="toggleControlBoardCompact()">Compact</button>
         </div>
-        <div class="filter-footer">
-          <span>Current view</span>
-          <span id="board-visible">{visibleCount} visible</span>
-        </div>
       </section>
+    </div>
 """);
     }
     private static void WriteSummary(StringBuilder sb, JsonElement inst, int transitions, int activities, int hooks, int loops, string totalDur) {
@@ -579,24 +623,27 @@ internal static class ControlBoardTLR {
             var totalSent  = h.TryGetProperty("total_triggers", out var sv) ? sv.GetInt32() : 0;
             var orderLabel = int.TryParse(orderSeq, out var oNum) && oNum > 0 ? $"#{oNum}" : "#\u2013";
             var sentLabel  = !string.IsNullOrWhiteSpace(rawTrigger) ? lastSent : "pending";
-            var timeLine   = $"Last sent: {sentLabel} | {orderLabel}";
+            var timeLine   = $"Last sent: {sentLabel}";
             var secondaryHtml = !string.IsNullOrWhiteSpace(secondary)
                 ? $"<div class=\"hook-label\">{E(secondary)}</div>"
                 : string.Empty;
 
-            // Colored badge logic
-            var ackedCls  = total > 0 && processed >= total ? "ok"
-                          : processed > 0                   ? "warn"
-                          : total > 0                       ? "fail"
-                          : string.Empty;
-            var retries   = Math.Max(0, totalSent - total);  // dispatches beyond initial batch
-            var sentCls   = retries > 0 ? "warn" : (totalSent > 0 ? "ok" : string.Empty);
-            var retryHtml = retries > 0
-                ? $"<span class=\"mini-badge fail\">{retries} {(retries == 1 ? "retry" : "retries")}</span>"
+            // total_triggers = SUM(trigger_count): incremented per monitor retry, NOT on initial dispatch.
+            // Actual total dispatches = total_acks (initial, 1 per consumer) + total_triggers (retries).
+            var ackedCls        = total > 0 && processed >= total ? "ok"
+                                : processed > 0                   ? "warn"
+                                : total > 0                       ? "fail"
+                                : string.Empty;
+            var totalDispatches = total + totalSent;
+            var hasRetries      = totalSent > 0;
+            var sentCls         = totalDispatches > 0 ? (hasRetries ? "warn" : "ok") : string.Empty;
+            var retryHtml       = hasRetries
+                ? $"<span class=\"mini-badge fail\">{totalSent} {(totalSent == 1 ? "retry" : "retries")}</span>"
                 : string.Empty;
 
             sb.Append($"""
                     <div class="hook-card">
+                      <div class="hook-seq-col">{E(orderLabel)}</div>
                       <div class="hook-main">
                         <div class="hook-route">{E(display)}</div>
                         {secondaryHtml}
@@ -606,7 +653,7 @@ internal static class ControlBoardTLR {
                         <div class="hook-meta">
                           <span class="mini-badge {(blocking ? "warn" : string.Empty)}">{(blocking ? "blocking" : "non-blocking")}</span>
                           {retryHtml}
-                          <span class="mini-badge {sentCls}">{totalSent} sent</span>
+                          <span class="mini-badge {sentCls}">{totalDispatches} sent</span>
                           <span class="mini-badge {ackedCls}">acked {processed}/{total}</span>
                         </div>
                       </div>
