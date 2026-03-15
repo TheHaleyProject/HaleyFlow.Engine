@@ -214,6 +214,9 @@ public sealed class InProcessEngineProxy : ILifeCycleEngineProxy {
     public async Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default)
         => await (await EnsureEngineAsync(ct)).ReopenAsync(instanceGuid, actor, ct);
 
+    public async Task<bool> UnsuspendAsync(string instanceGuid, string actor, CancellationToken ct = default)
+        => await (await EnsureEngineAsync(ct)).UnsuspendAsync(instanceGuid, actor, ct);
+
     // ── Private adapter ───────────────────────────────────────────────────────
     // Wraps ILifeCycleEvent into ILifeCycleDispatchItem with sensible in-process defaults:
     //   AckId = 0        — not used by the dispatch pipeline
@@ -231,6 +234,8 @@ public sealed class InProcessEngineProxy : ILifeCycleEngineProxy {
         public long ConsumerId => _event.ConsumerId;
         public int AckStatus => 0;
         public int TriggerCount => 1;
+        // In-process delivery has no DB row; MaxTrigger = 0 tells the monitor there is no budget limit.
+        public int MaxTrigger => 0;
         public DateTime LastTrigger => DateTime.UtcNow;
         public DateTime? NextDue => null;
         public ILifeCycleEvent Event => _event;

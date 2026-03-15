@@ -149,13 +149,13 @@ namespace Haley.Services.Orchestrators {
                 ct.ThrowIfCancellationRequested();
                 var item = lc[i];
 
-                if (item.TriggerCount >= _opt.MaxRetryCount) {
-                    // Retry budget exhausted: mark failed and suspend instance.
+                if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
+                    // Per-row retry budget exhausted: mark failed and suspend instance.
                     await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
 
                     var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
                     if (instanceId > 0) {
-                        var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
+                        var msg = $"Suspended: ack max retries exceeded (max={item.MaxTrigger}) kind=lifecycle status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
                         await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
                         _fireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
                     } else {
@@ -177,7 +177,7 @@ namespace Haley.Services.Orchestrators {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
-                if (item.TriggerCount >= _opt.MaxRetryCount) {
+                if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
                     await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
 
                     var isBlocking = item.Event is ILifeCycleHookEvent hev && hev.IsBlocking;
@@ -185,7 +185,7 @@ namespace Haley.Services.Orchestrators {
                         // Blocking hook failure is terminal for workflow progression; suspend instance.
                         var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
                         if (instanceId > 0) {
-                            var msg = $"Suspended: ack max retries exceeded (max={_opt.MaxRetryCount}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
+                            var msg = $"Suspended: ack max retries exceeded (max={item.MaxTrigger}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
                             await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
                             _fireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
                         } else {

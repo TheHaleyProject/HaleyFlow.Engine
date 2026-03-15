@@ -27,16 +27,16 @@
 		</table>
 		<table name="ack_consumer" prior="ack" >
 			<comment><![CDATA[Per-consumer delivery state for each acknowledgement, including retry scheduling and processing outcome.]]></comment>
+			<column name="status" prior="ack_status" type="INT" mandatory="y" >
+				<defo><![CDATA[1]]></defo>
+				<comment><![CDATA[Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed.]]></comment>
+			</column>
 			<column name="consumer" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
 				<comment><![CDATA[Consumer identifier.]]></comment>
 			</column>
 			<column name="ack_id" type="BIGINT" mandatory="y" >
 				<comment><![CDATA[Acknowledgement identifier (FK to ack.id).]]></comment>
-			</column>
-			<column name="status" prior="ack_status" type="INT" mandatory="y" >
-				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed.]]></comment>
 			</column>
 			<column name="last_trigger" prior="last_retry" type="DATETIME" mandatory="y" >
 				<defo><![CDATA[current_timestamp()]]></defo>
@@ -57,6 +57,9 @@
 				<defo><![CDATA[current_timestamp()]]></defo>
 				<column_options><![CDATA[ON UPDATE CURRENT_TIMESTAMP]]></column_options>
 				<comment><![CDATA[UTC timestamp when the row was last updated.]]></comment>
+			</column>
+			<column name="max_trigger" type="INT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
 			</column>
 			<index name="idx_ack_consumer" unique="NORMAL" >
 				<column name="next_due" />
@@ -976,10 +979,10 @@
 ]]></options>
 		</table>
 	</schema>
-	<diagram_group name="Default" id="48fbc34e-d9ba-40f0-9d1c-b4226926c6c7" >
+	<diagram_group name="Default" id="511536cd-bec8-4103-8527-eb86b17b01bf" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
-			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="114" />
+			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />
 			<entity schema="lcstate" name="activity" color="00FF00" x="57" y="1197" />
 			<entity schema="lcstate" name="activity_status" color="00FF00" x="456" y="1254" />
 			<entity schema="lcstate" name="category" color="1A4D4D" x="969" y="437" />

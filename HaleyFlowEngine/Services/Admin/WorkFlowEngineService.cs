@@ -168,6 +168,14 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         return await _engine!.ReopenAsync(instanceGuid.Trim(), normalizedActor, ct);
     }
 
+    public async Task<bool> UnsuspendInstanceAsync(string instanceGuid, string actor, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
+
+        await EnsureInitializedAsync(ct);
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.service" : actor.Trim();
+        return await _engine!.UnsuspendAsync(instanceGuid.Trim(), normalizedActor, ct);
+    }
+
     public async Task<IWorkFlowEngine> GetEngineAsync(CancellationToken ct = default) {
         await EnsureInitializedAsync(ct);
         return _engine!;

@@ -104,21 +104,16 @@ public sealed class WorkflowTestBootstrap {
         if (count > 1000) throw new ArgumentException("count is too high. max=1000", nameof(count));
 
         await EnsureInitializedAsync(ct);
-        if (_engine == null) throw new InvalidOperationException("Engine runtime is not initialized.");
         if (!UseCaseProfiles.TryGetValue(useCase.Trim(), out var profile))
             throw new ArgumentException($"Unknown use-case '{useCase}'.", nameof(useCase));
 
         var results = new List<Dictionary<string, object?>>(count);
         for (var i = 0; i < count; i++) {
             ct.ThrowIfCancellationRequested();
-            var entityId = Guid.NewGuid().ToString("N");
-            var trigger = await _engine.TriggerAsync(new LifeCycleTriggerRequest {
-                EnvCode = _consumerOptions.EnvCode,
-                DefName = profile.DefName,
-                EntityId = entityId,
+            var entityId = await _consumerService.CreateEntityAsync(ct);
+            var trigger = await _consumerService.CreateWorkflowAsync(entityId, profile.DefName, new CreateWorkflowRequest {
                 Event = profile.StartEvent,
                 Actor = "wfe.adminapi.test",
-                AckRequired = true,
                 Payload = new Dictionary<string, object> {
                     ["source"] = "WFE.AdminApi",
                     ["useCase"] = profile.Key,

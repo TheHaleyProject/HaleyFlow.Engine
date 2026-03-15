@@ -109,6 +109,7 @@ namespace Haley.Internal {
         public const string KEY_TIMEOUT_MODE = "timeout_mode";
         public const string KEY_TIMEOUT_EVENT = "timeout_event";
         public const string KEY_MAX_RETRY = "max_retry";
+        public const string KEY_MAX_TRIGGER = "max_trigger";
 
         // policy rule / emit keys
         public const string KEY_LABEL = "label";

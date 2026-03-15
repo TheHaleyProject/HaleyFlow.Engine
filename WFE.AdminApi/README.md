@@ -33,11 +33,13 @@ Engine (`/api/admin/wf/engine/...`):
 Consumer (`/api/admin/wf/consumer/...`):
 
 - `GET /api/admin/wf/consumer/workflows`
-  - Query: `skip?`, `take?`
+  - Query: `entityId?`, `defName?`, `instanceId?`, `isTriggered?`, `skip?`, `take?`
 - `GET /api/admin/wf/consumer/inbox`
-  - Query: `status?`, `skip?`, `take?`
+  - Query: `kind?`, `defId?`, `defVersionId?`, `entityId?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
+- `GET /api/admin/wf/consumer/inbox-status`
+  - Query: `status?`, `kind?`, `defId?`, `defVersionId?`, `entityId?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
 - `GET /api/admin/wf/consumer/outbox`
-  - Query: `status?`, `skip?`, `take?`
+  - Query: `status?`, `currentOutcome?`, `kind?`, `defId?`, `defVersionId?`, `entityId?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
 
 Test helpers (`/api/admin/wf/test/...`):
 

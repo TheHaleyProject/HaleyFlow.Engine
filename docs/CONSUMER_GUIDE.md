@@ -354,14 +354,37 @@ manager.NoticeRaised += async n => {
 `IWorkFlowConsumerService` exposes paged reads of the consumer DB tables:
 
 ```csharp
-// List workflow tracking rows (one per entity/def combination this consumer has seen)
-var workflows = await consumerService.ListWorkflowsAsync(skip: 0, take: 50, ct);
+// List entity-to-definition workflow rows
+var workflows = await consumerService.ListWorkflowsAsync(new ConsumerWorkflowFilter {
+    EntityId = "cabd2ed2-ab6c-4986-ab46-3a1ef415ca56",
+    DefName = "change-request",
+    Skip = 0,
+    Take = 50
+}, ct);
 
-// List inbox rows (one per event delivery attempt)
-var inbox = await consumerService.ListInboxAsync(status: null, skip: 0, take: 50, ct);
+// List raw inbox event rows
+var inbox = await consumerService.ListInboxAsync(new ConsumerInboxFilter {
+    Kind = WorkflowKind.Transition,
+    DefId = 1998,
+    Skip = 0,
+    Take = 50
+}, ct);
 
-// List outbox rows (ACK outcomes and their delivery status)
-var outbox = await consumerService.ListOutboxAsync(status: null, skip: 0, take: 50, ct);
+// List inbox processing status rows
+var inboxStatus = await consumerService.ListInboxStatusesAsync(new ConsumerInboxStatusFilter {
+    Status = InboxStatus.Failed,
+    InstanceGuid = "2fdb6730-2018-11f1-8441-8c8caad7d6a5",
+    Skip = 0,
+    Take = 50
+}, ct);
+
+// List outbox rows (ACK outcomes and delivery status)
+var outbox = await consumerService.ListOutboxAsync(new ConsumerOutboxFilter {
+    Status = OutboxStatus.Pending,
+    Kind = WorkflowKind.Hook,
+    Skip = 0,
+    Take = 50
+}, ct);
 
 // Quick counts
 var pendingInbox  = await consumerService.CountPendingInboxAsync(ct);
@@ -370,8 +393,8 @@ var pendingOutbox = await consumerService.CountPendingOutboxAsync(ct);
 
 Use the extension methods on `DbRows` to get enum-friendly dictionaries:
 ```csharp
-var rows = await consumerService.ListWorkflowsAsync(0, 50, ct);
-var dicts = rows.ToWorkflowDictionaries();   // maps kind/inbox_status/outbox_status to string names
+var rows = await consumerService.ListInboxStatusesAsync(new ConsumerInboxStatusFilter { Skip = 0, Take = 50 }, ct);
+var dicts = rows.ToInboxStatusDictionaries();
 ```
 
 ---

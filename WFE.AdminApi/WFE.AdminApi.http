@@ -15,7 +15,22 @@ Accept: application/json
 
 ###
 
-GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/outbox?status=1&skip=0&take=20
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/workflows?defName=change-request&skip=0&take=20
+Accept: application/json
+
+###
+
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/inbox?kind=Transition&defId=1998&skip=0&take=20
+Accept: application/json
+
+###
+
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/inbox-status?status=Failed&defId=1998&skip=0&take=20
+Accept: application/json
+
+###
+
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/outbox?status=Pending&kind=Hook&skip=0&take=20
 Accept: application/json
 
 ###

@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS `ack_consumer` (
   `next_due` datetime DEFAULT NULL COMMENT 'Next scheduled timestamp for retry/dispatch. From C#, this is set as DateTime.UtcNow.. so we need to consider this time is in UTC time.',
   `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   `modified` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp() COMMENT 'UTC timestamp when the row was last updated.',
+  `max_trigger` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`ack_id`,`consumer`),
   UNIQUE KEY `unq_ack_consumer` (`ack_id`,`consumer`),
   KEY `idx_ack_consumer` (`next_due`,`status`),

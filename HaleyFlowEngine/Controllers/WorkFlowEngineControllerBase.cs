@@ -174,6 +174,21 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
         return Ok(result);
     }
 
+    // Extends the ACK retry budget for all Failed ack_consumer rows on the instance and clears
+    // the Suspended flag.  Use this when suspension was caused by exhausted ack max-retries.
+    // trigger_count is preserved (monotonically increasing audit counter).
+    [HttpPost("instance/unsuspend")]
+    public async Task<IActionResult> UnsuspendInstance([FromQuery] string? instanceGuid, [FromQuery] string? actor, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
+
+        var normalizedGuid = instanceGuid.Trim();
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "wfe.adminapi.unsuspend" : actor.Trim();
+        var ok = await _service.UnsuspendInstanceAsync(normalizedGuid, normalizedActor, ct);
+
+        if (!ok) return NotFound(new { status = "not_found", instanceGuid = normalizedGuid });
+        return Ok(new { status = "unsuspended", instanceGuid = normalizedGuid });
+    }
+
     private static LifeCycleInstanceFlag ParseFlags(string? flags) {
         if (string.IsNullOrWhiteSpace(flags)) return LifeCycleInstanceFlag.Active;
 

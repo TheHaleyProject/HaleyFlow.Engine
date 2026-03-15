@@ -10,8 +10,36 @@ namespace Haley.Internal {
         public const string GET_BY_KEY = $@"SELECT * FROM ack_consumer WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID} LIMIT 1;";
 
         // Composite key upsert (ack_id, consumer); caller sets next_due (can be NULL).
-        //From the code, we are sending next_due with DateTime.UtcNow (C# code).. thats why we need to compare and treat Next_due as UTC time.
-        public const string UPSERT = $@"INSERT INTO ack_consumer (ack_id, consumer, status, next_due) VALUES ({ACK_ID}, {CONSUMER_ID}, {ACK_STATUS}, {NEXT_DUE}) ON DUPLICATE KEY UPDATE status = VALUES(status), next_due = VALUES(next_due), modified = CURRENT_TIMESTAMP;";
+        // max_trigger is set once at INSERT time (global MaxRetryCount at that moment) and never
+        // overwritten on duplicate — the per-row budget must only change via ExtendBudget, not here.
+        public const string UPSERT = $@"INSERT INTO ack_consumer (ack_id, consumer, status, next_due, max_trigger) VALUES ({ACK_ID}, {CONSUMER_ID}, {ACK_STATUS}, {NEXT_DUE}, {MAX_TRIGGER}) ON DUPLICATE KEY UPDATE status = VALUES(status), next_due = VALUES(next_due), modified = CURRENT_TIMESTAMP;";
+
+        // Extend retry budget for all Failed lc ack_consumer rows of a given instance.
+        // Sets max_trigger = trigger_count + additionalTriggers, resets status → Pending, next_due → now.
+        // trigger_count is deliberately NOT reset — it is a monotonically increasing audit counter.
+        public const string EXTEND_LC_BUDGET_BY_INSTANCE_ID =
+            $@"UPDATE ack_consumer ac
+               JOIN lc_ack la ON la.ack_id = ac.ack_id
+               JOIN lifecycle l ON l.id = la.lc_id
+               SET ac.max_trigger = ac.trigger_count + {MAX_TRIGGER},
+                   ac.status      = 1,
+                   ac.next_due    = UTC_TIMESTAMP(),
+                   ac.modified    = CURRENT_TIMESTAMP
+               WHERE l.instance_id = {INSTANCE_ID}
+                 AND ac.status = 4;";
+
+        // Same as EXTEND_LC_BUDGET_BY_INSTANCE_ID but for hook ack_consumer rows.
+        public const string EXTEND_HOOK_BUDGET_BY_INSTANCE_ID =
+            $@"UPDATE ack_consumer ac
+               JOIN hook_ack ha ON ha.ack_id = ac.ack_id
+               JOIN hook_lc hl ON hl.id = ha.hook_id
+               JOIN hook h ON h.id = hl.hook_id
+               SET ac.max_trigger = ac.trigger_count + {MAX_TRIGGER},
+                   ac.status      = 1,
+                   ac.next_due    = UTC_TIMESTAMP(),
+                   ac.modified    = CURRENT_TIMESTAMP
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND ac.status = 4;";
 
         // due queue (monitor).. If nextdue is less than equal to current time, which means they are already due.. If next_due is greater than current time, we dont need to send them now.
         public const string LIST_DUE_BY_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.status = {ACK_STATUS} AND ac.next_due IS NOT NULL AND ac.next_due <= UTC_TIMESTAMP() ORDER BY ac.next_due ASC, ac.ack_id ASC, ac.consumer ASC LIMIT {TAKE} OFFSET {SKIP};";

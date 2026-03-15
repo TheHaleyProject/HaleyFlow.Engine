@@ -27,28 +27,39 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
     }
 
     [HttpGet("/api/admin/wf/consumer/workflows")]
-    public async Task<IActionResult> GetConsumerWorkflows([FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+    public async Task<IActionResult> GetConsumerWorkflows([FromQuery] ConsumerWorkflowFilter? filter, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _consumerService.ListWorkflowsAsync(normalizedSkip, normalizedTake, ct);
-        return Ok(rows.ToWorkflowDictionaries());
+        var rows = await _consumerService.ListWorkflowsAsync(NormalizePaging(filter), ct);
+        return Ok(rows.ToConsumerWorkflowDictionaries());
     }
 
     [HttpGet("/api/admin/wf/consumer/inbox")]
-    public async Task<IActionResult> GetConsumerInbox(
-        [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+    public async Task<IActionResult> GetConsumerInbox([FromQuery] ConsumerInboxFilter? filter, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _consumerService.ListInboxAsync(status, normalizedSkip, normalizedTake, ct);
-        return Ok(rows.ToInboxDictionaries());
+        var rows = await _consumerService.ListInboxAsync(NormalizePaging(filter), ct);
+        return Ok(rows.ToInboxItemDictionaries());
+    }
+
+    [HttpGet("/api/admin/wf/consumer/inbox-status")]
+    public async Task<IActionResult> GetConsumerInboxStatus([FromQuery] ConsumerInboxStatusFilter? filter, CancellationToken ct = default) {
+        await _testBootstrap.EnsureInitializedAsync(ct);
+        var rows = await _consumerService.ListInboxStatusesAsync(NormalizePaging(filter), ct);
+        return Ok(rows.ToInboxStatusDictionaries());
     }
 
     [HttpGet("/api/admin/wf/consumer/outbox")]
-    public async Task<IActionResult> GetConsumerOutbox([FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+    public async Task<IActionResult> GetConsumerOutbox([FromQuery] ConsumerOutboxFilter? filter, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
-        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
-        var rows = await _consumerService.ListOutboxAsync(status, normalizedSkip, normalizedTake, ct);
+        var rows = await _consumerService.ListOutboxAsync(NormalizePaging(filter), ct);
         return Ok(rows.ToOutboxDictionaries());
+    }
+
+    [HttpGet("/api/admin/wf/consumer/timeline/{instanceGuid}")]
+    public async Task<IActionResult> GetConsumerTimeline(string instanceGuid, CancellationToken ct = default) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
+        await _testBootstrap.EnsureInitializedAsync(ct);
+        var timeline = await _consumerService.GetConsumerTimelineAsync(instanceGuid.Trim(), ct);
+        return Ok(timeline);
     }
 
     [HttpGet("/api/admin/wf/test/usecases")]
@@ -81,6 +92,38 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         var maxTake = _adminOptions.MaxTake > 0 ? _adminOptions.MaxTake : 500;
         if (normalizedTake > maxTake) normalizedTake = maxTake;
         return (normalizedSkip, normalizedTake);
+    }
+
+    private ConsumerWorkflowFilter NormalizePaging(ConsumerWorkflowFilter? filter) {
+        filter ??= new ConsumerWorkflowFilter();
+        var (skip, take) = NormalizePaging(filter.Skip, filter.Take);
+        filter.Skip = skip;
+        filter.Take = take;
+        return filter;
+    }
+
+    private ConsumerInboxFilter NormalizePaging(ConsumerInboxFilter? filter) {
+        filter ??= new ConsumerInboxFilter();
+        var (skip, take) = NormalizePaging(filter.Skip, filter.Take);
+        filter.Skip = skip;
+        filter.Take = take;
+        return filter;
+    }
+
+    private ConsumerInboxStatusFilter NormalizePaging(ConsumerInboxStatusFilter? filter) {
+        filter ??= new ConsumerInboxStatusFilter();
+        var (skip, take) = NormalizePaging(filter.Skip, filter.Take);
+        filter.Skip = skip;
+        filter.Take = take;
+        return filter;
+    }
+
+    private ConsumerOutboxFilter NormalizePaging(ConsumerOutboxFilter? filter) {
+        filter ??= new ConsumerOutboxFilter();
+        var (skip, take) = NormalizePaging(filter.Skip, filter.Take);
+        filter.Skip = skip;
+        filter.Take = take;
+        return filter;
     }
 
     public sealed class CreateTestEntitiesRequest {

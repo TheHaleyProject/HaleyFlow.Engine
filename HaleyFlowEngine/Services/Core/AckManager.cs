@@ -24,17 +24,19 @@ namespace Haley.Services {
         // scheduling policy
         private readonly TimeSpan _pendingNextDue;    // T + 40s
         private readonly TimeSpan _deliveredNextDue;  // T + 4m
+        private readonly int _maxTrigger;             // initial per-row budget stamped at INSERT time
 
         //Purpose of the below fields is to resolve policies/hooks from json if needed.
         private readonly IBlueprintManager _bp;
         private readonly IPolicyEnforcer _policy; // concrete (so we can call Resolve*FromJson)
 
-        public AckManager(IWorkFlowDAL dal, IBlueprintManager bp, IPolicyEnforcer policy, Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null, TimeSpan? pendingNextDue = null, TimeSpan? deliveredNextDue = null) {
+        public AckManager(IWorkFlowDAL dal, IBlueprintManager bp, IPolicyEnforcer policy, Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null, TimeSpan? pendingNextDue = null, TimeSpan? deliveredNextDue = null, int maxTrigger = 10) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _consumers = consumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
             _pendingNextDue = pendingNextDue ?? TimeSpan.FromSeconds(40);
             _deliveredNextDue = deliveredNextDue ?? TimeSpan.FromMinutes(4);
+            _maxTrigger = maxTrigger > 0 ? maxTrigger : 10;
             _bp = bp ?? throw new ArgumentNullException(nameof(bp));
             _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         }
@@ -190,6 +192,7 @@ namespace Haley.Services {
                     ConsumerId = r.GetLong(KEY_CONSUMER),
                     AckStatus = r.GetInt(KEY_STATUS),
                     TriggerCount = r.GetInt(KEY_TRIGGER_COUNT),
+                    MaxTrigger = r.GetInt(KEY_MAX_TRIGGER),
                     LastTrigger = r.GetDateTime(KEY_LAST_TRIGGER) ?? DateTime.UtcNow,
                     NextDue = r.GetDateTime(KEY_NEXT_DUE),
                     Event = evt
@@ -253,6 +256,7 @@ namespace Haley.Services {
                     ConsumerId = r.GetLong(KEY_CONSUMER),
                     AckStatus = r.GetInt(KEY_STATUS),
                     TriggerCount = r.GetInt(KEY_TRIGGER_COUNT),
+                    MaxTrigger = r.GetInt(KEY_MAX_TRIGGER),
                     LastTrigger = r.GetDateTime(KEY_LAST_TRIGGER) ?? DateTime.UtcNow,
                     NextDue = r.GetDateTime(KEY_NEXT_DUE),
                     Event = evt
@@ -304,7 +308,7 @@ namespace Haley.Services {
                 if (existing != null) continue;
 
                 var nextDueUtc = ComputeInitialNextDueUtc(initialAckStatus);
-                await _dal.AckConsumer.UpsertByAckIdAndConsumerAsync(ackId, consumerId, initialAckStatus, nextDueUtc, load);
+                await _dal.AckConsumer.UpsertByAckIdAndConsumerAsync(ackId, consumerId, initialAckStatus, nextDueUtc, _maxTrigger, load);
             }
         }
 

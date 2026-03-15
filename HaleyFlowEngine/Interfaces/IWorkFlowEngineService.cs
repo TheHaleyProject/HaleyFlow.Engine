@@ -18,6 +18,7 @@ public interface IWorkFlowEngineService : IWorkFlowEngineAccessor {
     Task<bool> ResumeInstanceAsync(string instanceGuid, CancellationToken ct);
     Task<bool> FailInstanceAsync(string instanceGuid, string? message, CancellationToken ct);
     Task<LifeCycleTriggerResult> ReopenInstanceAsync(string instanceGuid, string actor, CancellationToken ct);
+    Task<bool> UnsuspendInstanceAsync(string instanceGuid, string actor, CancellationToken ct);
 }
 
 

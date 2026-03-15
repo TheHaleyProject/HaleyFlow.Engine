@@ -18,7 +18,7 @@ namespace Haley.Abstractions {
     internal interface IAckConsumerDAL {
         Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default);
         Task<DbRow?> GetByAckGuidAndConsumerAsync(string ackGuid, long consumer, DbExecutionLoad load = default);
-        Task<int> UpsertByAckIdAndConsumerAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<int> UpsertByAckIdAndConsumerAsync(long ackId, long consumer, int status, DateTime? utcNextDue, int maxTrigger, DbExecutionLoad load = default);
         Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
         Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
         Task<int> MarkTriggerAsync(long ackId, long consumer, DateTime? utcNextDue, DbExecutionLoad load = default);
@@ -28,6 +28,10 @@ namespace Haley.Abstractions {
         // Mark all sibling ack_consumer rows for an ack as Processed (used for ack_mode=Any).
         Task<int> MarkAllProcessedByAckIdAsync(long ackId, DbExecutionLoad load = default);
         Task<DbRows> ListPendingDetailPagedAsync(int envCode, int skip, int take, DbExecutionLoad load = default);
+        // Extend retry budget for all Failed lc/hook ack_consumer rows for the given instance.
+        // Sets max_trigger = trigger_count + maxTrigger and resets status → Pending so the monitor retries.
+        Task<int> ExtendLcBudgetByInstanceIdAsync(long instanceId, int maxTrigger, DbExecutionLoad load = default);
+        Task<int> ExtendHookBudgetByInstanceIdAsync(long instanceId, int maxTrigger, DbExecutionLoad load = default);
     }
 
     internal interface IAckDispatchDAL {

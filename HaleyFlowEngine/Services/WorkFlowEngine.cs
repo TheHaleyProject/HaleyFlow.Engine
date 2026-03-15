@@ -40,6 +40,7 @@ namespace Haley.Services {
         private readonly AckOutcomeOrchestrator _ackOutcomeOrchestrator;
         private readonly MonitorOrchestrator _monitorOrchestrator;
         private readonly ReopenOrchestrator _reopenOrchestrator;
+        private readonly MaintenanceOrchestrator _maintenanceOrchestrator;
 
         // Two public events that the host application subscribes to:
         //   EventRaised  — a lifecycle transition or hook event that a consumer must process and ACK.
@@ -94,7 +95,7 @@ namespace Haley.Services {
             // The resolver policy decides which consumers should be monitored.
             var resolveMonitors = (LifeCycleConsumerType ty, CancellationToken ct) => resolveConsumers.Invoke(ty, null, ct);
 
-            AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter);
+            AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter, _opt.MaxRetryCount);
 
             Runtime = new RuntimeEngine(_dal);
             Care = new EngineCare(_dal.EngineCare, AckManager);
@@ -102,6 +103,7 @@ namespace Haley.Services {
             _ackOutcomeOrchestrator = new AckOutcomeOrchestrator(_dal, AckManager, DispatchEventsSafeAsync, FireNotice);
             _monitorOrchestrator = new MonitorOrchestrator(_dal, _opt, AckManager, FireEvent, FireNotice);
             _reopenOrchestrator = new ReopenOrchestrator(_dal, BlueprintManager, TriggerAsync);
+            _maintenanceOrchestrator = new MaintenanceOrchestrator(_dal, _opt.MaxRetryCount);
 
             // The monitor is a background periodic loop. Every MonitorInterval it:
             //   1. Scans for stale instances that have been sitting in the same state too long (STATE_STALE notices)
@@ -343,93 +345,15 @@ namespace Haley.Services {
             }, ct);
         }
 
-        // Admin operation: suspend an in-progress instance without changing current_state.
-        // Guard rails: only Active instances can be suspended, and terminal/already-suspended
-        // instances are rejected.
-        public async Task<bool> SuspendInstanceAsync(string instanceGuid, string? message, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
+        public Task<bool> SuspendInstanceAsync(string instanceGuid, string? message, CancellationToken ct = default)
+            => _maintenanceOrchestrator.SuspendAsync(instanceGuid, message, ct);
 
-            var load = new DbExecutionLoad(ct);
-            var row = await _dal.Instance.GetByGuidAsync(instanceGuid.Trim(), load);
-            if (row == null) return false;
+        public Task<bool> ResumeInstanceAsync(string instanceGuid, CancellationToken ct = default)
+            => _maintenanceOrchestrator.ResumeAsync(instanceGuid, ct);
 
-            var instanceId = row.GetLong(KEY_ID);
-            if (instanceId <= 0) return false;
+        public Task<bool> FailInstanceAsync(string instanceGuid, string? message, CancellationToken ct = default)
+            => _maintenanceOrchestrator.FailAsync(instanceGuid, message, ct);
 
-            var currentFlags = (uint)row.GetLong(KEY_FLAGS);
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Completed) != 0)
-                throw new InvalidOperationException("Cannot suspend a completed instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Archived) != 0)
-                throw new InvalidOperationException("Cannot suspend an archived instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Failed) != 0)
-                throw new InvalidOperationException("Cannot suspend a failed instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Suspended) != 0)
-                throw new InvalidOperationException("Instance is already suspended.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Active) == 0)
-                throw new InvalidOperationException("Only in-progress (Active) instances can be suspended.");
-
-            var affected = await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, string.IsNullOrWhiteSpace(message) ? null : message.Trim(), load);
-            return affected > 0;
-        }
-
-        // Admin operation: resume a suspended instance from its current_state.
-        // No transition is applied; this only flips flags back to Active and clears suspend message.
-        public async Task<bool> ResumeInstanceAsync(string instanceGuid, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
-
-            var load = new DbExecutionLoad(ct);
-            var row = await _dal.Instance.GetByGuidAsync(instanceGuid.Trim(), load);
-            if (row == null) return false;
-
-            var instanceId = row.GetLong(KEY_ID);
-            if (instanceId <= 0) return false;
-
-            var currentFlags = (uint)row.GetLong(KEY_FLAGS);
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Completed) != 0)
-                throw new InvalidOperationException("Cannot resume a completed instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Archived) != 0)
-                throw new InvalidOperationException("Cannot resume an archived instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Failed) != 0)
-                throw new InvalidOperationException("Cannot resume a failed instance. Reopen instead.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Suspended) == 0)
-                throw new InvalidOperationException("Instance is not suspended.");
-
-            var affected = await _dal.Instance.UnsetFlagsAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, load);
-            await _dal.Instance.AddFlagsAsync(instanceId, (uint)LifeCycleInstanceFlag.Active, load);
-            await _dal.Instance.ClearMessageAsync(instanceId, load);
-            return affected > 0;
-        }
-        // Admin operation: mark an in-progress instance as failed without applying a transition.
-        // Guard rails: only Active instances can be failed; terminal/already-failed instances are rejected.
-        // We set Failed, clear Active, and keep current_state + transition history untouched.
-        public async Task<bool> FailInstanceAsync(string instanceGuid, string? message, CancellationToken ct = default) {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(instanceGuid)) throw new ArgumentException("instanceGuid is required.", nameof(instanceGuid));
-
-            var load = new DbExecutionLoad(ct);
-            var row = await _dal.Instance.GetByGuidAsync(instanceGuid.Trim(), load);
-            if (row == null) return false;
-
-            var instanceId = row.GetLong(KEY_ID);
-            if (instanceId <= 0) return false;
-
-            var currentFlags = (uint)row.GetLong(KEY_FLAGS);
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Completed) != 0)
-                throw new InvalidOperationException("Cannot fail a completed instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Archived) != 0)
-                throw new InvalidOperationException("Cannot fail an archived instance.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Failed) != 0)
-                throw new InvalidOperationException("Instance is already failed.");
-            if ((currentFlags & (uint)LifeCycleInstanceFlag.Active) == 0)
-                throw new InvalidOperationException("Only pending/in-progress (Active) instances can be marked failed.");
-
-            // Single atomic UPDATE sets Failed and clears Active to avoid mixed Failed+Active flags.
-
-            var affected = await _dal.Instance.FailWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Failed, string.IsNullOrWhiteSpace(message) ? null : message.Trim(), load);
-            return affected > 0;
-        }
         // Resets a terminal instance back to its initial state and immediately fires the auto-start event.
         // Terminal = Completed, Failed, or Archived. Suspended-only instances are NOT treated as terminal.
         //
@@ -443,6 +367,9 @@ namespace Haley.Services {
         public Task<LifeCycleTriggerResult> ReopenAsync(string instanceGuid, string actor, CancellationToken ct = default) {
             return _reopenOrchestrator.ReopenAsync(instanceGuid, actor, ct);
         }
+
+        public Task<bool> UnsuspendAsync(string instanceGuid, string actor, CancellationToken ct = default)
+            => _maintenanceOrchestrator.UnsuspendAsync(instanceGuid, actor, ct);
 
         private async Task<IReadOnlyList<long>> ResolveMonitorConsumerIdsByGuidsAsync(Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>> resolveConsumerGuids, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
@@ -523,7 +450,7 @@ namespace Haley.Services {
             if ((flags & (uint)LifeCycleInstanceFlag.Failed) != 0) return "Failed";
             if ((flags & (uint)LifeCycleInstanceFlag.Completed) != 0) return "Completed";
             if ((flags & (uint)LifeCycleInstanceFlag.Suspended) != 0) return "Suspended";
-            if ((flags & (uint)LifeCycleInstanceFlag.Active) != 0) return "Pending";
+            if ((flags & (uint)LifeCycleInstanceFlag.Active) != 0) return "Active";
             return "None";
         }
 

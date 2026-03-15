@@ -38,6 +38,7 @@ namespace Haley.Internal {
         public const string DEF_ID = "@DEF_ID";
         public const string CONSUMER = "@CONSUMER";
         public const string MAX_RETRY = "@MAX_RETRY";
+        public const string MAX_TRIGGER = "@MAX_TRIGGER";
         public const string RECHECK_SECONDS = "@RECHECK_SECONDS";
 
         public const string STATE_ID = "@STATE_ID";
