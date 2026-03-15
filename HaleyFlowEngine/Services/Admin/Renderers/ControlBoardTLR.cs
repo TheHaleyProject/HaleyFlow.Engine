@@ -34,20 +34,18 @@ internal static class ControlBoardTLR {
             var activityCount = CountActivities(items);
             var hookCount = detail >= TimelineDetail.Admin ? CountHooks(items) : 0;
 
-            WriteHeader(sb, inst, displayName, count, totalDur);
-
             sb.Append("""
-  <div class="layout">
-    <aside class="side">
+  <aside class="side">
 """);
+            WriteInstanceCard(sb, inst, displayName, count, totalDur);
             WriteFilterPanel(sb, count);
             WriteSummary(sb, inst, count, activityCount, hookCount, loops, totalDur);
             WriteStatePath(sb, items, S(inst, "current_state"));
-            sb.Append($"""
-    </aside>
+            sb.Append("""
+  </aside>
 
-    <section class="board">
-      <div class="entries" id="entries-area">
+  <section class="board">
+    <div class="entries" id="entries-area">
 """);
 
             var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -60,9 +58,8 @@ internal static class ControlBoardTLR {
             }
 
             sb.Append("""
-      </div>
-    </section>
-  </div>
+    </div>
+  </section>
 
 """);
         }
@@ -109,20 +106,23 @@ internal static class ControlBoardTLR {
       --red-text:     #b42318;
       --shadow:       0 16px 38px rgba(15, 23, 42, .08);
     }
-    html, body { height: 100%; }
+    html, body { margin: 0; }
     body {
       background: linear-gradient(180deg, var(--bg2), var(--bg));
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 14px;
-      overflow: hidden;
     }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-thumb { background: #c2d8c7; border-radius: 999px; }
-    .shell { max-width: 1440px; height: 100vh; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .shell { max-width: 1440px; margin: 16px auto; padding: 0 16px 32px; display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 16px; align-items: start; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); }
     .pad { padding: 18px; }
-    .header { padding: 22px 24px; display: grid; grid-template-columns: 1.25fr .95fr; gap: 18px; background: linear-gradient(135deg, #ffffff 0%, #f7f9fb 100%); }
+    .instance-card { display: flex; flex-direction: column; gap: 8px; }
+    .inst-entity { font-size: 20px; font-weight: 900; line-height: 1.15; overflow-wrap: anywhere; }
+    .inst-guid { font-size: 11px; font-family: Consolas, monospace; color: var(--muted); overflow-wrap: anywhere; }
+    .inst-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .inst-chip { padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; color: var(--brand-deep); background: var(--brand-soft-2); border: 1px solid var(--line); }
     .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; font-weight: 800; color: var(--brand-deep); margin-bottom: 8px; }
     .entity { font-size: 28px; line-height: 1.02; font-weight: 900; }
     .guid { margin-top: 7px; color: var(--muted); font-size: 12px; font-family: Consolas, monospace; }
@@ -138,8 +138,7 @@ internal static class ControlBoardTLR {
     .s-failed { background: var(--red-soft); color: var(--red-text); }
     .s-suspended { background: var(--amber-soft); color: var(--amber-text); }
     .s-none { background: #edf4ef; color: var(--muted); }
-    .layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
-    .side { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; }
+    .side { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; }
     .filter-panel, .summary-panel, .state-panel { display: flex; flex-direction: column; flex: 0 0 auto; }
     .filter-list { display: grid; gap: 10px; }
     .filter-panel .btn { width: 100%; justify-content: center; }
@@ -156,11 +155,11 @@ internal static class ControlBoardTLR {
     .state-name { font-size: 13px; font-weight: 900; }
     .state-meta { margin-top: 4px; font-size: 11px; color: var(--muted); }
     .state-count { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-deep); font-size: 11px; font-weight: 900; flex-shrink: 0; }
-    .board { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+    .board { min-width: 0; display: flex; flex-direction: column; }
     .btn { border: 1px solid var(--line); background: #ffffff; color: var(--muted); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all .15s ease; }
     .btn:hover { border-color: var(--brand); color: var(--brand-deep); }
     .btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
-    .entries { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 18px; padding-right: 6px; padding-bottom: 24px; scrollbar-gutter: stable; }
+    .entries { display: flex; flex-direction: column; gap: 18px; padding-bottom: 24px; }
     .entry { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); box-shadow: var(--shadow); }
     .entry-wrap { display: grid; grid-template-columns: 120px minmax(0, 1fr); }
     .entry-index { background: linear-gradient(180deg, var(--brand-deep), #146530); color: #f5fff7; padding: 16px 10px 18px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; }
@@ -239,8 +238,8 @@ internal static class ControlBoardTLR {
     .entries.compact .entry.force-open .hook-side { justify-items: end; text-align: right; }
     .entries.compact .entry.force-open .hook-meta { justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
     @media (max-width: 1120px) {
-      .header { grid-template-columns: 1fr; }
-      .layout { grid-template-columns: 1fr; }
+      .shell { grid-template-columns: 1fr; }
+      .side { position: static; max-height: none; }
     }
     @media (max-width: 760px) {
       .shell { padding: 14px; }
@@ -315,42 +314,34 @@ internal static class ControlBoardTLR {
 """);
     }
 
-    // ── Header + sidebar ─────────────────────────────────────────────────────
+    // ── Sidebar instance card ────────────────────────────────────────────────
 
-    private static void WriteHeader(StringBuilder sb, JsonElement inst, string? displayName, int count, string totalDur) {
+    private static void WriteInstanceCard(StringBuilder sb, JsonElement inst, string? displayName, int count, string totalDur) {
         var entityId  = S(inst, "entity_id");
         var guid      = S(inst, "guid");
         var label     = !string.IsNullOrWhiteSpace(displayName) ? displayName : entityId;
         var defName   = S(inst, "def_name");
         var defVer    = S(inst, "def_version");
         var curState  = S(inst, "current_state");
-        var lastEvt   = SplitCamel(S(inst, "last_event"));
-        var modified  = FmtFull(S(inst, "modified"));
         var status    = S(inst, "instance_status");
         var statusCls = StatusClass(status);
         var message   = S(inst, "instance_message");
 
         sb.Append($"""
-  <div class="panel header">
-    <div style="min-width:0">
-      <div class="eyebrow">Workflow control board</div>
-      <div class="entity">{E(label)}</div>
-      <div class="guid">{E(entityId)}</div>
-      <div class="guid">{E(guid)} | {E(defName)} v{E(defVer)}</div>
-      <div class="head-meta">
-        <span class="head-pill">{count} transition{(count == 1 ? string.Empty : "s")}</span>
-        <span class="head-pill">{E(totalDur)} total</span>
-      </div>
-      {(!string.IsNullOrWhiteSpace(message) ? $"<div class=\"inst-msg\"><div class=\"inst-msg-k\">Message</div>{E(message)}</div>" : string.Empty)}
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="stat-k">Current state</div><div class="stat-v">{E(curState)}</div></div>
-      <div class="stat"><div class="stat-k">Status</div><div class="stat-v"><span class="status-pill {statusCls}">{E(status)}</span></div></div>
-      <div class="stat"><div class="stat-k">Last event</div><div class="stat-v">{E(lastEvt)}</div></div>
-      <div class="stat"><div class="stat-k">Snapshot</div><div class="stat-v">{E(modified)} · {E(totalDur)}</div></div>
-    </div>
-  </div>
-
+      <section class="panel pad instance-card">
+        <div class="eyebrow">Control board</div>
+        <div class="inst-entity">{E(label)}</div>
+        <div class="inst-guid">{E(entityId)}</div>
+        <div class="inst-guid">{E(guid)}</div>
+        <div class="inst-guid">{E(defName)} v{E(defVer)}</div>
+        <div class="inst-chips">
+          <span class="status-pill {statusCls}">{E(status)}</span>
+          <span class="inst-chip">{E(curState)}</span>
+          <span class="inst-chip">{count} transition{(count == 1 ? string.Empty : "s")}</span>
+          <span class="inst-chip">{E(totalDur)} total</span>
+        </div>
+        {(!string.IsNullOrWhiteSpace(message) ? $"<div class=\"inst-msg\"><div class=\"inst-msg-k\">Message</div>{E(message)}</div>" : string.Empty)}
+      </section>
 """);
     }
 
