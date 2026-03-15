@@ -3,7 +3,8 @@
     "allow": [
       "Bash(xargs grep:*)",
       "Bash(find E:HaleyProject -iname *ack* -type f)",
-      "Bash(find E:HaleyProjectHaleyAbstractions.Core -name *ILifeCycle*.cs -type f)"
+      "Bash(find E:HaleyProjectHaleyAbstractions.Core -name *ILifeCycle*.cs -type f)",
+      "Bash(find E:HaleyProjectHaleyAbstractions.CoreHaleyAbstractionsCoreWorkFlowConsumerModels -type f -name *.cs)"
     ]
   }
 }

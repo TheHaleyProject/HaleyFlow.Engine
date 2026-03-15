@@ -208,6 +208,11 @@ internal static class ControlBoardTLR {
     .hook-time { font-size: 10px; color: var(--muted); font-family: Consolas, monospace; }
     .hook-meta { display: flex; gap: 6px; flex-wrap: nowrap; justify-content: flex-end; white-space: nowrap; }
     .mini-badge { padding: 3px 7px; border-radius: 999px; font-size: 9px; font-weight: 900; background: #ebf8ee; color: #466553; border: 1px solid #cfead5; }
+    .mini-badge.ok   { background: var(--brand-soft);  color: var(--brand-deep); border-color: rgba(36,181,77,.3); }
+    .mini-badge.warn { background: var(--amber-soft);  color: var(--amber-text); border-color: rgba(150,100,0,.22); }
+    .mini-badge.fail { background: var(--red-soft);    color: var(--red-text);   border-color: rgba(180,35,24,.25); }
+    .inst-msg { margin-top: 16px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(180,35,24,.22); background: rgba(247,218,218,.55); color: var(--red-text); font-size: 12px; font-family: Consolas,monospace; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+    .inst-msg-k { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 800; color: var(--red-text); margin-bottom: 5px; }
     .empty { color: var(--muted); font-size: 12px; font-style: italic; padding: 4px 0; }
     .entries.compact .entry { cursor: pointer; }
     .entries.compact { gap: 12px; }
@@ -323,6 +328,7 @@ internal static class ControlBoardTLR {
         var modified  = FmtFull(S(inst, "modified"));
         var status    = S(inst, "instance_status");
         var statusCls = StatusClass(status);
+        var message   = S(inst, "instance_message");
 
         sb.Append($"""
   <div class="panel header">
@@ -335,6 +341,7 @@ internal static class ControlBoardTLR {
         <span class="head-pill">{count} transition{(count == 1 ? string.Empty : "s")}</span>
         <span class="head-pill">{E(totalDur)} total</span>
       </div>
+      {(!string.IsNullOrWhiteSpace(message) ? $"<div class=\"inst-msg\"><div class=\"inst-msg-k\">Message</div>{E(message)}</div>" : string.Empty)}
     </div>
     <div class="stats">
       <div class="stat"><div class="stat-k">Current state</div><div class="stat-v">{E(curState)}</div></div>
@@ -581,9 +588,20 @@ internal static class ControlBoardTLR {
             var totalSent  = h.TryGetProperty("total_triggers", out var sv) ? sv.GetInt32() : 0;
             var orderLabel = int.TryParse(orderSeq, out var oNum) && oNum > 0 ? $"#{oNum}" : "#\u2013";
             var sentLabel  = !string.IsNullOrWhiteSpace(rawTrigger) ? lastSent : "pending";
-            var timeLine   = $"Last Sent: {sentLabel} | {orderLabel} | Triggered: {totalSent}";
+            var timeLine   = $"Last sent: {sentLabel} | {orderLabel}";
             var secondaryHtml = !string.IsNullOrWhiteSpace(secondary)
                 ? $"<div class=\"hook-label\">{E(secondary)}</div>"
+                : string.Empty;
+
+            // Colored badge logic
+            var ackedCls  = total > 0 && processed >= total ? "ok"
+                          : processed > 0                   ? "warn"
+                          : total > 0                       ? "fail"
+                          : string.Empty;
+            var retries   = Math.Max(0, totalSent - total);  // dispatches beyond initial batch
+            var sentCls   = retries > 0 ? "warn" : (totalSent > 0 ? "ok" : string.Empty);
+            var retryHtml = retries > 0
+                ? $"<span class=\"mini-badge fail\">{retries} {(retries == 1 ? "retry" : "retries")}</span>"
                 : string.Empty;
 
             sb.Append($"""
@@ -595,8 +613,10 @@ internal static class ControlBoardTLR {
                       <div class="hook-side">
                         <div class="hook-time">{E(timeLine)}</div>
                         <div class="hook-meta">
-                          <span class="mini-badge">{(blocking ? "blocking" : "non-blocking")}</span>
-                          <span class="mini-badge">acked {processed}/{total}</span>
+                          <span class="mini-badge {(blocking ? "warn" : string.Empty)}">{(blocking ? "blocking" : "non-blocking")}</span>
+                          {retryHtml}
+                          <span class="mini-badge {sentCls}">{totalSent} sent</span>
+                          <span class="mini-badge {ackedCls}">acked {processed}/{total}</span>
                         </div>
                       </div>
                     </div>

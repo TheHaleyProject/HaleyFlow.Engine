@@ -62,6 +62,15 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         return Ok(timeline);
     }
 
+    [HttpGet("/api/admin/wf/consumer/timeline/{instanceGuid}/html")]
+    public async Task<IActionResult> GetConsumerTimelineHtml(string instanceGuid, [FromQuery] string? name = null, [FromQuery] string? color = null, CancellationToken ct = default) {
+        if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
+        await _testBootstrap.EnsureInitializedAsync(ct);
+        var html = await _consumerService.GetConsumerTimelineHtmlAsync(instanceGuid.Trim(), name, color, ct);
+        if (string.IsNullOrWhiteSpace(html)) return NotFound();
+        return Content(html, "text/html");
+    }
+
     [HttpGet("/api/admin/wf/test/usecases")]
     public async Task<IActionResult> GetTestUseCases(CancellationToken ct) {
         var useCases = await _testBootstrap.GetTestUseCasesAsync(ct);
