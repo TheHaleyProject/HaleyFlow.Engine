@@ -52,7 +52,7 @@ namespace Haley.Utils {
                 [KEY_TRANSITIONS] = root.TryGetProperty(KEY_TRANSITIONS, out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
             };
 
-            var canon = obj.Canonicalize(); //ignore case..
+            var canon = StripDescriptions(obj).Canonicalize(); //ignore case..
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
 
@@ -70,15 +70,27 @@ namespace Haley.Utils {
                 [KEY_TIMEOUTS] = root.TryGetProperty(KEY_TIMEOUTS, out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
             };
 
-            var canon = obj.Canonicalize();
+            var canon = StripDescriptions(obj).Canonicalize();
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
 
-        /// <summary>
-        /// The BuildSanitizedStatesForHash
-        /// </summary>
-        /// <param name="root">The root<see cref="JsonElement"/></param>
-        /// <returns>The <see cref="JsonArray"/></returns>
+        static JsonNode StripDescriptions(JsonNode? node) {
+            if (node is JsonObject obj) {
+                var clean = new JsonObject();
+                foreach (var kv in obj) {
+                    if (kv.Key.Equals(KEY_DESCRIPTION, StringComparison.OrdinalIgnoreCase)) continue;
+                    clean[kv.Key] = StripDescriptions(kv.Value);
+                }
+                return clean;
+            }
+            if (node is JsonArray arr) {
+                var clean = new JsonArray();
+                foreach (var item in arr) clean.Add(StripDescriptions(item));
+                return clean;
+            }
+            return node?.DeepClone() ?? JsonValue.Create((string?)null)!;
+        }
+
         internal static JsonArray BuildSanitizedStatesForHash(JsonElement root) {
             if (!root.TryGetProperty(KEY_STATES, out var statesEl) || statesEl.ValueKind != JsonValueKind.Array)
                 return new JsonArray();
@@ -99,7 +111,8 @@ namespace Haley.Utils {
                         k.Equals(KEY_TIMEOUT_MODE, StringComparison.OrdinalIgnoreCase) ||
                         k.Equals(KEY_TIMEOUT_MODE_CAMEL, StringComparison.OrdinalIgnoreCase) ||
                         k.Equals(KEY_TIMEOUT_EVENT, StringComparison.OrdinalIgnoreCase) ||
-                        k.Equals(KEY_TIMEOUT_EVENT_CAMEL, StringComparison.OrdinalIgnoreCase))
+                        k.Equals(KEY_TIMEOUT_EVENT_CAMEL, StringComparison.OrdinalIgnoreCase) ||
+                        k.Equals(KEY_DESCRIPTION, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     o[k] = JsonNode.Parse(p.Value.GetRawText());

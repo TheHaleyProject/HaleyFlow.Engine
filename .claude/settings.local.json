@@ -4,7 +4,15 @@
       "Bash(xargs grep:*)",
       "Bash(find E:HaleyProject -iname *ack* -type f)",
       "Bash(find E:HaleyProjectHaleyAbstractions.Core -name *ILifeCycle*.cs -type f)",
-      "Bash(find E:HaleyProjectHaleyAbstractions.CoreHaleyAbstractionsCoreWorkFlowConsumerModels -type f -name *.cs)"
+      "Bash(find E:HaleyProjectHaleyAbstractions.CoreHaleyAbstractionsCoreWorkFlowConsumerModels -type f -name *.cs)",
+      "Bash(grep -E \"\\\\.cs$\")",
+      "Bash(del \"E:\\\\HaleyProject\\\\HaleyFlow.Consumer\\\\HaleyFlowConsumer\\\\Enums\\\\InboxStepStatus.cs\")",
+      "Bash(mv \"Internal/Interfaces/IConsumerInboxActionDAL.cs\" \"Internal/Interfaces/IInboxActionDAL.cs\")",
+      "Bash(mv \"Internal/Interfaces/IConsumerInstanceDAL.cs\" \"Internal/Interfaces/IInstanceDAL.cs\")",
+      "Bash(mv \"Internal/Interfaces/IConsumerBusinessActionDAL.cs\" \"Internal/Interfaces/IBusinessActionDAL.cs\")",
+      "Bash(mv \"Internal/Interfaces/IConsumerOutboxDAL.cs\" \"Internal/Interfaces/IOutboxDAL.cs\")",
+      "Bash(mv \"Internal/Interfaces/IConsumerTimelineDAL.cs\" \"Internal/Interfaces/ITimelineDAL.cs\")",
+      "Bash(mv \"Internal/Interfaces/IConsumerServiceDAL.cs\" \"Internal/Interfaces/IServiceDAL.cs\")"
     ]
   }
 }

@@ -32,14 +32,14 @@ Engine (`/api/admin/wf/engine/...`):
 
 Consumer (`/api/admin/wf/consumer/...`):
 
-- `GET /api/admin/wf/consumer/workflows`
-  - Query: `entityId?`, `defName?`, `instanceId?`, `isTriggered?`, `skip?`, `take?`
+- `GET /api/admin/wf/consumer/instances`
+  - Query: `entityGuid?`, `defName?`, `guid?`, `skip?`, `take?`
 - `GET /api/admin/wf/consumer/inbox`
-  - Query: `kind?`, `defId?`, `defVersionId?`, `entityId?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
+  - Query: `kind?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
 - `GET /api/admin/wf/consumer/inbox-status`
-  - Query: `status?`, `kind?`, `defId?`, `defVersionId?`, `entityId?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
+  - Query: `status?`, `kind?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
 - `GET /api/admin/wf/consumer/outbox`
-  - Query: `status?`, `currentOutcome?`, `kind?`, `defId?`, `defVersionId?`, `entityId?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
+  - Query: `status?`, `currentOutcome?`, `kind?`, `instanceGuid?`, `ackGuid?`, `route?`, `eventCode?`, `skip?`, `take?`
 
 Test helpers (`/api/admin/wf/test/...`):
 

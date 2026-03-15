@@ -110,8 +110,8 @@ public sealed class WorkflowTestBootstrap {
         var results = new List<Dictionary<string, object?>>(count);
         for (var i = 0; i < count; i++) {
             ct.ThrowIfCancellationRequested();
-            var entityId = await _consumerService.CreateEntityAsync(ct);
-            var trigger = await _consumerService.CreateWorkflowAsync(entityId, profile.DefName, new CreateWorkflowRequest {
+            var entityGuid = Guid.NewGuid().ToString();
+            var trigger = await _consumerService.CreateWorkflowAsync(entityGuid, profile.DefName, new CreateWorkflowRequest {
                 Event = profile.StartEvent,
                 Actor = "wfe.adminapi.test",
                 Payload = new Dictionary<string, object> {
@@ -124,7 +124,7 @@ public sealed class WorkflowTestBootstrap {
 
             results.Add(new Dictionary<string, object?> {
                 ["useCase"] = profile.Key,
-                ["entityId"] = entityId,
+                ["entityGuid"] = entityGuid,
                 ["applied"] = trigger.Applied,
                 ["instanceId"] = trigger.InstanceId,
                 ["instanceGuid"] = trigger.InstanceGuid,

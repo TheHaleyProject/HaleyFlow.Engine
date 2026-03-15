@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 namespace Haley.Models {
     internal sealed class LifeCycleBlueprint {
         public long DefVersionId { get; set; }
+        public int Version { get; set; }
         public long DefinitionId { get; set; }
         public int EnvCode { get; set; }
         public string DefName { get; set; }

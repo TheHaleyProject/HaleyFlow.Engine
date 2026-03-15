@@ -44,7 +44,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
         bool yes;
         if (!string.IsNullOrWhiteSpace(noEventCode) && int.TryParse(yesEventCode, out var actionCode)) {
             var decision = false;
-            var execution = await ExecuteBusinessActionAsync(ctx, evt.DefinitionId, evt.EntityId, actionCode,
+            var execution = await ExecuteBusinessActionAsync(ctx, actionCode,
                 async token => {
                     decision = await AskConfirmationAsync(prompt, ConsoleKey.Y, timeout, token);
                     return new {
@@ -96,9 +96,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
             Actor = "wfe.test.consumer",
             AckRequired = true,
             Payload = new Dictionary<string, object> {
-                ["fromRoute"] = evt.Route,
-                ["consumerWfId"] = ctx.WfId,
-                ["consumerId"] = ctx.ConsumerId
+                ["fromRoute"] = evt.Route
             }
         };
 

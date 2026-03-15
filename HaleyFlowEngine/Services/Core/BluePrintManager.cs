@@ -100,7 +100,13 @@ namespace Haley.Services {
             var dv = await _dal.Blueprint.GetDefVersionByIdAsync(defVersionId, DbExecutionLoad.None);
             if (dv == null) throw new InvalidOperationException($"def_version not found. id={defVersionId}");
 
-            var bp = new LifeCycleBlueprint { DefVersionId = defVersionId, DefinitionId = dv.GetLong(KEY_PARENT), EnvCode = dv.GetInt(KEY_ENV_CODE), DefName = dv.GetString(KEY_DEF_NAME) ?? dv.GetString(KEY_NAME) ?? "unknown" };
+            var bp = new LifeCycleBlueprint {
+                DefVersionId = defVersionId,
+                Version = dv.GetInt(KEY_VERSION),
+                DefinitionId = dv.GetLong(KEY_PARENT),
+                EnvCode = dv.GetInt(KEY_ENV_CODE),
+                DefName = dv.GetString(KEY_DEF_NAME) ?? dv.GetString(KEY_NAME) ?? "unknown"
+            };
 
             var stateRows = await _dal.Blueprint.ListStatesAsync(defVersionId, DbExecutionLoad.None);
             var eventRows = await _dal.Blueprint.ListEventsAsync(defVersionId, DbExecutionLoad.None);

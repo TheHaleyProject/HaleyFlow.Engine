@@ -195,8 +195,6 @@ namespace WFE.Test.UseCases.ChangeRequest {
         private async Task<AckOutcome> HandleSideEffectAsync(ILifeCycleHookEvent evt, ConsumerContext ctx, int actionCode, string actionName) {
             var execution = await ExecuteBusinessActionAsync(
                 ctx,
-                evt.DefinitionId,
-                evt.EntityId,
                 actionCode,
                 async token => {
                     Console.WriteLine($"[CONSUMER] side-effect route={evt.Route} action={actionName} entity={evt.EntityId}");

@@ -26,11 +26,11 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         _testBootstrap = testBootstrap ?? throw new ArgumentNullException(nameof(testBootstrap));
     }
 
-    [HttpGet("/api/admin/wf/consumer/workflows")]
-    public async Task<IActionResult> GetConsumerWorkflows([FromQuery] ConsumerWorkflowFilter? filter, CancellationToken ct = default) {
+    [HttpGet("/api/admin/wf/consumer/instances")]
+    public async Task<IActionResult> GetConsumerInstances([FromQuery] ConsumerInstanceFilter? filter, CancellationToken ct = default) {
         await _testBootstrap.EnsureInitializedAsync(ct);
-        var rows = await _consumerService.ListWorkflowsAsync(NormalizePaging(filter), ct);
-        return Ok(rows.ToConsumerWorkflowDictionaries());
+        var rows = await _consumerService.ListInstancesAsync(NormalizePaging(filter), ct);
+        return Ok(rows.ToConsumerInstanceDictionaries());
     }
 
     [HttpGet("/api/admin/wf/consumer/inbox")]
@@ -103,8 +103,8 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         return (normalizedSkip, normalizedTake);
     }
 
-    private ConsumerWorkflowFilter NormalizePaging(ConsumerWorkflowFilter? filter) {
-        filter ??= new ConsumerWorkflowFilter();
+    private ConsumerInstanceFilter NormalizePaging(ConsumerInstanceFilter? filter) {
+        filter ??= new ConsumerInstanceFilter();
         var (skip, take) = NormalizePaging(filter.Skip, filter.Take);
         filter.Skip = skip;
         filter.Take = take;

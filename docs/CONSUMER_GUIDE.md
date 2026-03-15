@@ -354,9 +354,9 @@ manager.NoticeRaised += async n => {
 `IWorkFlowConsumerService` exposes paged reads of the consumer DB tables:
 
 ```csharp
-// List entity-to-definition workflow rows
-var workflows = await consumerService.ListWorkflowsAsync(new ConsumerWorkflowFilter {
-    EntityId = "cabd2ed2-ab6c-4986-ab46-3a1ef415ca56",
+// List consumer-side instance mirror rows
+var instances = await consumerService.ListInstancesAsync(new ConsumerInstanceFilter {
+    EntityGuid = "cabd2ed2-ab6c-4986-ab46-3a1ef415ca56",
     DefName = "change-request",
     Skip = 0,
     Take = 50

@@ -158,10 +158,13 @@ namespace Haley.Services {
             var currentStateId = row.GetLong(KEY_CURRENT_STATE);
             var instanceFlags = unchecked((uint)row.GetLong(KEY_FLAGS));
 
+            LifeCycleBlueprint? bp = null;
+            var definitionVersion = 0;
             string? definitionName = null;
             string? currentStateName = null;
             try {
-                var bp = await BlueprintManager.GetBlueprintByVersionIdAsync(definitionVersionId, ct);
+                bp = await BlueprintManager.GetBlueprintByVersionIdAsync(definitionVersionId, ct);
+                definitionVersion = bp.Version;
                 definitionName = string.IsNullOrWhiteSpace(bp.DefName) ? null : bp.DefName;
                 if (bp.StatesById.TryGetValue(currentStateId, out var state)) {
                     currentStateName = string.IsNullOrWhiteSpace(state.DisplayName) ? state.Name : state.DisplayName;
@@ -170,18 +173,29 @@ namespace Haley.Services {
                 // Keep core instance payload available even when blueprint lookup fails.
             }
 
+            if (definitionVersion <= 0 || string.IsNullOrWhiteSpace(definitionName)) {
+                var dv = await _dal.Blueprint.GetDefVersionByIdAsync(definitionVersionId, new DbExecutionLoad(ct));
+                if (dv != null) {
+                    if (definitionVersion <= 0) definitionVersion = dv.GetInt(KEY_VERSION);
+                    if (string.IsNullOrWhiteSpace(definitionName))
+                        definitionName = dv.GetString(KEY_DEF_NAME) ?? dv.GetString(KEY_NAME);
+                }
+            }
+
             return new LifeCycleInstanceData {
                 InstanceId = row.GetLong(KEY_ID),
                 InstanceGuid = row.GetString(KEY_GUID) ?? string.Empty,
                 DefinitionId = row.GetLong(KEY_DEF_ID),
                 DefinitionVersionId = definitionVersionId,
+                DefinitionVersion = definitionVersion,
                 DefinitionName = definitionName,
                 EntityId = row.GetString(KEY_ENTITY_ID) ?? string.Empty,
                 CurrentStateId = currentStateId,
                 CurrentStateName = currentStateName,
                 InstanceStatus = GetPrimaryInstanceStatus(instanceFlags),
                 Metadata = row.GetString(KEY_METADATA),
-                Context = row.GetString(KEY_CONTEXT)
+                Context = row.GetString(KEY_CONTEXT),
+                Created = row.GetDateTime(KEY_CREATED) ?? default
             };
         }
 
