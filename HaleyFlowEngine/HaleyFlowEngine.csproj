@@ -22,21 +22,20 @@
     <Description>WorkFlow Engine from Haley Libraries</Description>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="Scripts\lc_state.sql" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="Scripts\lc_state.sql" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="..\..\HaleyLog\Haley.png" Link="Haley.png">
       <PackagePath></PackagePath>
       <Pack>True</Pack>
     </None>
+    <EmbeddedResource Include="..\_RESOURCES\lc_state.sql" Link="Scripts\lc_state.sql" />
     <None Include="Models\WorkFlowAckRef.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Scripts\" />
   </ItemGroup>
   
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
