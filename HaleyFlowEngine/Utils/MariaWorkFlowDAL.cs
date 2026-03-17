@@ -25,6 +25,7 @@ namespace Haley.Utils {
         public IRuntimeDataDAL RuntimeData { get; }
         public IConsumerDAL Consumer { get; }
         public IEngineCareDAL EngineCare { get; }
+        public ILifeCycleTimeoutDAL LcTimeout { get; }
         public MariaWorkFlowDAL(IAdapterGateway agw, string key) : base(agw, key) {
             Blueprint = new MariaBlueprintReadDAL(this);
             BlueprintWrite = new MariaBlueprintWriteDAL(this);
@@ -49,6 +50,7 @@ namespace Haley.Utils {
             RuntimeData = new MariaRuntimeDataDAL(this);
             Consumer = new MariaConsumerDAL(this);
             EngineCare = new MariaEngineCareDAL(this);
+            LcTimeout = new MariaLifeCycleTimeoutDAL(this);
         }
     }
 }

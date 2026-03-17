@@ -61,6 +61,18 @@ namespace Haley.Abstractions {
         Task<int>    CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
         Task<int?>   GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default);
         Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
+
+        // Blocking hook gate — instance-wide checks used by InstanceOrchestrator before accepting a new transition.
+        /// <summary>Count dispatched blocking hooks for the given lifecycle entry whose ack_consumer rows are not yet terminal (ack_mode-aware).</summary>
+        Task<int> CountPendingBlockingHookAcksAsync(long instanceId, long lcId, DbExecutionLoad load = default);
+        /// <summary>Count blocking hooks for the given lifecycle entry that have not been dispatched yet (hook_lc.dispatched=0).</summary>
+        Task<int> CountUndispatchedBlockingHooksAsync(long instanceId, long lcId, DbExecutionLoad load = default);
+        /// <summary>
+        /// Bulk-sets all non-terminal ack_consumer rows for blocking hooks in the given lifecycle entry
+        /// to Cancelled (status=5), clearing next_due. Called by the monitor before a timeout transition
+        /// so that open hook ACKs are properly closed before the state machine advances.
+        /// </summary>
+        Task<int> CancelPendingBlockingHookAckConsumersAsync(long instanceId, long lcId, DbExecutionLoad load = default);
     }
 
     internal interface IHookLcDAL {

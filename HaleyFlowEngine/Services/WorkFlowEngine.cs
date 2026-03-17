@@ -94,13 +94,14 @@ namespace Haley.Services {
             // The resolver policy decides which consumers should be monitored.
             var resolveMonitors = (LifeCycleConsumerType ty, CancellationToken ct) => resolveConsumers.Invoke(ty, null, ct);
 
-            AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter, _opt.MaxRetryCount);
+            AckManager = new AckManager(_dal, BlueprintManager, PolicyEnforcer, resolveConsumers, _opt.AckPendingResendAfter, _opt.AckDeliveredResendAfter, _opt.MaxRetryCount, FireNotice);
 
             Runtime = new RuntimeEngine(_dal);
             Care = new EngineCare(_dal.EngineCare, AckManager);
             _instanceOrchestrator = new InstanceOrchestrator(_dal, _opt, BlueprintManager, StateMachine, PolicyEnforcer, AckManager, DispatchEventsSafeAsync, FireNotice);
             _ackOutcomeOrchestrator = new AckOutcomeOrchestrator(_dal, AckManager, DispatchEventsSafeAsync, FireNotice);
-            _monitorOrchestrator = new MonitorOrchestrator(_dal, _opt, AckManager, FireEvent, FireNotice);
+            _monitorOrchestrator = new MonitorOrchestrator(_dal, _opt, AckManager, FireEvent, FireNotice,
+                (req, ct) => _instanceOrchestrator.TriggerAsync(req, ct));
             _maintenanceOrchestrator = new MaintenanceOrchestrator(_dal, _opt.MaxRetryCount);
 
             // The monitor is a background periodic loop. Every MonitorInterval it:

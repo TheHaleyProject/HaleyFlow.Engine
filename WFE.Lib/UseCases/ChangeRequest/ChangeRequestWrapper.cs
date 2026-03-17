@@ -49,7 +49,6 @@ namespace WFE.Test.UseCases.ChangeRequest {
                 EntityId = entityId,
                 Event = "4000",
                 Actor = "wfe.test.wrapper-driver",
-                AckRequired = true,
                 Payload = new Dictionary<string, object> {
                     ["source"] = "WFE.Test",
                     ["useCase"] = sourceUseCase,

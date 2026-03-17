@@ -82,6 +82,8 @@ namespace Haley.Internal {
         public const string DISPATCHED = "@DISPATCHED";
         public const string ACK_MODE = "@ACK_MODE";
 
+        public const string TRIGGER_COUNT = "@TRIGGER_COUNT";
+
         public const string TAKE = "@TAKE";
         public const string SKIP = "@SKIP";
         public const string RUNNING_ONLY = "@RUNNING_ONLY";

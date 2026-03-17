@@ -304,8 +304,7 @@ public async Task<AckOutcome> OnApprove(ILifeCycleTransitionEvent evt, ConsumerC
         ExternalRef = evt.EntityId,
         Event       = passed ? "approve" : "reject",
         RequestId   = $"{evt.EntityId}-approve-{evt.InstanceGuid}",
-        Actor       = "system",
-        AckRequired = true
+        Actor       = "system"
     });
 
     return AckOutcome.Processed;

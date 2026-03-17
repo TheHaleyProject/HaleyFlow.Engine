@@ -21,8 +21,6 @@ Console.WriteLine("Workflow test app (v0.7) started.");
 const int EnvCode = 1;
 const string EnvDisplayName = "dev";
 const long ConsumerId = 10;              // this console app acts as a consumer
-const bool AckRequired = true;
-
 // Auto-drive: for HOOK events, assume success and trigger OnSuccessEvent (from policy)
 const bool AutoDriveHookSuccess = true;
 
@@ -69,7 +67,7 @@ engine.EventRaised += async evt => {
         Console.WriteLine($"[TRN] ext={t.ExternalRef} {t.FromStateId}->{t.ToStateId} ev={t.EventCode} {t.EventName} ack={t.AckGuid}");
         PrintEventRoutingAndParams(t);
 
-        if (t.AckRequired && !string.IsNullOrWhiteSpace(t.AckGuid)) {
+        if (!string.IsNullOrWhiteSpace(t.AckGuid)) {
             await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Delivered, "transition-delivered", ct: CancellationToken.None);
             await engine.AckAsync(t.ConsumerId, t.AckGuid, AckOutcome.Processed, "transition-processed", ct: CancellationToken.None);
         }
@@ -83,7 +81,7 @@ engine.EventRaised += async evt => {
         Console.WriteLine($"       notBefore={h.NotBefore?.ToString("O") ?? "-"} deadline={h.Deadline?.ToString("O") ?? "-"}");
         PrintEventRoutingAndParams(h);
 
-        if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
+        if (!string.IsNullOrWhiteSpace(h.AckGuid))
             await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Delivered, "hook-delivered", ct: CancellationToken.None);
 
         try {
@@ -102,7 +100,6 @@ engine.EventRaised += async evt => {
                     Event = h.OnSuccessEvent!,                   // from policy (no hardcoding)
                     Actor = "console-auto",
                     RequestId = Guid.NewGuid().ToString(),
-                    AckRequired = AckRequired,
                     Payload = new Dictionary<string, object> {
                         ["fromHook"] = h.HookCode ?? string.Empty,
                         ["result"] = "success",
@@ -114,12 +111,12 @@ engine.EventRaised += async evt => {
                 Console.WriteLine($"       -> auto-triggered success={h.OnSuccessEvent} applied={r.Applied} lc={r.LifeCycleId} {r.FromState}->{r.ToState}");
             }
 
-            if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
+            if (!string.IsNullOrWhiteSpace(h.AckGuid))
                 await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Processed, "hook-processed", ct: CancellationToken.None);
         }
         catch (Exception ex) {
             Console.WriteLine($"       !! hook execution failed: {ex.Message}");
-            if (h.AckRequired && !string.IsNullOrWhiteSpace(h.AckGuid))
+            if (!string.IsNullOrWhiteSpace(h.AckGuid))
                 await engine.AckAsync(h.ConsumerId, h.AckGuid, AckOutcome.Failed, ex.Message, ct: CancellationToken.None);
         }
     }
@@ -163,7 +160,6 @@ var first = new LifeCycleTriggerRequest {
     Event = "1000",                                 // AutoStart
     Actor = "console",
     RequestId = Guid.NewGuid().ToString(),
-    AckRequired = AckRequired,
     Payload = new Dictionary<string, object> {
         ["demo"] = true,
         ["startedAtUtc"] = DateTime.UtcNow.ToString("O")

@@ -1,4 +1,5 @@
 using Haley.Abstractions;
+using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
 using static Haley.Internal.QueryFields;
@@ -114,5 +115,21 @@ namespace Haley.Internal {
             => Db.RowsAsync(QRY_HOOK.LIST_UNDISPATCHED_BY_ORDER, load,
                 (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                 (ON_ENTRY, onEntry ? 1 : 0), (LC_ID, lcId), (ORDER_SEQ, orderSeq));
+
+        public async Task<int> CountPendingBlockingHookAcksAsync(long instanceId, long lcId, DbExecutionLoad load = default) {
+            var row = await Db.RowAsync(QRY_HOOK.COUNT_PENDING_BLOCKING_HOOK_ACKS, load,
+                (INSTANCE_ID, instanceId), (LC_ID, lcId));
+            return row?.GetInt(KEY_CNT) ?? 0;
+        }
+
+        public async Task<int> CountUndispatchedBlockingHooksAsync(long instanceId, long lcId, DbExecutionLoad load = default) {
+            var row = await Db.RowAsync(QRY_HOOK.COUNT_UNDISPATCHED_BLOCKING_HOOKS, load,
+                (INSTANCE_ID, instanceId), (LC_ID, lcId));
+            return row?.GetInt(KEY_CNT) ?? 0;
+        }
+
+        public Task<int> CancelPendingBlockingHookAckConsumersAsync(long instanceId, long lcId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_HOOK.CANCEL_PENDING_BLOCKING_HOOK_ACK_CONSUMERS, load,
+                (INSTANCE_ID, instanceId), (LC_ID, lcId), (ACK_STATUS, (int)AckStatus.Cancelled));
     }
 }

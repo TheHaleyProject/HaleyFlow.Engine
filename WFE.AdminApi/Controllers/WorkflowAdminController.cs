@@ -59,6 +59,7 @@ public sealed class WorkflowAdminController : WorkFlowEngineControllerBase {
         if (string.IsNullOrWhiteSpace(instanceGuid)) return BadRequest("instanceGuid is required.");
         await _testBootstrap.EnsureInitializedAsync(ct);
         var timeline = await _consumerService.GetConsumerTimelineAsync(instanceGuid.Trim(), ct);
+        if (timeline?.Instance == null) return NotFound();
         return Ok(timeline);
     }
 

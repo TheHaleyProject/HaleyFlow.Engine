@@ -140,7 +140,7 @@ TriggerAsync(req)
   ├─ ApplyTransition — CAS state update, idempotent by RequestId
   │    └─ No valid transition → returns Applied=false, commits, returns early
   ├─ Resolve instance's locked policy
-  ├─ Create lifecycle ACK row (if AckRequired)
+  ├─ Create lifecycle ACK row
   ├─ EmitHooksAsync → upsert hook rows + create hook ACK rows
   ├─ Commit transaction
   └─ Dispatch events fire-and-forget (after commit)
@@ -516,7 +516,6 @@ var result = await engine.TriggerAsync(new LifeCycleTriggerRequest {
     Event       = "submit",
     RequestId   = requestId,     // stable for retries
     Actor       = userId,
-    AckRequired = true,
     OccurredAt  = null,          // set for replay/backdating; null = engine uses UTC now
     SkipAckGate = false          // set true to bypass the ACK gate for this call only
 });
@@ -566,8 +565,7 @@ public class LoanService {
             ExternalRef = loanId,
             Event       = "submit",
             RequestId   = Guid.NewGuid().ToString(),
-            Actor       = actor,
-            AckRequired = true
+            Actor       = actor
         });
     }
 }

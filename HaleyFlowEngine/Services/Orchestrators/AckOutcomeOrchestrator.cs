@@ -117,8 +117,7 @@ namespace Haley.Services.Orchestrators {
                 DefinitionVersionId = defVersionId,
                 EntityId = entityId,
                 Metadata = metadata,
-                OccurredAt = DateTimeOffset.UtcNow,
-                AckRequired = true
+                OccurredAt = DateTimeOffset.UtcNow
             };
 
             while (!ct.IsCancellationRequested) {
@@ -164,8 +163,7 @@ namespace Haley.Services.Orchestrators {
                                 GroupName = groupName,
                                 OrderSeq = nextOrder,
                                 AckMode = ackMode,
-                                RunCount = runCount,
-                                AckRequired = true
+                                RunCount = runCount
                             });
                         }
                     }

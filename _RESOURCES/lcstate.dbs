@@ -29,7 +29,7 @@
 			<comment><![CDATA[Per-consumer delivery state for each acknowledgement, including retry scheduling and processing outcome.]]></comment>
 			<column name="status" prior="ack_status" type="INT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed.]]></comment>
+				<comment><![CDATA[Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed 5=Cancelled]]></comment>
 			</column>
 			<column name="consumer" type="INT" mandatory="y" >
 				<defo><![CDATA[0]]></defo>
@@ -979,7 +979,7 @@
 ]]></options>
 		</table>
 	</schema>
-	<diagram_group name="Default" id="511536cd-bec8-4103-8527-eb86b17b01bf" >
+	<diagram_group name="Default" id="9f80c073-cc7d-4a9d-8c64-bcc5b14045cb" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="95" />
 			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />

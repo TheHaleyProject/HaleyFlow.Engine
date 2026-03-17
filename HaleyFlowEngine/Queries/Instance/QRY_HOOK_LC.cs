@@ -18,7 +18,7 @@ namespace Haley.Internal {
             $@"SELECT COUNT(*) AS cnt FROM hook_lc WHERE hook_id = {HOOK_ID} AND dispatched = 1;";
 
         // Flat list for TimelineBuilder (Admin detail) — all hook_lc rows for an instance with
-        // aggregated ACK stats. ACK status: 3=Processed, 4=Failed.
+        // aggregated ACK stats. ACK status: 3=Processed, 4=Failed, 5=Cancelled.
         public const string LIST_FOR_TIMELINE =
             $@"SELECT hl.id AS hook_lc_id, hl.lc_id, hl.dispatched,
                       hr.name AS route, COALESCE(hr.label, '') AS label,

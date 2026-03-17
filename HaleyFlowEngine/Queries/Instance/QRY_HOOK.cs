@@ -38,7 +38,8 @@ namespace Haley.Internal {
                LIMIT 1;";
 
         // Count blocking+dispatched hooks in a given order for the current lifecycle entry
-        // where at least one ack_consumer is non-terminal.
+        // where at least one ack_consumer is non-terminal (Processed=3, Failed=4, Cancelled=5 all count as terminal).
+        // Used by AckOutcomeOrchestrator to decide whether the current order is done enough to advance to the next.
         public const string COUNT_INCOMPLETE_BLOCKING_IN_ORDER =
             $@"SELECT COUNT(DISTINCT h.id) AS cnt
                FROM hook h
@@ -52,7 +53,7 @@ namespace Haley.Internal {
                  AND h.order_seq = {ORDER_SEQ}
                  AND h.blocking = 1
                  AND hl.dispatched = 1
-                 AND ac.status NOT IN (3, 4);";
+                 AND ac.status NOT IN (3, 4, 5);";
 
         // Find the next order_seq that has undispatched hook_lc rows for this lifecycle entry.
         public const string GET_MIN_UNDISPATCHED_ORDER =
@@ -81,6 +82,60 @@ namespace Haley.Internal {
                  AND h.on_entry = {ON_ENTRY}
                  AND h.order_seq = {ORDER_SEQ}
                  AND hl.dispatched = 0;";
+
+        // Blocking hook gate — instance-wide checks scoped only to (instanceId, lcId).
+        // Used by InstanceOrchestrator to prevent state transitions when blocking hooks are unresolved.
+
+        // Count dispatched blocking hooks for the current lifecycle entry that are not yet resolved,
+        // taking ack_mode into account:
+        //   ack_mode = ALL (0): hook is unresolved if ANY ack_consumer is not terminal (status NOT IN 3,4,5)
+        //   ack_mode = ANY (1): hook is unresolved if NO ack_consumer has Processed (status = 3)
+        // Terminal statuses: Processed=3, Failed=4, Cancelled=5
+        public const string COUNT_PENDING_BLOCKING_HOOK_ACKS =
+            $@"SELECT COUNT(DISTINCT h.id) AS cnt
+               FROM hook h
+               JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.blocking = 1
+                 AND hl.dispatched = 1
+                 AND (
+                   (h.ack_mode = 0 AND EXISTS (
+                     SELECT 1 FROM hook_ack ha
+                     JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
+                     WHERE ha.hook_id = hl.id AND ac.status NOT IN (3, 4, 5)
+                   ))
+                   OR
+                   (h.ack_mode = 1 AND NOT EXISTS (
+                     SELECT 1 FROM hook_ack ha
+                     JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
+                     WHERE ha.hook_id = hl.id AND ac.status = 3
+                   ))
+                 );";
+
+        // Count blocking hooks for the current lifecycle entry that have not been dispatched yet
+        // (hook_lc rows with dispatched=0). These hooks are queued but consumers haven't received them.
+        public const string COUNT_UNDISPATCHED_BLOCKING_HOOKS =
+            $@"SELECT COUNT(*) AS cnt
+               FROM hook h
+               JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.blocking = 1
+                 AND hl.dispatched = 0;";
+
+        // Timeout cancellation: bulk-set all non-terminal ack_consumer rows for blocking hooks in this
+        // lifecycle entry to Cancelled (status = @ACK_STATUS = 5), clearing next_due.
+        // Called by the monitor immediately before firing a Case A timeout transition so that:
+        //   (a) open hook ACKs are properly closed before the state machine advances, and
+        //   (b) any late ACK arriving afterwards is rejected with a STALE_ACK_RECEIVED notice.
+        public const string CANCEL_PENDING_BLOCKING_HOOK_ACK_CONSUMERS =
+            $@"UPDATE ack_consumer ac
+               JOIN ack a ON a.id = ac.ack_id
+               JOIN hook_ack ha ON ha.ack_id = a.id
+               JOIN hook_lc hl ON hl.id = ha.hook_id AND hl.lc_id = {LC_ID}
+               JOIN hook h ON h.id = hl.hook_id AND h.instance_id = {INSTANCE_ID}
+               SET ac.status = {ACK_STATUS}, ac.next_due = NULL
+               WHERE h.blocking = 1
+                 AND ac.status NOT IN (3, 4, 5);";
 
         public const string DELETE = $@"DELETE FROM hook WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM hook WHERE instance_id = {INSTANCE_ID};";

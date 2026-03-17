@@ -118,6 +118,44 @@ namespace Haley.Services.Orchestrators {
                             HookAckGuids = Array.Empty<string>()
                         };
                     }
+
+                    // Blocking hook gate: a blocking hook marks the current state as having an
+                    // unfinished business checkpoint. The state machine must not advance until:
+                    //   (a) all dispatched blocking hooks for this lifecycle entry are fully ACKed, AND
+                    //   (b) no blocking hooks are still waiting to be dispatched (queued but not yet sent).
+                    // Note: hook_ack rows are invisible to the lc_ack gate above — this is a separate check.
+                    var lastLc = await _dal.LifeCycle.GetLastByInstanceAsync(gateInstanceId, load);
+                    if (lastLc != null) {
+                        var lastLcId = lastLc.GetLong(KEY_ID);
+
+                        var pendingBlockingHooks = await _dal.Hook.CountPendingBlockingHookAcksAsync(gateInstanceId, lastLcId, load);
+                        if (pendingBlockingHooks > 0) {
+                            transaction.Commit();
+                            committed = true;
+                            return new LifeCycleTriggerResult {
+                                Applied = false,
+                                InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
+                                InstanceId = gateInstanceId,
+                                Reason = "BlockedByPendingBlockingHook",
+                                LifecycleAckGuids = Array.Empty<string>(),
+                                HookAckGuids = Array.Empty<string>()
+                            };
+                        }
+
+                        var undispatchedBlockingHooks = await _dal.Hook.CountUndispatchedBlockingHooksAsync(gateInstanceId, lastLcId, load);
+                        if (undispatchedBlockingHooks > 0) {
+                            transaction.Commit();
+                            committed = true;
+                            return new LifeCycleTriggerResult {
+                                Applied = false,
+                                InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
+                                InstanceId = gateInstanceId,
+                                Reason = "BlockedByUndispatchedBlockingHook",
+                                LifecycleAckGuids = Array.Empty<string>(),
+                                HookAckGuids = Array.Empty<string>()
+                            };
+                        }
+                    }
                 }
 
                 // Apply transition in transactional context (writes lifecycle rows + instance state).
@@ -158,12 +196,9 @@ namespace Haley.Services.Orchestrators {
                 if (pid > 0) pr = await _policyEnforcer.ResolvePolicyByIdAsync(pid, load);
 
                 // One lifecycle ack_guid is shared across all transition consumers.
-                var lcAckGuid = string.Empty;
-                if (req.AckRequired) {
-                    var ackRef = await _ackManager.CreateLifecycleAckAsync(transition.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
-                    lcAckGuid = ackRef.AckGuid ?? string.Empty;
-                    lcAckGuids.Add(lcAckGuid);
-                }
+                var ackRef = await _ackManager.CreateLifecycleAckAsync(transition.LifeCycleId!.Value, normTransitionConsumers, (int)AckStatus.Pending, load);
+                var lcAckGuid = ackRef.AckGuid ?? string.Empty;
+                lcAckGuids.Add(lcAckGuid);
 
                 // Resolve per-transition rule context for params + completion event names.
                 RuleContext ctx = new();
@@ -180,7 +215,6 @@ namespace Haley.Services.Orchestrators {
                     EntityId = req.EntityId,
                     OccurredAt = req.OccurredAt ?? DateTimeOffset.UtcNow,
                     AckGuid = lcAckGuid,
-                    AckRequired = req.AckRequired,
                     Metadata = instance.GetString(KEY_METADATA),
                     Params = ctx.Params,
                     OnSuccessEvent = ctx.OnSuccessEvent,
@@ -203,19 +237,16 @@ namespace Haley.Services.Orchestrators {
                 }
 
                 // Emit hook rows via policy engine and fan out corresponding hook events.
-                var hookEmissions = await _policyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr, req.AckRequired);
+                var hookEmissions = await _policyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr);
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                     if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
 
-                    var hookAckGuid = string.Empty;
-                    if (req.AckRequired) {
-                        // Each hook_lc gets its own ack_guid tracked across all hook consumers.
-                        var hookAck = await _ackManager.CreateHookAckAsync(he.HookLcId, normHookConsumers, (int)AckStatus.Pending, load);
-                        hookAckGuid = hookAck.AckGuid ?? string.Empty;
-                        hookAckGuids.Add(hookAckGuid);
-                        await _dal.HookLc.MarkDispatchedAsync(he.HookLcId, load);
-                    }
+                    // Each hook_lc gets its own ack_guid tracked across all hook consumers.
+                    var hookAck = await _ackManager.CreateHookAckAsync(he.HookLcId, normHookConsumers, (int)AckStatus.Pending, load);
+                    var hookAckGuid = hookAck.AckGuid ?? string.Empty;
+                    hookAckGuids.Add(hookAckGuid);
+                    await _dal.HookLc.MarkDispatchedAsync(he.HookLcId, load);
 
                     var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(he.HookId, load);
                     for (var i = 0; i < normHookConsumers.Count; i++) {
@@ -319,7 +350,6 @@ namespace Haley.Services.Orchestrators {
                 EntityId = entityId,
                 Event = autoStartEvent?.Name ?? string.Empty,
                 Actor = actor,
-                AckRequired = true,
                 SkipAckGate = true
             }, ct);
         }

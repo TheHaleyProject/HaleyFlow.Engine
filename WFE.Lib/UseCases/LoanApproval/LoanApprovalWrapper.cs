@@ -35,7 +35,6 @@ namespace WFE.Test.UseCases.LoanApproval {
                 EntityId = entityId,
                 Event = "2000",
                 Actor = "wfe.test.wrapper-driver",
-                AckRequired = true,
                 Payload = new Dictionary<string, object> {
                     ["source"] = "WFE.Test",
                     ["useCase"] = sourceUseCase,

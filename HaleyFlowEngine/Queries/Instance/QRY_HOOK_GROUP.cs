@@ -29,7 +29,9 @@ namespace Haley.Internal {
                LIMIT 1;";
 
         // Count ack_consumer rows for all hooks in the same group+context (scoped to lifecycle entry)
-        // that are NOT yet terminal (Processed=3, Failed=4). If this returns 0, the entire group is done.
+        // that are NOT yet terminal (Processed=3, Failed=4, Cancelled=5). If this returns 0, the entire group is done.
+        // Cancelled rows (set by the monitor on timeout) are treated as terminal — the group is considered
+        // complete even if some members were cancelled rather than processed.
         public const string COUNT_UNRESOLVED_IN_GROUP =
             $@"SELECT COUNT(*) AS cnt
                FROM hook h
@@ -41,6 +43,6 @@ namespace Haley.Internal {
                  AND h.via_event = {EVENT_ID}
                  AND h.on_entry = {ON_ENTRY}
                  AND h.group_id = {GROUP_ID}
-                 AND ac.status NOT IN (3, 4);";
+                 AND ac.status NOT IN (3, 4, 5);";
     }
 }

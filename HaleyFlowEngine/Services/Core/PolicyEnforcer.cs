@@ -164,9 +164,7 @@ namespace Haley.Services {
         //      Only min-order hooks get dispatched=true (ACK rows created, events fired now).
         //      Higher-order hooks get dispatched=false (row created in DB, but no ACK/event yet).
         //      They wait for AdvanceNextHookOrderAsync to activate them after prior-order completion.
-        //   4. If AckRequired=false, ordering is bypassed — all hooks dispatch immediately.
-        //      (No consumer will ACK them, so ordering can never advance — fire-and-forget.)
-        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, PolicyResolution? policy = null, bool ackRequired = true) {
+        public async Task<IReadOnlyList<ILifeCycleHookEmission>> EmitHooksAsync(LifeCycleBlueprint bp, DbRow instance, ApplyTransitionResult applied, DbExecutionLoad load = default, PolicyResolution? policy = null) {
             load.Ct.ThrowIfCancellationRequested();
             if (!applied.Applied) return Array.Empty<ILifeCycleHookEmission>();
 
@@ -224,9 +222,7 @@ namespace Haley.Services {
 
             if (specs.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
 
-            // If AckRequired=false, treat all hooks as order=1 so everything dispatches immediately.
-            // There's no mechanism to advance orders without ACKs, so ordering would freeze indefinitely.
-            var minOrder = ackRequired ? specs.Min(s => s.orderSeq) : 1;
+            var minOrder = specs.Min(s => s.orderSeq);
 
             // applied.LifeCycleId is always set when EmitHooksAsync is called after a successful transition.
             var lcId = applied.LifeCycleId ?? 0;
@@ -247,7 +243,7 @@ namespace Haley.Services {
 
                 // Higher-order hooks: hook_lc row created with dispatched=0, not returned yet.
                 // They will be dispatched by AdvanceNextHookOrderAsync once prior orders complete.
-                var minOrderHook = !ackRequired || s.orderSeq == minOrder;
+                var minOrderHook = s.orderSeq == minOrder;
                 if (!minOrderHook) continue;
 
                 emissions.Add(new LifeCycleHookEmission {

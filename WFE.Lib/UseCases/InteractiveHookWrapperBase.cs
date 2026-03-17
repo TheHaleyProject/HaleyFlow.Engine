@@ -94,7 +94,6 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
             EntityId = evt.EntityId,
             Event = nextEventCode,
             Actor = "wfe.test.consumer",
-            AckRequired = true,
             Payload = new Dictionary<string, object> {
                 ["fromRoute"] = evt.Route
             }

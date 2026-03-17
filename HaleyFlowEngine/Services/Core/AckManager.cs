@@ -30,7 +30,11 @@ namespace Haley.Services {
         private readonly IBlueprintManager _bp;
         private readonly IPolicyEnforcer _policy; // concrete (so we can call Resolve*FromJson)
 
-        public AckManager(IWorkFlowDAL dal, IBlueprintManager bp, IPolicyEnforcer policy, Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null, TimeSpan? pendingNextDue = null, TimeSpan? deliveredNextDue = null, int maxTrigger = 10) {
+        // Optional notice pipeline — injected by WorkFlowEngine so AckAsync can fire
+        // STALE_ACK_RECEIVED when a consumer tries to ACK an already-terminal ack_consumer row.
+        private readonly Action<LifeCycleNotice>? _fireNotice;
+
+        public AckManager(IWorkFlowDAL dal, IBlueprintManager bp, IPolicyEnforcer policy, Func<LifeCycleConsumerType, long?, CancellationToken, Task<IReadOnlyList<long>>> consumers = null, TimeSpan? pendingNextDue = null, TimeSpan? deliveredNextDue = null, int maxTrigger = 10, Action<LifeCycleNotice>? fireNotice = null) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _consumers = consumers ?? ((dv, iid, ct) => Task.FromResult<IReadOnlyList<long>>(Array.Empty<long>()));
 
@@ -39,6 +43,7 @@ namespace Haley.Services {
             _maxTrigger = maxTrigger > 0 ? maxTrigger : 10;
             _bp = bp ?? throw new ArgumentNullException(nameof(bp));
             _policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            _fireNotice = fireNotice;
         }
 
         // Resolves which consumer IDs should receive transition events for the given def_version.
@@ -107,6 +112,28 @@ namespace Haley.Services {
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
             if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
 
+            // Reject ACKs for already-terminal ack_consumer rows.
+            // Terminal statuses: Processed=3, Failed=4, Cancelled=5.
+            // Cancelled happens when the engine forcibly closes hook ACKs before a timeout transition.
+            // Accepting a late ACK from a consumer would reopen a closed row and could trigger
+            // spurious hook-group completion or post-ACK logic on an instance that has already moved on.
+            var existing = await _dal.AckConsumer.GetByAckGuidAndConsumerAsync(ackGuid, consumerId, load);
+            if (existing != null) {
+                var currentStatus = existing.GetInt(KEY_STATUS);
+                if (currentStatus >= (int)AckStatus.Processed) {
+                    // Row is terminal — reject the ACK and emit a notice so operators can observe late consumers.
+                    _fireNotice?.Invoke(LifeCycleNotice.Warn("STALE_ACK_RECEIVED", "STALE_ACK_RECEIVED",
+                        $"ACK rejected: ack_consumer is already terminal. ack_guid={ackGuid} consumer={consumerId} current_status={currentStatus} attempted_outcome={outcome}",
+                        new Dictionary<string, object?> {
+                            ["ackGuid"]         = ackGuid,
+                            ["consumerId"]      = consumerId,
+                            ["currentStatus"]   = currentStatus,
+                            ["attemptedOutcome"] = outcome.ToString()
+                        }));
+                    return;
+                }
+            }
+
             // Decide status + due scheduling
             var (status, nextDueUtc) = ComputeOutcomeStatusAndDue(outcome, retryAt);
 
@@ -159,7 +186,6 @@ namespace Haley.Services {
                     EntityId = r.GetString(KEY_ENTITY_ID) ?? string.Empty,
                     OccurredAt = r.GetDateTimeOffset(KEY_LC_CREATED) ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
-                    AckRequired = true,
                     Metadata = r.GetString(KEY_METADATA),
                     LifeCycleId = r.GetLong(KEY_LC_ID),
                     FromStateId = r.GetLong(KEY_FROM_STATE),
@@ -218,7 +244,6 @@ namespace Haley.Services {
                     EntityId = r.GetString(KEY_ENTITY_ID) ?? string.Empty,
                     OccurredAt = r.GetDateTimeOffset(KEY_HOOK_CREATED) ?? DateTimeOffset.UtcNow,
                     AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
-                    AckRequired = true,
                     Metadata = r.GetString(KEY_METADATA),
                     OnEntry = r.GetBool(KEY_ON_ENTRY),
                     Route = r.GetString(KEY_ROUTE) ?? string.Empty,

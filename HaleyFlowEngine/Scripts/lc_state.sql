@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS `ack` (
 CREATE TABLE IF NOT EXISTS `ack_consumer` (
   `consumer` int(11) NOT NULL DEFAULT 0 COMMENT 'Consumer identifier.',
   `ack_id` bigint(20) NOT NULL COMMENT 'Acknowledgement identifier (FK to ack.id).',
-  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed.',
+  `status` int(11) NOT NULL DEFAULT 1 COMMENT 'Acknowledgement state: 1=Pending, 2=Delivered, 3=Processed, 4=Failed, 5=Cancelled (set by engine on timeout; rejects late ACKs).',
   `last_trigger` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'Most recent dispatch trigger timestamp.',
   `trigger_count` int(11) NOT NULL DEFAULT 0 COMMENT 'Number of dispatch attempts performed so far.',
   `next_due` datetime DEFAULT NULL COMMENT 'Next scheduled timestamp for retry/dispatch. From C#, this is set as DateTime.UtcNow.. so we need to consider this time is in UTC time.',

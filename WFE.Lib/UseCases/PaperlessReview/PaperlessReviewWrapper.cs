@@ -35,7 +35,6 @@ namespace WFE.Test.UseCases.PaperlessReview {
                 EntityId = entityId,
                 Event = "3000",
                 Actor = "wfe.test.wrapper-driver",
-                AckRequired = true,
                 Payload = new Dictionary<string, object> {
                     ["source"] = "WFE.Test",
                     ["useCase"] = sourceUseCase,

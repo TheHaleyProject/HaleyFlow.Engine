@@ -8,6 +8,12 @@ namespace Haley.Enums {
         Pending = 1,
         Delivered=2,
         Processed=3,
-        Failed=4
+        Failed=4,
+        /// <summary>
+        /// Set by the engine (monitor timeout path) when a blocking hook ACK is forcibly closed
+        /// before the instance transitions away. A consumer sending an ACK for a Cancelled row
+        /// receives a STALE_ACK_RECEIVED notice and the update is rejected.
+        /// </summary>
+        Cancelled=5
     }
 }

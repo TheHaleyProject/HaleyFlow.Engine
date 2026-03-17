@@ -41,7 +41,6 @@ Every macro transition call must provide:
 - `Event` (code/name)
 - `RequestId` (stable for retry attempts)
 - `Actor` (optional but recommended)
-- `AckRequired` (recommended true for reliability)
 - Optional payload metadata
 
 Expected behavior:
@@ -55,9 +54,8 @@ Expected behavior:
 
 ## 4) Acknowledgement contract
 
-When `AckRequired` is true:
-- Transition and hook events may carry an `AckGuid`.
-- Consumer must acknowledge with one of: `Delivered`, `Processed`, `Retry`, `Failed`.
+Transition and hook events carry an `AckGuid`.
+Consumer must acknowledge with one of: `Delivered`, `Processed`, `Retry`, `Failed`.
 
 Recommended ACK flow:
 1. On receipt: ACK `Delivered`.

@@ -18,7 +18,6 @@ namespace Haley.Models {
         public DateTimeOffset OccurredAt { get; set; }
         public string? OnSuccessEvent { get; set; }
         public string? OnFailureEvent { get; set; }
-        public bool AckRequired { get; set; }
         public string? Metadata { get; set; }
         public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
         public LifeCycleEvent() { }
@@ -35,7 +34,6 @@ namespace Haley.Models {
             OnSuccessEvent = source.OnSuccessEvent;
             OnFailureEvent = source.OnFailureEvent;
             OccurredAt = source.OccurredAt;
-            AckRequired = source.AckRequired;
         }
     }
 }

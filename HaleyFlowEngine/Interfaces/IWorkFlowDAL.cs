@@ -26,5 +26,6 @@ namespace Haley.Abstractions {
         IRuntimeDAL Runtime { get; }
         IRuntimeDataDAL RuntimeData { get; }
         IEngineCareDAL EngineCare { get; }
+        ILifeCycleTimeoutDAL LcTimeout { get; }
     }
 }
