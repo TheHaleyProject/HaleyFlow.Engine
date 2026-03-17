@@ -49,8 +49,8 @@ namespace Haley.Internal {
         public const string MARK_TRIGGER = $@"UPDATE ack_consumer SET trigger_count = trigger_count + 1, last_trigger = CURRENT_TIMESTAMP, next_due = {NEXT_DUE}, modified = CURRENT_TIMESTAMP WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID};";
 
         // status change + next_due management (Processed/Failed => pass NULL)
-        public const string SET_STATUS_AND_DUE = $@"UPDATE ack_consumer SET status = {ACK_STATUS}, next_due = {NEXT_DUE}, modified = CURRENT_TIMESTAMP WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID};";
-        public const string SET_STATUS_AND_DUE_BY_GUID = $@"UPDATE ack_consumer ac JOIN ack a ON a.id = ac.ack_id SET ac.status = {ACK_STATUS}, ac.next_due = {NEXT_DUE}, ac.modified = CURRENT_TIMESTAMP WHERE a.guid = lower(trim({GUID})) AND ac.consumer = {CONSUMER_ID};";
+        public const string SET_STATUS_AND_DUE = $@"UPDATE ack_consumer SET status = {ACK_STATUS}, next_due = {NEXT_DUE}, message = {MESSAGE}, modified = CURRENT_TIMESTAMP WHERE ack_id = {ACK_ID} AND consumer = {CONSUMER_ID};";
+        public const string SET_STATUS_AND_DUE_BY_GUID = $@"UPDATE ack_consumer ac JOIN ack a ON a.id = ac.ack_id SET ac.status = {ACK_STATUS}, ac.next_due = {NEXT_DUE}, ac.message = {MESSAGE}, ac.modified = CURRENT_TIMESTAMP WHERE a.guid = lower(trim({GUID})) AND ac.consumer = {CONSUMER_ID};";
 
         public const string LIST_BY_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.status = {ACK_STATUS} ORDER BY ac.modified DESC, ac.ack_id DESC, ac.consumer DESC LIMIT {TAKE} OFFSET {SKIP};";
         public const string LIST_BY_CONSUMER_AND_STATUS_PAGED = $@"SELECT ac.*, a.guid AS ack_guid, a.created AS ack_created FROM ack_consumer ac JOIN ack a ON a.id = ac.ack_id WHERE ac.consumer = {CONSUMER_ID} AND ac.status = {ACK_STATUS} ORDER BY ac.modified DESC, ac.ack_id DESC, ac.consumer DESC LIMIT {TAKE} OFFSET {SKIP};";
@@ -66,7 +66,7 @@ namespace Haley.Internal {
         public const string DELETE_BY_ACK_ID = $@"DELETE FROM ack_consumer WHERE ack_id = {ACK_ID};";
 
         public const string LIST_PENDING_DETAIL_PAGED =
-            $@"SELECT ac.ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.next_due,
+            $@"SELECT ac.ack_id, a.guid AS ack_guid, ac.consumer, ac.status, ac.next_due, ac.message,
               ac.trigger_count, ac.last_trigger, ac.created, ac.modified, a.created AS ack_created,
               i.guid AS instance_guid, i.entity_id, d.name AS def_name, hr.name AS hook_route
        FROM ack_consumer ac

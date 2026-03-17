@@ -14,11 +14,11 @@ namespace Haley.Internal {
         public Task<int> UpsertByAckIdAndConsumerAsync(long ackId, long consumer, int status, DateTime? utcNextDue, int maxTrigger, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_ACK_CONSUMER.UPSERT, load, (ACK_ID, ackId), (CONSUMER_ID, consumer), (ACK_STATUS, status), (NEXT_DUE, utcNextDue), (MAX_TRIGGER, maxTrigger));
 
-        public Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default)
-            => Db.ExecAsync(QRY_ACK_CONSUMER.SET_STATUS_AND_DUE, load, (ACK_ID, ackId), (CONSUMER_ID, consumer),(ACK_STATUS, status), (NEXT_DUE, utcNextDue));
+        public Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, string? message = null, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_ACK_CONSUMER.SET_STATUS_AND_DUE, load, (ACK_ID, ackId), (CONSUMER_ID, consumer), (ACK_STATUS, status), (NEXT_DUE, utcNextDue), (MESSAGE, (object?)message ?? DBNull.Value));
 
-        public Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default)
-            => Db.ExecAsync(QRY_ACK_CONSUMER.SET_STATUS_AND_DUE_BY_GUID, load, (GUID, ackGuid), (CONSUMER_ID, consumer),(ACK_STATUS, status),(NEXT_DUE, utcNextDue));
+        public Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, string? message = null, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_ACK_CONSUMER.SET_STATUS_AND_DUE_BY_GUID, load, (GUID, ackGuid), (CONSUMER_ID, consumer), (ACK_STATUS, status), (NEXT_DUE, utcNextDue), (MESSAGE, (object?)message ?? DBNull.Value));
 
         public Task<int> MarkTriggerAsync(long ackId, long consumer, DateTime? utcNextDue, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_ACK_CONSUMER.MARK_TRIGGER, load,(ACK_ID, ackId),(CONSUMER_ID, consumer),(NEXT_DUE, utcNextDue));

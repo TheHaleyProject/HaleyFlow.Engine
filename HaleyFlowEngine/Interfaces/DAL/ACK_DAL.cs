@@ -19,8 +19,8 @@ namespace Haley.Abstractions {
         Task<DbRow?> GetByKeyAsync(long ackId, long consumer, DbExecutionLoad load = default);
         Task<DbRow?> GetByAckGuidAndConsumerAsync(string ackGuid, long consumer, DbExecutionLoad load = default);
         Task<int> UpsertByAckIdAndConsumerAsync(long ackId, long consumer, int status, DateTime? utcNextDue, int maxTrigger, DbExecutionLoad load = default);
-        Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
-        Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, DbExecutionLoad load = default);
+        Task<int> SetStatusAndDueAsync(long ackId, long consumer, int status, DateTime? utcNextDue, string? message = null, DbExecutionLoad load = default);
+        Task<int> SetStatusAndDueByGuidAsync(string ackGuid, long consumer, int status, DateTime? utcNextDue, string? message = null, DbExecutionLoad load = default);
         Task<int> MarkTriggerAsync(long ackId, long consumer, DateTime? utcNextDue, DbExecutionLoad load = default);
         Task<DbRows> ListDueByConsumerAndStatusPagedAsync(long consumer, int status, int skip, int take, DbExecutionLoad load = default);
         Task<DbRows> ListDueByStatusPagedAsync(int status, int skip, int take, DbExecutionLoad load = default);

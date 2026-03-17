@@ -222,7 +222,7 @@ namespace Haley.Services.Orchestrators {
 
                 if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
                     // Per-row retry budget exhausted: mark failed and suspend instance.
-                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
+                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, null, load);
 
                     var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
                     if (instanceId > 0) {
@@ -249,7 +249,7 @@ namespace Haley.Services.Orchestrators {
                 var item = hk[i];
 
                 if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
-                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, load);
+                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, null, load);
 
                     var isBlocking = item.Event is ILifeCycleHookEvent hev && hev.IsBlocking;
                     if (isBlocking) {

@@ -138,10 +138,9 @@ namespace Haley.Services {
             var (status, nextDueUtc) = ComputeOutcomeStatusAndDue(outcome, retryAt);
 
             // Single DB call; no ackId fetch needed.
-            var affected = await _dal.AckConsumer.SetStatusAndDueByGuidAsync(ackGuid, consumerId, (int)status, nextDueUtc, load);
+            var affected = await _dal.AckConsumer.SetStatusAndDueByGuidAsync(ackGuid, consumerId, (int)status, nextDueUtc, message, load);
             if (affected <= 0) throw new InvalidOperationException($"AckConsumer not found. guid={ackGuid}, consumer={consumerId}");
 
-            _ = message;
         }
 
         public async Task MarkRetryAsync(long ackId, long consumerId, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
@@ -150,7 +149,7 @@ namespace Haley.Services {
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
 
             var nextDueUtc = (retryAt?.UtcDateTime) ?? (DateTime.UtcNow + _pendingNextDue);
-            await _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, (int)AckStatus.Pending, nextDueUtc, load);
+            await _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, (int)AckStatus.Pending, nextDueUtc, null, load);
         }
 
         public Task SetStatusAsync(long ackId, long consumerId, int ackStatus, DbExecutionLoad load = default) {
@@ -163,7 +162,7 @@ namespace Haley.Services {
             else if (ackStatus == (int)AckStatus.Delivered) nextDueUtc = DateTime.UtcNow + _deliveredNextDue;
             else nextDueUtc = null;
 
-            return _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, ackStatus, nextDueUtc, load);
+            return _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, ackStatus, nextDueUtc, null, load);
         }
 
         // Returns lifecycle transition events that are "due" for a given consumer.
