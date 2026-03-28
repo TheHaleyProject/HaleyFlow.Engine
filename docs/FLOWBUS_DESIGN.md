@@ -73,6 +73,74 @@ This keeps Haley infrastructure generic and application-specific routing in the 
 
 The brief suggested a `SyncMode=true` flag on `TriggerAsync`. This was rejected. Backfill is handled by `ImportBackfillAsync` — a completely separate path. `TriggerAsync` stays clean with no special-case flags.
 
+### Decision 7 — WorkflowRelay is a zero-infrastructure local runner (not EventStore-backed)
+
+Initially Relay mode was conceived as EventStore pub-sub. After further design discussion, a cleaner alternative was agreed:
+
+**`WorkflowRelay`** — a local sequential runner that:
+- Reads the workflow definition JSON directly (no engine, no EventStore, no DB)
+- Tracks current state in memory (or caller-provided state store — just a string)
+- When `NextAsync(eventCode)` is called, looks up the valid transition and advances state
+- Calls registered handler delegates for that transition and its hooks in order
+- Owns the sequence — no step knows what comes next; the runner does
+
+**Why this is better than EventStore-backed relay**:
+- In EventStore mode, each step owns the next step (`step1 → publishes event → step2 picks up`). Sequence knowledge leaks into every step.
+- In `WorkflowRelay`, the runner owns the sequence. Steps only do work. Single place to track, debug, and change the sequence.
+- Zero infrastructure — no EventStore setup required.
+
+**Where it lives**: `HaleyAbstractions.Core` only. Apps reference only abstractions — no dependency on HaleyFlow.Consumer or HaleyFlow.Engine. This is intentional: the relay runner is the entry point for apps that are not yet ready for the full engine stack.
+
+### Decision 8 — WorkflowRelay is the migration stepping stone
+
+```
+Early/dev:     WorkflowRelay (local, zero infra, easy to debug)
+               ↓  when app stabilises and needs production durability
+Production:    ExecutorFlowBus → WorkflowEngine (same definition JSON, same handler registrations)
+```
+
+No business logic changes required to migrate. Only the FlowBus registration changes.
+
+---
+
+## WorkflowRelay API (planned for Phase B)
+
+```csharp
+public sealed class WorkflowRelay {
+    // Load definition from JSON string or file path.
+    public static WorkflowRelay FromJson(string definitionJson);
+
+    // Register a handler for a transition event code.
+    // Called by the runner after advancing to the next state.
+    public WorkflowRelay On(int eventCode, Func<RelayContext, Task> handler);
+
+    // Register a handler for a hook route within a transition.
+    public WorkflowRelay OnHook(string route, Func<RelayContext, Task> handler);
+
+    // Optional monitor/intercept — called before every handler (transition + hook).
+    // Return true to proceed, false to block (handler is not called, run stops).
+    // Single place for checkpoints, logging, debugging.
+    public WorkflowRelay SetMonitor(Func<int eventCode, string entityRef, Task<bool>> monitor);
+
+    // Advance the workflow by one transition.
+    // Looks up valid transition from current state via eventCode, calls handler + hooks.
+    public Task<RelayResult> NextAsync(RelayContext ctx, int eventCode, CancellationToken ct = default);
+}
+
+public sealed class RelayContext {
+    public string  EntityRef    { get; set; }
+    public string  CurrentState { get; set; }  // maintained by runner
+    public string? Actor        { get; set; }
+    public object? Payload      { get; set; }
+}
+
+public sealed class RelayResult {
+    public bool    Advanced     { get; init; }
+    public string? NewState     { get; init; }
+    public string? Reason       { get; init; }  // "InvalidTransition", "BlockedByMonitor", etc.
+}
+```
+
 ---
 
 ## IFlowBus Interface (planned for Phase B/C)
@@ -95,24 +163,26 @@ public interface IFlowBus {
 
 ## Backfill Integration with FlowBus and LifecycleWrapper
 
-### DefinitionWalker (planned Phase A extension)
+### DefinitionWalker (Phase A2 — complete)
 
 The `DefinitionWalker` is a Haley-provided utility that:
-1. Fetches the definition snapshot
+1. Fetches the definition snapshot (via `WorkflowBackfillValidator` cache)
 2. Walks the transition graph from initial state
-3. At each transition, calls a consumer-provided `IBackfillDataProvider` callback
+3. At each transition, calls the consumer-provided `IBackfillDataProvider` callback
 4. Assembles a valid `WorkflowBackfillObject` from the responses
 5. Validates and returns it, ready for `ImportBackfillAsync`
 
 The consumer implements `IBackfillDataProvider`:
 ```csharp
 interface IBackfillDataProvider {
-    // Return null if this entity did not pass through this transition.
-    Task<BackfillStateData?> GetTransitionDataAsync(string fromState, string toState, string viaEvent, CancellationToken ct);
+    // Return null if this entity did not pass through this event.
+    Task<BackfillStateData?> GetTransitionDataAsync(int eventCode, CancellationToken ct);
     // Return null if this hook was not tracked in the legacy system.
-    Task<BackfillHookData?> GetHookDataAsync(string toState, string viaEvent, string route, CancellationToken ct);
+    Task<BackfillHookData?> GetHookDataAsync(int eventCode, string route, CancellationToken ct);
 }
 ```
+
+**Key**: callbacks use `int eventCode` — never state names. Event codes are the stable contract. The walker owns graph traversal; the consumer owns domain data.
 
 ### LifecycleWrapper backfill method
 
@@ -142,7 +212,7 @@ The wrapper owns all domain knowledge. Haley owns all graph knowledge. No cross-
 | Layer | Responsibility |
 |---|---|
 | Service layer | Does business work, calls `_flowBus.NextAsync(ctx)` |
-| IFlowBus (Relay) | Maps outcome → EventStore event, publishes |
+| WorkflowRelay | Reads definition JSON locally, owns sequence, calls registered handlers |
 | IFlowBus (Executor) | Maps outcome → event name, calls `TriggerAsync` |
 | Engine | Drives transitions, emits hooks, tracks ACKs |
 | LifecycleWrapper | Handles hook dispatch, calls `AutoTransitionAsync` |
@@ -154,7 +224,7 @@ The wrapper owns all domain knowledge. Haley owns all graph knowledge. No cross-
 ## What Does NOT Change
 
 - `EventStore` / `HEvent<T>` — untouched
-- Existing `Initializer.cs` subscriptions — untouched (Relay wraps them as-is)
+- Existing `Initializer.cs` subscriptions — untouched
 - `LifeCycleWrapper` handlers — unchanged
 - `IWorkFlowConsumerService` / `IWorkFlowEngineAccessor` interfaces — unchanged
 - Business logic methods — gain one `await _flowBus.NextAsync(ctx)` at the end; everything else stays

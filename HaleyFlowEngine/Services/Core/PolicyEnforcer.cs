@@ -107,7 +107,7 @@ namespace Haley.Services {
 
                     int? via = null;
                     if (ruleEl.TryGetProperty(KEY_VIA, out var viaEl) && viaEl.ValueKind != JsonValueKind.Null && viaEl.ValueKind != JsonValueKind.Undefined)
-                        via = viaEl.GetInt();
+                        via = viaEl.GetIntValue();
 
                     var (ruleSuccess, ruleFailure) = ReadCompletionEvents(ruleEl);
                     var ruleParamCodes = ruleEl.ReadList(KEY_PARAMS);
