@@ -217,6 +217,12 @@ public sealed class InProcessEngineProxy : ILifeCycleEngineProxy {
     public async Task<bool> UnsuspendAsync(string instanceGuid, string actor, CancellationToken ct = default)
         => await (await EnsureEngineAsync(ct)).UnsuspendAsync(instanceGuid, actor, ct);
 
+    public async Task<WorkflowDefinitionSnapshot?> GetDefinitionSnapshotAsync(int envCode, string definitionName, CancellationToken ct = default)
+        => await (await EnsureEngineAsync(ct)).GetDefinitionSnapshotAsync(envCode, definitionName, ct);
+
+    public async Task<BackfillImportResult> ImportBackfillAsync(WorkflowBackfillObject obj, CancellationToken ct = default)
+        => await (await EnsureEngineAsync(ct)).ImportBackfillAsync(obj, ct);
+
     // ── Private adapter ───────────────────────────────────────────────────────
     // Wraps ILifeCycleEvent into ILifeCycleDispatchItem with sensible in-process defaults:
     //   AckId = 0        — not used by the dispatch pipeline

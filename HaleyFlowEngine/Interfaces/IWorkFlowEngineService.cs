@@ -19,6 +19,10 @@ public interface IWorkFlowEngineService : IWorkFlowEngineAccessor {
     Task<bool> FailInstanceAsync(string instanceGuid, string? message, CancellationToken ct);
     Task<LifeCycleTriggerResult> ReopenInstanceAsync(string instanceGuid, string actor, CancellationToken ct);
     Task<bool> UnsuspendInstanceAsync(string instanceGuid, string actor, CancellationToken ct);
+
+    // ── Backfill ─────────────────────────────────────────────────────────────────────────────
+    Task<WorkflowDefinitionSnapshot?> GetDefinitionSnapshotAsync(int envCode, string definitionName, CancellationToken ct);
+    Task<BackfillImportResult> ImportBackfillAsync(WorkflowBackfillObject obj, CancellationToken ct);
 }
 
 

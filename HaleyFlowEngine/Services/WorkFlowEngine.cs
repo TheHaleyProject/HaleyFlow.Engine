@@ -384,6 +384,162 @@ namespace Haley.Services {
         public Task<bool> UnsuspendAsync(string instanceGuid, string actor, CancellationToken ct = default)
             => _maintenanceOrchestrator.UnsuspendAsync(instanceGuid, actor, ct);
 
+        // ── Backfill ──────────────────────────────────────────────────────────────────────────────
+
+        // Returns a read-only projection of the definition so consumers can build and validate
+        // WorkflowBackfillObjects client-side without accessing the engine DB.
+        // Returns null if the definition is not found for (envCode, definitionName).
+        public async Task<WorkflowDefinitionSnapshot?> GetDefinitionSnapshotAsync(int envCode, string definitionName, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(definitionName)) throw new ArgumentNullException(nameof(definitionName));
+
+            LifeCycleBlueprint bp;
+            try {
+                bp = await BlueprintManager.GetBlueprintLatestAsync(envCode, definitionName, ct);
+            } catch {
+                return null;
+            }
+            if (bp == null) return null;
+
+            // States with at least one outgoing transition are non-terminal.
+            var statesWithOutgoing = new HashSet<long>();
+            foreach (var t in bp.Transitions.Values)
+                statesWithOutgoing.Add(t.FromStateId);
+
+            var states = new List<SnapshotState>(bp.StatesById.Count);
+            foreach (var kv in bp.StatesById) {
+                states.Add(new SnapshotState {
+                    Name       = kv.Value.Name ?? string.Empty,
+                    IsInitial  = kv.Value.IsInitial,
+                    IsTerminal = !statesWithOutgoing.Contains(kv.Key)
+                });
+            }
+
+            var transitions = new List<SnapshotTransition>(bp.Transitions.Count);
+            foreach (var t in bp.Transitions.Values) {
+                if (!bp.StatesById.TryGetValue(t.FromStateId, out var fromDef)) continue;
+                if (!bp.StatesById.TryGetValue(t.ToStateId,   out var toDef))   continue;
+                if (!bp.EventsById.TryGetValue(t.EventId,     out var evtDef))  continue;
+
+                transitions.Add(new SnapshotTransition {
+                    FromState = fromDef.Name ?? string.Empty,
+                    ToState   = toDef.Name   ?? string.Empty,
+                    EventCode = evtDef.Code,
+                    EventName = evtDef.Name  ?? string.Empty,
+                    Hooks     = Array.Empty<SnapshotHookRoute>()
+                });
+            }
+
+            return new WorkflowDefinitionSnapshot {
+                DefinitionName = definitionName,
+                EnvCode        = envCode,
+                States         = states,
+                Transitions    = transitions
+            };
+        }
+
+        // Imports a pre-validated backfill object as read-only history.
+        // Writes instance + lifecycle + hook rows. No ACKs, no hook dispatch events.
+        // hook_lc rows are stamped dispatched=1 so the blocking hook gate does not treat them
+        // as pending dispatch; ack_consumer count=0 on those rows is the backfill marker.
+        public async Task<BackfillImportResult> ImportBackfillAsync(WorkflowBackfillObject obj, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
+            if (obj == null) throw new ArgumentNullException(nameof(obj));
+            if (!obj.Validated) return BackfillImportResult.Fail("NotValidated");
+            if (string.IsNullOrWhiteSpace(obj.WorkflowName)) return BackfillImportResult.Fail("WorkflowNameRequired");
+            if (string.IsNullOrWhiteSpace(obj.EntityRef))    return BackfillImportResult.Fail("EntityRefRequired");
+            if (obj.Transitions == null || obj.Transitions.Count == 0) return BackfillImportResult.Fail("NoTransitions");
+
+            var load = new DbExecutionLoad(ct);
+
+            LifeCycleBlueprint bp;
+            try {
+                bp = await BlueprintManager.GetBlueprintLatestAsync(obj.EnvCode, obj.WorkflowName, ct);
+            } catch {
+                return BackfillImportResult.Fail("DefinitionNotFound");
+            }
+            if (bp == null) return BackfillImportResult.Fail("DefinitionNotFound");
+
+            // Reverse maps for name → id resolution.
+            // EventCode (int) is the stable contract; resolve by code not by name.
+            var statesById   = bp.StatesById;    // long → StateDef
+            var eventsByCode = bp.EventsByCode;  // int  → EventDef
+
+            var statesByName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in statesById)
+                if (!string.IsNullOrWhiteSpace(kv.Value.Name))
+                    statesByName[kv.Value.Name] = kv.Key;
+
+            // Validate every transition before writing anything.
+            foreach (var tr in obj.Transitions) {
+                if (!statesByName.TryGetValue(tr.FromState, out var fromId))
+                    return BackfillImportResult.Fail($"UnknownState:{tr.FromState}");
+                if (!statesByName.TryGetValue(tr.ToState, out var toId))
+                    return BackfillImportResult.Fail($"UnknownState:{tr.ToState}");
+                if (!eventsByCode.TryGetValue(tr.EventCode, out var evtDef))
+                    return BackfillImportResult.Fail($"UnknownEventCode:{tr.EventCode}");
+
+                var key = Tuple.Create(fromId, evtDef.Code);
+                if (!bp.Transitions.TryGetValue(key, out var tDef) || tDef.ToStateId != toId)
+                    return BackfillImportResult.Fail($"InvalidTransition:{tr.FromState}→{tr.ToState} via code {tr.EventCode}");
+            }
+
+            // Resolve / create the instance.
+            var policy = await PolicyEnforcer.ResolvePolicyAsync(bp.DefinitionId, load);
+            var instanceGuid = await _dal.Instance.UpsertByKeyReturnGuidAsync(
+                bp.DefVersionId, obj.EntityRef, bp.InitialStateId, null,
+                policy.PolicyId ?? 0, (uint)LifeCycleInstanceFlag.Active, obj.Metadata, load);
+
+            if (string.IsNullOrWhiteSpace(instanceGuid))
+                return BackfillImportResult.Fail("InstanceUpsertFailed");
+
+            var instanceId = await _dal.Instance.GetIdByGuidAsync(instanceGuid, load) ?? 0;
+            if (instanceId <= 0) return BackfillImportResult.Fail("InstanceIdResolutionFailed");
+
+            long lastToStateId = bp.InitialStateId;
+
+            foreach (var tr in obj.Transitions) {
+                statesByName.TryGetValue(tr.FromState, out var fromId);
+                statesByName.TryGetValue(tr.ToState,   out var toId);
+                eventsByCode.TryGetValue(tr.EventCode, out var evtDef);
+
+                // Insert lifecycle row with the historical timestamp.
+                var lcId = await _dal.LifeCycle.InsertAsync(instanceId, fromId, toId, evtDef!.Id, tr.Timestamp, load);
+
+                // Persist actor and payload alongside the lifecycle row.
+                if (!string.IsNullOrWhiteSpace(tr.Actor) || !string.IsNullOrWhiteSpace(tr.Payload)) {
+                    await _dal.LifeCycleData.UpsertAsync(lcId, tr.Actor, tr.Payload, load);
+                }
+
+                // Write hook rows if provided. No ACKs, no dispatch events.
+                if (tr.Hooks != null) {
+                    foreach (var bh in tr.Hooks) {
+                        if (string.IsNullOrWhiteSpace(bh.Route)) continue;
+
+                        // Upsert the hook definition row (idempotent by key).
+                        var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
+                            instanceId, toId, evtDef.Id, onEntry: true, bh.Route,
+                            blocking: false, groupName: null, orderSeq: 1, ackMode: 0, load);
+
+                        // Create hook_lc linking this hook to the lifecycle entry.
+                        var hookLcId = await _dal.HookLc.InsertReturnIdAsync(hookId, lcId, load);
+
+                        // Mark dispatched=1 so the blocking hook gate does not treat this as
+                        // a pending undispatched hook. No ACK rows are created — the zero ack_consumer
+                        // count on this hook_lc is the backfill marker visible in the timeline.
+                        await _dal.HookLc.MarkDispatchedAsync(hookLcId, load);
+                    }
+                }
+
+                lastToStateId = toId;
+            }
+
+            // Update instance current_state to the final transition's ToState.
+            await _dal.Instance.ForceResetToStateAsync(instanceId, lastToStateId, clearFlagsMask: 0, load);
+
+            return BackfillImportResult.Ok(instanceGuid);
+        }
+
         private async Task<IReadOnlyList<long>> ResolveMonitorConsumerIdsByGuidsAsync(Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>> resolveConsumerGuids, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 

@@ -174,6 +174,28 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
         return Ok(result);
     }
 
+    // ── Backfill endpoints ────────────────────────────────────────────────────────────────────
+
+    // Returns the definition snapshot (valid states, transitions, hook routes) so consumers can
+    // build and validate WorkflowBackfillObjects before calling the import endpoint.
+    [HttpGet("definition/snapshot")]
+    public async Task<IActionResult> GetDefinitionSnapshot([FromQuery] int envCode, [FromQuery] string defName, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(defName)) return BadRequest("defName is required.");
+        var snapshot = await _service.GetDefinitionSnapshotAsync(envCode, defName.Trim(), ct);
+        if (snapshot == null) return NotFound(new { status = "not_found", defName });
+        return Ok(snapshot);
+    }
+
+    // Imports a pre-validated backfill object as read-only history.
+    // Accepts only objects that have been stamped Validated=true by WorkflowBackfillValidator.
+    [HttpPost("backfill")]
+    public async Task<IActionResult> ImportBackfill([FromBody] WorkflowBackfillObject obj, CancellationToken ct) {
+        if (obj == null) return BadRequest("Request body is required.");
+        var result = await _service.ImportBackfillAsync(obj, ct);
+        if (!result.Success) return UnprocessableEntity(new { status = "failed", reason = result.Reason });
+        return Ok(result);
+    }
+
     // Extends the ACK retry budget for all Failed ack_consumer rows on the instance and clears
     // the Suspended flag.  Use this when suspension was caused by exhausted ack max-retries.
     // trigger_count is preserved (monotonically increasing audit counter).

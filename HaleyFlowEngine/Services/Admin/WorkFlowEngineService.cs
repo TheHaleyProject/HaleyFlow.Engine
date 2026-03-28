@@ -176,6 +176,18 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         return await _engine!.UnsuspendAsync(instanceGuid.Trim(), normalizedActor, ct);
     }
 
+    public async Task<WorkflowDefinitionSnapshot?> GetDefinitionSnapshotAsync(int envCode, string definitionName, CancellationToken ct) {
+        if (string.IsNullOrWhiteSpace(definitionName)) throw new ArgumentException("definitionName is required.", nameof(definitionName));
+        await EnsureInitializedAsync(ct);
+        return await _engine!.GetDefinitionSnapshotAsync(envCode, definitionName, ct);
+    }
+
+    public async Task<BackfillImportResult> ImportBackfillAsync(WorkflowBackfillObject obj, CancellationToken ct) {
+        if (obj == null) throw new ArgumentNullException(nameof(obj));
+        await EnsureInitializedAsync(ct);
+        return await _engine!.ImportBackfillAsync(obj, ct);
+    }
+
     public async Task<IWorkFlowEngine> GetEngineAsync(CancellationToken ct = default) {
         await EnsureInitializedAsync(ct);
         return _engine!;
