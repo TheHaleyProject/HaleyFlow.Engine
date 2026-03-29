@@ -58,6 +58,7 @@ namespace Haley.Internal {
         public const string KEY_ORDER_SEQ = "order_seq";
         public const string KEY_HASH = "hash";
         public const string KEY_HOOK_LC_ID = "hook_lc_id";
+        public const string KEY_HOOK_STATUS = "hook_status";
         public const string KEY_RUN_COUNT = "run_count";
         public const string KEY_MODIFIED = "modified";
         public const string KEY_MESSAGE = "message";
