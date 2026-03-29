@@ -13,16 +13,16 @@ namespace Haley.Internal {
         public const string LIST_BY_INSTANCE_STATE_ENTRY = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND on_entry = {ON_ENTRY} ORDER BY created DESC, id DESC;";
 
         // dispatched column removed from hook — it now lives on hook_lc.
-        public const string INSERT = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route_id, blocking, group_id, order_seq, ack_mode) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE_ID}, {BLOCKING}, {GROUP_ID}, {ORDER_SEQ}, {ACK_MODE}); SELECT LAST_INSERT_ID() AS id;";
+        public const string INSERT = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route_id, type, group_id, order_seq, ack_mode) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE_ID}, {HOOK_TYPE}, {GROUP_ID}, {ORDER_SEQ}, {ACK_MODE}); SELECT LAST_INSERT_ID() AS id;";
 
-        // group_id, blocking, order_seq and ack_mode are updated on re-emit so that policy changes are reflected.
-        public const string UPDATE_BLOCKING_AND_GROUP = $@"UPDATE hook SET blocking = {BLOCKING}, group_id = {GROUP_ID}, order_seq = {ORDER_SEQ}, ack_mode = {ACK_MODE} WHERE id = {ID};";
+        // group_id, type, order_seq and ack_mode are updated on re-emit so that policy changes are reflected.
+        public const string UPDATE_TYPE_AND_GROUP = $@"UPDATE hook SET type = {HOOK_TYPE}, group_id = {GROUP_ID}, order_seq = {ORDER_SEQ}, ack_mode = {ACK_MODE} WHERE id = {ID};";
 
         // Context query for post-ACK logic (any hook, grouped or not).
         // hook_ack.hook_id now references hook_lc.id — join chain: ack → hook_ack → hook_lc → hook.
         public const string GET_CONTEXT_BY_ACK_GUID =
             $@"SELECT h.id, h.instance_id, h.state_id, h.via_event, h.on_entry,
-                      h.blocking, h.ack_mode, h.order_seq, h.group_id, ha.ack_id,
+                      h.type, h.ack_mode, h.order_seq, h.group_id, ha.ack_id,
                       hl.id AS hook_lc_id, hl.lc_id,
                       i.guid AS instance_guid, i.def_version AS def_version_id,
                       i.metadata AS metadata,
@@ -37,7 +37,7 @@ namespace Haley.Internal {
                WHERE a.guid = lower(trim({GUID}))
                LIMIT 1;";
 
-        // Count blocking+dispatched hooks in a given order for the current lifecycle entry
+        // Count gate+dispatched hooks in a given order for the current lifecycle entry
         // where at least one ack_consumer is non-terminal (Processed=3, Failed=4, Cancelled=5 all count as terminal).
         // Used by AckOutcomeOrchestrator to decide whether the current order is done enough to advance to the next.
         public const string COUNT_INCOMPLETE_BLOCKING_IN_ORDER =
@@ -51,7 +51,7 @@ namespace Haley.Internal {
                  AND h.via_event = {EVENT_ID}
                  AND h.on_entry = {ON_ENTRY}
                  AND h.order_seq = {ORDER_SEQ}
-                 AND h.blocking = 1
+                 AND h.type = 1
                  AND hl.dispatched = 1
                  AND ac.status NOT IN (3, 4, 5);";
 
@@ -69,7 +69,7 @@ namespace Haley.Internal {
         // List all undispatched hooks for a specific order_seq scope for this lifecycle entry.
         // Returns hook_lc_id so callers can use it for CreateHookAckAsync + MarkDispatchedAsync.
         public const string LIST_UNDISPATCHED_BY_ORDER =
-            $@"SELECT h.id, h.blocking, h.ack_mode, h.group_id, h.on_entry,
+            $@"SELECT h.id, h.type, h.ack_mode, h.group_id, h.on_entry,
                       hl.id AS hook_lc_id,
                       hr.name AS route, hg.name AS group_name
                FROM hook h
@@ -83,10 +83,10 @@ namespace Haley.Internal {
                  AND h.order_seq = {ORDER_SEQ}
                  AND hl.dispatched = 0;";
 
-        // Blocking hook gate — instance-wide checks scoped only to (instanceId, lcId).
-        // Used by InstanceOrchestrator to prevent state transitions when blocking hooks are unresolved.
+        // Gate hook gate — instance-wide checks scoped only to (instanceId, lcId).
+        // Used by InstanceOrchestrator to prevent state transitions when gate hooks are unresolved.
 
-        // Count dispatched blocking hooks for the current lifecycle entry that are not yet resolved,
+        // Count dispatched gate hooks for the current lifecycle entry that are not yet resolved,
         // taking ack_mode into account:
         //   ack_mode = ALL (0): hook is unresolved if ANY ack_consumer is not terminal (status NOT IN 3,4,5)
         //   ack_mode = ANY (1): hook is unresolved if NO ack_consumer has Processed (status = 3)
@@ -96,7 +96,7 @@ namespace Haley.Internal {
                FROM hook h
                JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
                WHERE h.instance_id = {INSTANCE_ID}
-                 AND h.blocking = 1
+                 AND h.type = 1
                  AND hl.dispatched = 1
                  AND (
                    (h.ack_mode = 0 AND EXISTS (
@@ -112,17 +112,17 @@ namespace Haley.Internal {
                    ))
                  );";
 
-        // Count blocking hooks for the current lifecycle entry that have not been dispatched yet
+        // Count gate hooks for the current lifecycle entry that have not been dispatched yet
         // (hook_lc rows with dispatched=0). These hooks are queued but consumers haven't received them.
         public const string COUNT_UNDISPATCHED_BLOCKING_HOOKS =
             $@"SELECT COUNT(*) AS cnt
                FROM hook h
                JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
                WHERE h.instance_id = {INSTANCE_ID}
-                 AND h.blocking = 1
+                 AND h.type = 1
                  AND hl.dispatched = 0;";
 
-        // Timeout cancellation: bulk-set all non-terminal ack_consumer rows for blocking hooks in this
+        // Timeout cancellation: bulk-set all non-terminal ack_consumer rows for gate hooks in this
         // lifecycle entry to Cancelled (status = @ACK_STATUS = 5), clearing next_due.
         // Called by the monitor immediately before firing a Case A timeout transition so that:
         //   (a) open hook ACKs are properly closed before the state machine advances, and
@@ -134,7 +134,7 @@ namespace Haley.Internal {
                JOIN hook_lc hl ON hl.id = ha.hook_id AND hl.lc_id = {LC_ID}
                JOIN hook h ON h.id = hl.hook_id AND h.instance_id = {INSTANCE_ID}
                SET ac.status = {ACK_STATUS}, ac.next_due = NULL
-               WHERE h.blocking = 1
+               WHERE h.type = 1
                  AND ac.status NOT IN (3, 4, 5);";
 
         public const string DELETE = $@"DELETE FROM hook WHERE id = {ID};";

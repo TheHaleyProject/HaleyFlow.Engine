@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS `hook` (
   `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Hook phase flag: 1=OnEntry, 0=OnExit.',
   `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   `instance_id` bigint(20) NOT NULL COMMENT 'Workflow instance identifier (FK to instance.id).',
-  `blocking` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Blocking flag: 1 requires successful hook completion before progression.',
+  `type` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Hook type: 1=Gate (validates; failure terminates chain), 0=Effect (side-effect; result ignored).',
   `order_seq` smallint(6) NOT NULL DEFAULT 1 COMMENT 'Dispatch order sequence; lower numbers are dispatched first.',
   `ack_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT 'ACK aggregation mode: 0=AllConsumersMustProcess, 1=AnyConsumerMaySatisfy.',
   `route_id` bigint(20) NOT NULL COMMENT 'Route identifier to invoke for this hook (FK to hook_route.id).',
