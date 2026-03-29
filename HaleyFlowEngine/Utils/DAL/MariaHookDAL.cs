@@ -19,7 +19,7 @@ namespace Haley.Internal {
             return await Db.RowAsync(QRY_HOOK.GET_BY_KEY, load, (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId), (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
         }
 
-        public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, bool blocking, string? groupName = null, int orderSeq = 1, int ackMode = 0, DbExecutionLoad load = default) {
+        public async Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, HookType hookType, string? groupName = null, int orderSeq = 1, int ackMode = 0, DbExecutionLoad load = default) {
             // Ensure hook_route (check-then-insert)
             var routeId = await Db.ScalarAsync<long?>(QRY_HOOK_ROUTE.GET_ID_BY_NAME, load, (ROUTE, route));
             if (!routeId.HasValue || routeId.Value <= 0) {
@@ -51,8 +51,8 @@ namespace Haley.Internal {
                 (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
             if (existing != null) {
                 var existingId = existing.GetLong(KEY_ID);
-                await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
-                    (ID, existingId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
+                await Db.ExecAsync(QRY_HOOK.UPDATE_TYPE_AND_GROUP, load,
+                    (ID, existingId), (HOOK_TYPE, (int)hookType), (GROUP_ID, (object?)groupId ?? DBNull.Value),
                     (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
                 return existingId;
             }
@@ -62,7 +62,7 @@ namespace Haley.Internal {
                 return await Db.ScalarAsync<long>(QRY_HOOK.INSERT, load,
                     (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
                     (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value),
-                    (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
+                    (HOOK_TYPE, (int)hookType), (GROUP_ID, (object?)groupId ?? DBNull.Value),
                     (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
             } catch {
                 // Race condition: re-read and update
@@ -71,8 +71,8 @@ namespace Haley.Internal {
                     (ON_ENTRY, onEntry ? 1 : 0), (ROUTE_ID, routeId.Value));
                 if (row == null) throw;
                 var rowId = row.GetLong(KEY_ID);
-                await Db.ExecAsync(QRY_HOOK.UPDATE_BLOCKING_AND_GROUP, load,
-                    (ID, rowId), (BLOCKING, blocking ? 1 : 0), (GROUP_ID, (object?)groupId ?? DBNull.Value),
+                await Db.ExecAsync(QRY_HOOK.UPDATE_TYPE_AND_GROUP, load,
+                    (ID, rowId), (HOOK_TYPE, (int)hookType), (GROUP_ID, (object?)groupId ?? DBNull.Value),
                     (ORDER_SEQ, orderSeq), (ACK_MODE, ackMode));
                 return rowId;
             }

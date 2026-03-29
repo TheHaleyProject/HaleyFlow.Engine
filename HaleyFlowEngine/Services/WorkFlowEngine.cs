@@ -519,7 +519,7 @@ namespace Haley.Services {
                         // Upsert the hook definition row (idempotent by key).
                         var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
                             instanceId, toId, evtDef.Id, onEntry: true, bh.Route,
-                            blocking: false, groupName: null, orderSeq: 1, ackMode: 0, load);
+                            HookType.Effect, groupName: null, orderSeq: 1, ackMode: 0, load);
 
                         // Create hook_lc linking this hook to the lifecycle entry.
                         var hookLcId = await _dal.HookLc.InsertReturnIdAsync(hookId, lcId, load);

@@ -251,8 +251,8 @@ namespace Haley.Services.Orchestrators {
                 if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
                     await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, null, load);
 
-                    var isBlocking = item.Event is ILifeCycleHookEvent hev && hev.IsBlocking;
-                    if (isBlocking) {
+                    var isGate = item.Event is ILifeCycleHookEvent hev && hev.HookType == HookType.Gate;
+                    if (isGate) {
                         // Blocking hook failure is terminal for workflow progression; suspend instance.
                         var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
                         if (instanceId > 0) {

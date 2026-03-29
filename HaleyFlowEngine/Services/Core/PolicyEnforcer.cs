@@ -111,7 +111,7 @@ namespace Haley.Services {
 
                     var (ruleSuccess, ruleFailure) = ReadCompletionEvents(ruleEl);
                     var ruleParamCodes = ruleEl.ReadList(KEY_PARAMS);
-                    var ruleBlocking = ruleEl.ReadOptionalBool(KEY_BLOCKING);
+                    var ruleType = ReadHookType(ruleEl);
 
                     var emits = new List<ParsedPolicyEmit>();
                     if (ruleEl.TryGetProperty(KEY_EMIT, out var emitArr) && emitArr.ValueKind == JsonValueKind.Array) {
@@ -126,7 +126,7 @@ namespace Haley.Services {
 
                             emits.Add(new ParsedPolicyEmit {
                                 Route = hookRoute!,
-                                Blocking = e.ReadOptionalBool(KEY_BLOCKING),
+                                Type = ReadHookType(e),
                                 Group = string.IsNullOrWhiteSpace(groupRaw) ? null : groupRaw,
                                 OrderSeq = orderSeq,
                                 AckMode = string.Equals(ackModeStr, "any", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
@@ -143,7 +143,7 @@ namespace Haley.Services {
                     rules.Add(new ParsedPolicyRule {
                         State = ruleState!,
                         Via = via,
-                        Blocking = ruleBlocking,
+                        Type = ruleType,
                         OnSuccess = ruleSuccess,
                         OnFailure = ruleFailure,
                         ParamCodes = ruleParamCodes,
@@ -189,7 +189,7 @@ namespace Haley.Services {
             if (parsed.Rules.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
 
             // Collect all emit specs so we can compute minOrder across all matched rules.
-            var specs = new List<(string hookCode, bool emitBlocking, string? emitGroup, int orderSeq, int ackMode,
+            var specs = new List<(string hookCode, HookType hookType, string? emitGroup, int orderSeq, int ackMode,
                                   string? onSuccess, string? onFailure,
                                   DateTimeOffset? notBefore, DateTimeOffset? deadline,
                                   IReadOnlyList<LifeCycleParamItem>? resolvedParams)>();
@@ -202,18 +202,18 @@ namespace Haley.Services {
                     if (viaEvent == null || rule.Via.Value != viaEvent.Code) continue;
                 }
 
-                var ruleBlocking = rule.Blocking ?? true;   // default: blocking
+                var ruleType = rule.Type ?? HookType.Gate;  // default: gate
                 var ruleParamCodes = rule.ParamCodes;
 
                 foreach (var emit in rule.Emits) {
                     load.Ct.ThrowIfCancellationRequested();
 
-                    var emitBlocking = emit.Blocking ?? ruleBlocking;
+                    var emitType = emit.Type ?? ruleType;   // emit wins; else inherit from rule
                     // Emit.ParamCodes wins if non-empty; else rule.ParamCodes.
                     var effectiveCodes = emit.ParamCodes.Count > 0 ? emit.ParamCodes : ruleParamCodes;
                     var resolvedParams = ResolveParams(parsed.ParamCatalog, effectiveCodes);
 
-                    specs.Add((emit.Route, emitBlocking, emit.Group, emit.OrderSeq, emit.AckMode,
+                    specs.Add((emit.Route, emitType, emit.Group, emit.OrderSeq, emit.AckMode,
                                emit.OnSuccess, emit.OnFailure,
                                emit.NotBefore, emit.Deadline,
                                resolvedParams));
@@ -233,7 +233,7 @@ namespace Haley.Services {
 
                 var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
                     instanceId, applied.ToStateId, applied.EventId, true,
-                    s.hookCode, s.emitBlocking, s.emitGroup,
+                    s.hookCode, s.hookType, s.emitGroup,
                     s.orderSeq, s.ackMode, load);
 
                 // Create a hook_lc row for this hook + lifecycle entry (dispatched=0 initially).
@@ -257,7 +257,7 @@ namespace Haley.Services {
                     NotBefore = s.notBefore,
                     Deadline = s.deadline,
                     Params = s.resolvedParams,
-                    IsBlocking = s.emitBlocking,
+                    HookType = s.hookType,
                     GroupName = s.emitGroup,
                     OrderSeq = s.orderSeq,
                     AckMode = s.ackMode
@@ -283,6 +283,16 @@ namespace Haley.Services {
             if (string.Equals(routeState, toState.Name, StringComparison.OrdinalIgnoreCase)) return true;
             if (!string.IsNullOrWhiteSpace(toState.DisplayName) && string.Equals(routeState, toState.DisplayName, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
+        }
+
+        // Read hook type: "type" field first ("gate"/"effect"); fall back to boolean "blocking" for backward compat.
+        private static HookType? ReadHookType(JsonElement el) {
+            var typeStr = el.GetString(KEY_HOOK_TYPE);
+            if (!string.IsNullOrWhiteSpace(typeStr))
+                return string.Equals(typeStr, "effect", StringComparison.OrdinalIgnoreCase) ? HookType.Effect : HookType.Gate;
+            var blocking = el.ReadOptionalBool(KEY_BLOCKING);
+            if (blocking.HasValue) return blocking.Value ? HookType.Gate : HookType.Effect;
+            return null;  // no value present — caller uses its own default
         }
 
         private static (string? onSuccess, string? onFailure) ReadCompletionEvents(JsonElement el) {

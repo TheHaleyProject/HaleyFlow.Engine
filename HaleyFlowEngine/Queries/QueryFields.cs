@@ -57,7 +57,8 @@ namespace Haley.Internal {
         public const string ROUTE_ID = "@ROUTE_ID";
         public const string GROUP_NAME = "@GROUP_NAME";
         public const string GROUP_ID = "@GROUP_ID";
-        public const string BLOCKING = "@BLOCKING";
+        public const string HOOK_TYPE = "@HOOK_TYPE";
+        public const string BLOCKING  = "@BLOCKING";   // backward compat — keep for legacy SQL reads
         public const string OCCURRED = "@OCCURRED";
 
         public const string ACK_ID = "@ACK_ID";

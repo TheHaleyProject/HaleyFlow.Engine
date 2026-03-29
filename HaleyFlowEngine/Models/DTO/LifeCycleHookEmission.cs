@@ -18,7 +18,7 @@ namespace Haley.Models {
         public DateTimeOffset? NotBefore { get; set; }
         public DateTimeOffset? Deadline { get; set; }
         public IReadOnlyList<LifeCycleParamItem>? Params { get; set; }
-        public bool IsBlocking { get; set; } = true;
+        public HookType HookType { get; set; } = HookType.Gate;
         public string? GroupName { get; set; }
         public int OrderSeq { get; set; } = 1;
         public int AckMode  { get; set; } = 0;

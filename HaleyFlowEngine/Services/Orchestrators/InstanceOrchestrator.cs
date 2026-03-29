@@ -261,7 +261,7 @@ namespace Haley.Services.Orchestrators {
                             Params = he.Params,
                             NotBefore = he.NotBefore,
                             Deadline = he.Deadline,
-                            IsBlocking = he.IsBlocking,
+                            HookType = he.HookType,
                             GroupName = he.GroupName,
                             OrderSeq = he.OrderSeq,
                             AckMode = he.AckMode,

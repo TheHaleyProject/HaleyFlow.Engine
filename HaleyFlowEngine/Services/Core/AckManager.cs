@@ -246,7 +246,7 @@ namespace Haley.Services {
                     Metadata = r.GetString(KEY_METADATA),
                     OnEntry = r.GetBool(KEY_ON_ENTRY),
                     Route = r.GetString(KEY_ROUTE) ?? string.Empty,
-                    IsBlocking = r.GetBool(KEY_BLOCKING),
+                    HookType = (HookType)r.GetInt(KEY_HOOK_TYPE),
                     GroupName = r.GetString(KEY_GROUP_NAME),
                     RunCount = r.GetInt(KEY_RUN_COUNT),
                     OnSuccessEvent = null,

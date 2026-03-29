@@ -10,7 +10,7 @@ namespace Haley.Models {
     // Built once during ParseJsonToPolicy; immutable and thread-safe.
     internal sealed class ParsedPolicyEmit {
         public string Route { get; init; } = "";
-        public bool? Blocking { get; init; }        // null = inherit from rule
+        public HookType? Type { get; init; }         // null = inherit from rule
         public string? Group { get; init; }
         public int OrderSeq { get; init; } = 1;
         public int AckMode { get; init; }           // 0 = all, 1 = any

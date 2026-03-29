@@ -16,7 +16,7 @@ namespace Haley.Abstractions {
         DateTimeOffset? NotBefore { get; }
         DateTimeOffset? Deadline { get; }
         IReadOnlyList<LifeCycleParamItem>? Params { get; }
-        bool IsBlocking { get; }
+        HookType HookType { get; }
         string? GroupName { get; }
         int OrderSeq { get; }   // emission order stage; same order = parallel; lower fires first
         int AckMode  { get; }   // 0=All consumers must ACK; 1=Any consumer ACK satisfies

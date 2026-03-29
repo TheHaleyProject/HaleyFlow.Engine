@@ -37,7 +37,8 @@ namespace Haley.Internal {
         public const string KEY_HOOK_CREATED = "hook_created";
         public const string KEY_ON_ENTRY = "on_entry";
         public const string KEY_ROUTE = "route";
-        public const string KEY_BLOCKING = "blocking";
+        public const string KEY_HOOK_TYPE = "type";
+        public const string KEY_BLOCKING  = "blocking";   // backward compat read
         public const string KEY_GROUP_NAME = "group_name";
         public const string KEY_STATE_ID = "state_id";
         public const string KEY_VIA_EVENT = "via_event";

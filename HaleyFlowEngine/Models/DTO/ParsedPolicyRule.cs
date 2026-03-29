@@ -11,7 +11,7 @@ namespace Haley.Models {
     internal sealed class ParsedPolicyRule {
         public string State { get; init; } = "";
         public int? Via { get; init; }              // null = match any triggering event
-        public bool? Blocking { get; init; }        // null = engine default (true)
+        public HookType? Type { get; init; }         // null = engine default (Gate)
         public string? OnSuccess { get; init; }
         public string? OnFailure { get; init; }
         public IReadOnlyList<string> ParamCodes { get; init; } = Array.Empty<string>();

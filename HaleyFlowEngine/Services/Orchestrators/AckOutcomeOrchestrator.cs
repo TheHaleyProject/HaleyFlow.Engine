@@ -3,6 +3,7 @@ using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
 using static Haley.Internal.KeyConstants;
+using static Haley.Enums.HookType;
 
 namespace Haley.Services.Orchestrators {
     // Handles consumer ACK outcomes and follow-up orchestration that can be triggered by ACK=Processed.
@@ -79,8 +80,8 @@ namespace Haley.Services.Orchestrators {
                     $"Group completion check failed for ack={ackGuid}: {ex.Message}"));
             }
 
-            // Ordered progression is only relevant for blocking hooks.
-            if (hookCtx != null && hookCtx.GetBool(KEY_BLOCKING)) {
+            // Ordered progression is only relevant for gate hooks.
+            if (hookCtx != null && hookCtx.GetInt(KEY_HOOK_TYPE) == (int)HookType.Gate) {
                 try {
                     var incomplete = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
                         hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
@@ -142,7 +143,7 @@ namespace Haley.Services.Orchestrators {
                         var hookRow = nextHooks[j];
                         var hookId = hookRow.GetLong(KEY_ID);
                         var hookLcId = hookRow.GetLong(KEY_HOOK_LC_ID);
-                        var isBlocking = hookRow.GetBool(KEY_BLOCKING);
+                        var hookType = (HookType)hookRow.GetInt(KEY_HOOK_TYPE);
                         var ackMode = hookRow.GetInt(KEY_ACK_MODE);
                         var route = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
                         var groupName = hookRow.GetString(KEY_GROUP_NAME);
@@ -159,7 +160,7 @@ namespace Haley.Services.Orchestrators {
                                 AckGuid = hookAckGuid,
                                 OnEntry = hookOnEntry,
                                 Route = route,
-                                IsBlocking = isBlocking,
+                                HookType = hookType,
                                 GroupName = groupName,
                                 OrderSeq = nextOrder,
                                 AckMode = ackMode,
@@ -180,12 +181,12 @@ namespace Haley.Services.Orchestrators {
                     $"Next-order hooks dispatched. order={nextOrder} instance={instanceGuid}",
                     new Dictionary<string, object?> { ["orderSeq"] = nextOrder, ["instanceGuid"] = instanceGuid }));
 
-                // If this order has blocking hooks, wait for future ACKs to continue progression.
-                var anyBlocking = false;
+                // If this order has gate hooks, wait for future ACKs to continue progression.
+                var anyGate = false;
                 for (var j = 0; j < nextHooks.Count; j++) {
-                    if (nextHooks[j].GetBool(KEY_BLOCKING)) { anyBlocking = true; break; }
+                    if (nextHooks[j].GetInt(KEY_HOOK_TYPE) == (int)HookType.Gate) { anyGate = true; break; }
                 }
-                if (anyBlocking) break;
+                if (anyGate) break;
             }
         }
 
