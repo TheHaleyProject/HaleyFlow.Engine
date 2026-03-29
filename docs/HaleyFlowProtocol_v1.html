@@ -698,7 +698,7 @@
 <pre><code><span class="c">// On a rule (transition-level) — governs the transition handler outcome</span>
 <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> }
 
-<span class="c">// On a hook — governs this specific blocking hook only</span>
+<span class="c">// On a hook — governs this specific gate hook only</span>
 <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2001</span>, <span class="k">"failure"</span>: <span class="n">2002</span> }</code></pre>
 
   <h3>Transition handler — success waits, failure fires immediately</h3>
@@ -728,25 +728,30 @@
     </tr>
   </table>
 
-  <h3>Any complete code on a gate hook fires immediately</h3>
+  <h3>Gate hook success drains effects before firing</h3>
 
   <p>
-    Whether a gate hook succeeds with a success code, or fails with a failure code, the result is
-    the same: <strong>fire immediately, skip remaining hooks</strong>. There is no deferral for hook
-    complete codes. This is what allows escalation patterns — a hook with a success code can terminate
-    the chain early without the remaining hooks running.
+    When a gate hook succeeds with a success code, the interpreter does <strong>not</strong> fire that
+    code immediately. Instead it: skips all remaining undispatched gate hooks, runs all remaining
+    <strong>effect hooks</strong> in order, and only then fires the gate's success code. Effect hooks
+    are side-effects that must still execute regardless of the gate decision.
   </p>
 
   <p>
-    The transition handler's success code is only a fallback. It fires after all hooks if none of them
-    terminated first. If any hook fires a complete code, the transition handler's success code is discarded.
+    Gate hook <strong>failure</strong> is different — failure fires the failure code immediately and
+    skips everything (both remaining gate and effect hooks).
+  </p>
+
+  <p>
+    The transition handler's success code is only a fallback. It fires after all hooks complete with no
+    gate termination. If a gate hook fires a success code, the transition handler's success code is discarded.
   </p>
 
   <div class="callout warning">
-    <strong>Complete codes always terminate immediately</strong>
-    Any complete code — on a transition handler failure, or on any blocking hook — fires immediately
-    and ends the chain. The only thing that does <em>not</em> terminate is a gate hook with no
-    complete codes: on success it passes through, on failure it rolls back.
+    <strong>Gate failure terminates immediately; gate success drains effects first</strong>
+    A gate failure complete code fires immediately and skips all remaining hooks. A gate success complete
+    code runs all remaining effect hooks first, then fires. The only pass-through case is a gate hook
+    with no complete codes: on success it continues to the next hook, on failure it rolls back state.
   </div>
 
   <div class="callout info">
@@ -918,33 +923,32 @@
   <table>
     <tr><th>Outcome</th><th>Has success code</th><th>Has failure code</th><th>Action</th></tr>
     <tr>
-      <td>Non-blocking — any result</td><td>—</td><td>—</td>
+      <td>Effect hook — any result</td><td>—</td><td>—</td>
       <td>Continue to next hook. Result and complete codes are <strong>ignored entirely</strong>.</td>
     </tr>
     <tr>
-      <td>Blocking hook <strong>succeeds</strong></td><td>yes</td><td>—</td>
-      <td><strong>Terminate immediately.</strong> Skip remaining hooks. Fire success code now.</td>
+      <td>Gate hook <strong>succeeds</strong></td><td>yes</td><td>—</td>
+      <td>Skip remaining gate hooks. Run all remaining <strong>effect hooks</strong> in order. Fire success code after effects complete.</td>
     </tr>
     <tr>
-      <td>Blocking hook <strong>succeeds</strong></td><td>no</td><td>—</td>
+      <td>Gate hook <strong>succeeds</strong></td><td>no</td><td>—</td>
       <td>Continue to next hook. No termination.</td>
     </tr>
     <tr>
-      <td>Blocking hook <strong>fails</strong></td><td>—</td><td>yes</td>
-      <td><strong>Terminate immediately.</strong> Skip remaining hooks. Fire failure code now.</td>
+      <td>Gate hook <strong>fails</strong></td><td>—</td><td>yes</td>
+      <td><strong>Terminate immediately.</strong> Skip ALL remaining hooks (gate and effect). Fire failure code now.</td>
     </tr>
     <tr>
-      <td>Blocking hook <strong>fails</strong></td><td>—</td><td>no</td>
+      <td>Gate hook <strong>fails</strong></td><td>—</td><td>no</td>
       <td>Roll back <code>currentState</code> to <code>fromState</code>. Return blocked (<code>HFR3005</code>). No auto-advance.</td>
     </tr>
   </table>
 
   <div class="callout warning">
-    <strong>Both success and failure now terminate immediately</strong>
-    A complete code on a blocking hook — whether success or failure — always fires immediately and
-    skips all remaining hooks. The distinction is: a success code terminates the chain on the happy
-    path; a failure code terminates it on the sad path. Only a hook with <em>no</em> complete code
-    passes through silently.
+    <strong>Gate failure terminates immediately; gate success drains effects</strong>
+    A gate failure complete code fires immediately and skips all remaining hooks. A gate success complete
+    code skips remaining gates but still runs all effect hooks — only terminating after the effects complete.
+    Only a gate hook with <em>no</em> complete codes passes through silently.
   </div>
 
   <h3>Why success also terminates — the escalation pattern</h3>
@@ -1070,10 +1074,10 @@
   <table>
     <tr><th>Code</th><th>Severity</th><th>Condition</th></tr>
     <tr><td><code>POLICY_UNKNOWN_STATE</code></td><td><span class="val-warn">Warning</span></td><td>A policy rule targets a state that does not exist in the definition — the rule will never fire.</td></tr>
-    <tr><td><code>AMBIGUOUS_ORDER</code></td><td><span class="val-error">Error</span></td><td>Multiple blocking hooks at the same <code>order</code> value define complete codes — execution order is undefined.</td></tr>
-    <tr><td><code>EFFECT_WITH_COMPLETE</code></td><td><span class="val-warn">Warning</span></td><td>A non-blocking hook defines <code>complete</code> codes — they will be ignored at runtime.</td></tr>
-    <tr><td><code>UNREACHABLE_HOOK</code></td><td><span class="val-warn">Warning</span></td><td>A hook appears after a blocking hook that has both success and failure complete codes — it can never execute.</td></tr>
-    <tr><td><code>NO_FAILURE_PATH</code></td><td><span class="val-warn">Warning</span></td><td>A blocking hook has no failure complete code and the transition has no failure complete code — on failure, the interpreter cannot auto-advance. The application must handle it explicitly.</td></tr>
+    <tr><td><code>AMBIGUOUS_ORDER</code></td><td><span class="val-error">Error</span></td><td>Multiple gate hooks at the same <code>order</code> value define complete codes — execution order is undefined.</td></tr>
+    <tr><td><code>EFFECT_WITH_COMPLETE</code></td><td><span class="val-warn">Warning</span></td><td>An effect hook defines <code>complete</code> codes — they will be ignored at runtime.</td></tr>
+    <tr><td><code>UNREACHABLE_HOOK</code></td><td><span class="val-warn">Warning</span></td><td>A gate hook appears after another gate hook that has both success and failure complete codes — it can never execute. Effect hooks after such a gate terminator are still reachable (gate success drains effects first).</td></tr>
+    <tr><td><code>NO_FAILURE_PATH</code></td><td><span class="val-warn">Warning</span></td><td>A gate hook has no failure complete code and the transition has no failure complete code — on failure, the interpreter cannot auto-advance. The application must handle it explicitly.</td></tr>
   </table>
 
   <!-- ════════════════════════════════════════════════════ -->
@@ -1141,8 +1145,8 @@
     <div class="field-desc">Stable handler identifier. Use dot-notation by convention. Handlers subscribe to this route.</div>
   </div>
   <div class="field">
-    <span class="field-name">emit[].blocking</span><span class="field-type">boolean · optional · default true</span>
-    <div class="field-desc">If true, hook result participates in the execution chain. If false, hook is fire-and-forget and its result and complete codes are fully ignored.</div>
+    <span class="field-name">emit[].type</span><span class="field-type">string · optional · default "gate"</span>
+    <div class="field-desc"><code>"gate"</code> — hook result participates in the execution chain; can block or advance the state machine. <code>"effect"</code> — fire-and-forget; result and complete codes are fully ignored. Backward compat: <code>blocking: true</code> maps to gate, <code>blocking: false</code> maps to effect.</div>
   </div>
   <div class="field">
     <span class="field-name">emit[].order</span><span class="field-type">integer · optional</span>
@@ -1272,22 +1276,22 @@
     <tr>
       <td><code>HFP2002</code></td><td><code>AMBIGUOUS_ORDER</code></td>
       <td><span class="val-error">Error</span></td>
-      <td>Multiple blocking hooks at the same <code>order</code> value define complete codes. Execution order within the same order value is undefined — the interpreter cannot guarantee which fires first.</td>
+      <td>Multiple gate hooks at the same <code>order</code> value define complete codes. Execution order within the same order value is undefined — the interpreter cannot guarantee which fires first.</td>
     </tr>
     <tr>
       <td><code>HFP2101</code></td><td><code>EFFECT_WITH_COMPLETE</code></td>
       <td><span class="val-warn">Warning</span></td>
-      <td>A non-blocking hook defines <code>complete</code> codes. Non-blocking hooks cannot drive auto-advance — these codes are silently ignored at runtime.</td>
+      <td>An effect hook defines <code>complete</code> codes. Effect hooks cannot drive auto-advance — these codes are silently ignored at runtime.</td>
     </tr>
     <tr>
       <td><code>HFP2102</code></td><td><code>UNREACHABLE_HOOK</code></td>
       <td><span class="val-warn">Warning</span></td>
-      <td>A hook appears after a "full terminator" — a prior blocking hook that defines both success and failure complete codes. Since all paths from that terminator lead away, this hook can never be reached.</td>
+      <td>A gate hook appears after a "full terminator" — a prior gate hook that defines both success and failure complete codes. Since all paths from that gate terminator lead away, this gate hook can never be reached. Effect hooks after a gate terminator are still reachable because gate success drains effects before firing its code.</td>
     </tr>
     <tr>
       <td><code>HFP2103</code></td><td><code>NO_FAILURE_PATH</code></td>
       <td><span class="val-warn">Warning</span></td>
-      <td>A blocking hook has no failure complete code, and the transition also has no failure complete code. If this hook fails, the interpreter cannot auto-advance — a code-side Tier 2 or Tier 3 handler must decide the next step.</td>
+      <td>A gate hook has no failure complete code, and the transition also has no failure complete code. If this hook fails, the interpreter cannot auto-advance — a code-side Tier 2 or Tier 3 handler must decide the next step.</td>
     </tr>
   </table>
 

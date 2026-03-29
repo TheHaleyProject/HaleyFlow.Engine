@@ -63,7 +63,7 @@ namespace WFE.Test.UseCases.LoanApproval {
 
             relay.OnHook("APP.LOAN.MANAGER.DECISION", ctx => {
                 Console.WriteLine($"[RELAY] Manager Decision entity={ctx.EntityRef} → approved");
-                throw new Exception("No reason");
+                //throw new Exception("No reason");
                 return Task.FromResult(true);
             });
 

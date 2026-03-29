@@ -8,21 +8,21 @@
     {
       "state": "CheckVendorRegistered",
       "emit": [
-        { "route": "APP.REG.CHECK.VENDOR_REGISTERED", "label": "Vendor Registration Check", "group": "vendor_registration_check", "order": 1, "complete": { "success": 1001, "failure": 1002 }, "type": "gate" },
+        { "route": "APP.REG.CHECK.VENDOR_REGISTERED", "label": "Vendor Registration Check", "group": "vendor_registration_check", "order": 1, "complete": { "success": 1001, "failure": 1002 } },
         { "route": "APP.REG.CHECK.VENDOR_REGISTERED.AUDIT", "label": "Vendor Registration Audit", "type": "effect" }
       ]
     },
     {
       "state": "CheckRecentSubmission",
       "emit": [
-        { "route": "APP.REG.CHECK.RECENT_SUBMISSION", "label": "Recent Submission Check", "group": "recent_submission_check", "order": 1, "complete": { "success": 1003, "failure": 1004 }, "type": "gate" },
+        { "route": "APP.REG.CHECK.RECENT_SUBMISSION", "label": "Recent Submission Check", "group": "recent_submission_check", "order": 1, "complete": { "success": 1003, "failure": 1004 } },
         { "route": "APP.REG.CHECK.RECENT_SUBMISSION.BACKUP", "label": "Recent Submission Backup", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "RequestAccepted",
       "emit": [
-        { "route": "APP.REG.PQ.VALIDATION.START", "label": "PQ Validation Start", "group": "pq_start", "order": 1, "complete": { "success": 1005 }, "type": "gate" },
+        { "route": "APP.REG.PQ.VALIDATION.START", "label": "PQ Validation Start", "group": "pq_start", "order": 1, "complete": { "success": 1005 } },
         { "route": "APP.REG.PQ.VALIDATION.START.EMAIL", "label": "PQ Validation Start Email", "order": 2, "type": "effect" }
       ]
     },
@@ -30,16 +30,16 @@
       "state": "PendingPQValidation",
       "params": [ "PARAMS.REG.PQ.VALIDATE" ],
       "emit": [
-        { "route": "APP.REG.PQ.VALIDATION.REQUIRED", "label": "PQ Validation Required", "group": "pq_validation_decision", "order": 1, "complete": { "success": 1006, "failure": 1008 }, "type": "gate" },
+        { "route": "APP.REG.PQ.VALIDATION.REQUIRED", "label": "PQ Validation Required", "group": "pq_validation_decision", "order": 1, "complete": { "success": 1006, "failure": 1008 } },
         { "route": "APP.REG.PQ.VALIDATION.REQUIRED.AUDIT", "label": "PQ Validation Audit", "type": "effect" },
-        { "route": "APP.REG.PQ.VALIDATION.REQUIRED.BACKUP", "label": "PQ Validation Backup", "order": 2, "type": "gate" }
+        { "route": "APP.REG.PQ.VALIDATION.REQUIRED.BACKUP", "label": "PQ Validation Backup", "order": 2 }
       ]
     },
     {
       "state": "Overdue",
       "via": 1010,
       "emit": [
-        { "route": "APP.REG.PQ.OVERDUE.ENTER", "label": "PQ Overdue Entered", "group": "pq_overdue_cycle", "order": 1, "type": "gate" },
+        { "route": "APP.REG.PQ.OVERDUE.ENTER", "label": "PQ Overdue Entered", "group": "pq_overdue_cycle", "order": 1 },
         { "route": "APP.REG.PQ.OVERDUE.ENTER.EMAIL", "label": "PQ Overdue Entry Email", "order": 2, "type": "effect" }
       ]
     },
@@ -47,15 +47,15 @@
       "state": "Overdue",
       "via": 1011,
       "emit": [
-        { "route": "APP.REG.PQ.OVERDUE.REMIND", "label": "PQ Overdue Reminder", "group": "pq_overdue_cycle", "order": 1, "type": "gate" },
+        { "route": "APP.REG.PQ.OVERDUE.REMIND", "label": "PQ Overdue Reminder", "group": "pq_overdue_cycle", "order": 1 },
         { "route": "APP.REG.PQ.OVERDUE.REMIND.EMAIL", "label": "PQ Overdue Reminder Email", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "VendorCreation",
       "emit": [
-        { "route": "APP.REG.VENDOR_CREATE", "label": "Vendor Creation", "group": "vendor_create", "order": 1, "complete": { "success": 1007 }, "type": "gate" },
-        { "route": "APP.REG.VENDOR_CREATE.BACKUP", "label": "Vendor Creation Backup", "order": 2, "type": "gate" },
+        { "route": "APP.REG.VENDOR_CREATE", "label": "Vendor Creation", "group": "vendor_create", "order": 1, "complete": { "success": 1007 } },
+        { "route": "APP.REG.VENDOR_CREATE.BACKUP", "label": "Vendor Creation Backup", "order": 2 },
         { "route": "APP.REG.VENDOR_CREATE.EMAIL", "label": "Vendor Creation Email", "order": 2, "type": "effect" }
       ]
     }

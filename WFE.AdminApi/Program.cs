@@ -10,23 +10,23 @@ using WFE.Test.UseCases.PaperlessReview;
 using WFE.Test.UseCases.VendorRegistration;
 
 var builder = WebApplication.CreateBuilder(args);
-//var adminSection = builder.Configuration.GetSection("WorkflowAdmin");
+var adminSection = builder.Configuration.GetSection("WorkflowAdmin");
 
-// ── Engine + Consumer mode (comment out this block to run in relay-only mode) ────────────────
-//builder.Services.Configure<WorkflowAdminOptions>(adminSection);
-//builder.Services.AddWorkFlowEngineService(autoStart: false, resolveConsumerGuids: async (ty, envCode, defName, cts) => {
-//    return new List<string> { "89c52807-5054-47fc-9dee-dbb8b42218cb" };
-//});
-//builder.Services.AddInProcessEngineProxy();
-//builder.Services.AddWorkFlowConsumerService(autoStart: false);
-//builder.Services.AddSingleton(sp => BuildUseCaseRuntimeOptions(
-//    sp.GetRequiredService<IOptions<WorkflowAdminOptions>>().Value,
-//    sp.GetRequiredService<IOptions<ConsumerServiceOptions>>().Value));
-//builder.Services.AddTransient<ChangeRequestWrapper>();
-//builder.Services.AddTransient<LoanApprovalWrapper>();
-//builder.Services.AddTransient<VendorRegistrationWrapper>();
-//builder.Services.AddTransient<PaperlessReviewWrapper>();
-//builder.Services.AddHostedService<WorkflowTestBootstrapHostedService>();
+ //── Engine + Consumer mode(comment out this block to run in relay - only mode) ────────────────
+builder.Services.Configure<WorkflowAdminOptions>(adminSection);
+builder.Services.AddWorkFlowEngineService(autoStart: false, resolveConsumerGuids: async (ty, envCode, defName, cts) => {
+    return new List<string> { "89c52807-5054-47fc-9dee-dbb8b42218cb" };
+});
+builder.Services.AddInProcessEngineProxy();
+builder.Services.AddWorkFlowConsumerService(autoStart: false);
+builder.Services.AddSingleton(sp => BuildUseCaseRuntimeOptions(
+    sp.GetRequiredService<IOptions<WorkflowAdminOptions>>().Value,
+    sp.GetRequiredService<IOptions<ConsumerServiceOptions>>().Value));
+builder.Services.AddTransient<ChangeRequestWrapper>();
+builder.Services.AddTransient<LoanApprovalWrapper>();
+builder.Services.AddTransient<VendorRegistrationWrapper>();
+builder.Services.AddTransient<PaperlessReviewWrapper>();
+builder.Services.AddHostedService<WorkflowTestBootstrapHostedService>(); //since we turned autostart off for both engine and consumer, both wont' start.. we directly start only this one
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // ── Relay mode ────────────────────────────────────────────────────────────────────────────────
@@ -52,9 +52,9 @@ app.MapGet("/", () => Results.Redirect("/swagger"));
 
 app.Run();
 
-//static UseCaseRuntimeOptions BuildUseCaseRuntimeOptions(WorkflowAdminOptions admin, ConsumerServiceOptions consumer) {
-//    return new UseCaseRuntimeOptions {
-//        EnvCode = consumer.EnvCode,
-//        ConfirmationTimeout = TimeSpan.FromSeconds(Math.Max(0, admin.ConfirmationTimeoutSeconds))
-//    };
-//}
+static UseCaseRuntimeOptions BuildUseCaseRuntimeOptions(WorkflowAdminOptions admin, ConsumerServiceOptions consumer) {
+    return new UseCaseRuntimeOptions {
+        EnvCode = consumer.EnvCode,
+        ConfirmationTimeout = TimeSpan.FromSeconds(Math.Max(0, admin.ConfirmationTimeoutSeconds))
+    };
+}

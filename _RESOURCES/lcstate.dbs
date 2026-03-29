@@ -514,6 +514,7 @@
 				<comment><![CDATA[Lifecycle identifier (FK to lifecycle.id).]]></comment>
 			</column>
 			<column name="status" type="TINYINT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
 				<comment><![CDATA[0=Pending, 1=Dispatched, 2=Skipped]]></comment>
 			</column>
 			<index name="pk_hook_lc" unique="PRIMARY_KEY" >

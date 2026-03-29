@@ -23,7 +23,7 @@ namespace Haley.Internal {
                       i.def_id AS def_id, i.def_version AS def_version_id,
                       i.entity_id AS entity_id, i.metadata AS metadata,
                       h.state_id AS state_id, h.via_event AS via_event, h.on_entry AS on_entry,
-                      hr.name AS route, h.blocking AS blocking, hg.name AS group_name,
+                      hr.name AS route, h.type, hg.name AS group_name,
                       hl.created AS hook_created,
                       i.guid AS instance_guid,
                       NULLIF(i.policy_id,0) AS policy_id, p.hash AS policy_hash, p.content AS policy_json,

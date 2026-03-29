@@ -132,11 +132,14 @@ internal static class FlowStepsTLR {
     .s-none      { background: #f1f5f9; color: var(--muted); border: 1px solid var(--border); }
 
     /* ── Progress Rail ── */
-    .progress-wrap  { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; }
-    .progress-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 12px; }
-    .progress-rail  { display: flex; align-items: center; overflow-x: auto; padding-bottom: 4px; }
+    .progress-wrap  { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 10px 20px; margin-bottom: 16px; }
+    .progress-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+    .progress-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .progress-toggle { font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1; }
+    .progress-rail  { display: flex; align-items: center; overflow-x: auto; padding-bottom: 4px; margin-top: 12px; }
     .progress-rail::-webkit-scrollbar { height: 3px; }
     .progress-rail::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    .progress-rail.collapsed { display: none; }
     .prog-step  { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; cursor: pointer; }
     .prog-node  { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--white); color: var(--muted); transition: all .2s; position: relative; z-index: 1; }
     .prog-node.visited  { background: var(--blue);  border-color: var(--blue);  color: #fff; }
@@ -249,6 +252,13 @@ internal static class FlowStepsTLR {
       var el = document.getElementById('step-' + idx);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+    function toggleJourney() {
+      var rail   = document.getElementById('journey-rail');
+      var toggle = document.getElementById('journey-toggle');
+      var collapsed = rail.classList.toggle('collapsed');
+      toggle.textContent = collapsed ? '▼' : '▲';
+      toggle.title = collapsed ? 'Expand' : 'Collapse';
+    }
   </script>
 """);
         if (RendererColors.TryParse(color, out var c))
@@ -317,8 +327,11 @@ internal static class FlowStepsTLR {
     private static void WriteProgress(StringBuilder sb, List<JsonElement> items) {
         sb.Append("""
   <div class="progress-wrap">
-    <div class="progress-label">State Journey</div>
-    <div class="progress-rail">
+    <div class="progress-header" onclick="toggleJourney()">
+      <span class="progress-label">State Journey</span>
+      <button class="progress-toggle" id="journey-toggle" title="Collapse">▲</button>
+    </div>
+    <div class="progress-rail" id="journey-rail">
 """);
         var prevTerminal = false;
         for (var i = 0; i < items.Count; i++) {
@@ -483,7 +496,7 @@ internal static class FlowStepsTLR {
             var label      = S(h, "label");
             var display    = !string.IsNullOrWhiteSpace(label) ? label : route;
             var orderSeq   = S(h, "order_seq");
-            var blocking   = B(h, "blocking");
+            var isGate     = h.TryGetProperty("hook_type", out var htv) && htv.TryGetInt32(out var htInt) ? htInt == 1 : true;
             var onEntry    = B(h, "on_entry");
             var dispatched = B(h, "dispatched");
             var rawTrigger = S(h, "last_trigger");
@@ -507,7 +520,7 @@ internal static class FlowStepsTLR {
             var sentHtml = !string.IsNullOrWhiteSpace(rawTrigger) ? $"""<div class="hk-sent">Sent: {E(lastSent)}</div>""" : string.Empty;
 
             var badges = new StringBuilder();
-            if (blocking)      badges.Append("""<span class="hk-badge">blocking</span> """);
+            badges.Append(isGate ? """<span class="hk-badge">gate</span> """ : """<span class="hk-badge" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0">effect</span> """);
             if (!onEntry)      badges.Append("""<span class="hk-badge" style="background:#fffbeb;color:#92400e;border-color:#fde68a">on-exit</span> """);
             if (totalSent > 0) badges.Append($"""<span class="hk-badge">{totalSent}× sent</span> """);
             if (retries > 0)   badges.Append($"""<span class="hk-badge" style="background:#fdf2f8;color:#9d174d;border-color:#fbcfe8">{retries} retr.</span>""");

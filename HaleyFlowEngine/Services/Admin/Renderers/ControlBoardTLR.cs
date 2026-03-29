@@ -614,7 +614,7 @@ internal static class ControlBoardTLR {
             var label      = S(h, "label");
             var display    = !string.IsNullOrWhiteSpace(label) ? label : route;
             var secondary  = !string.IsNullOrWhiteSpace(label) ? route : string.Empty;
-            var blocking   = B(h, "blocking");
+            var isGate     = h.TryGetProperty("hook_type", out var htv) && htv.TryGetInt32(out var htInt) ? htInt == 1 : true;
             var orderSeq   = S(h, "order_seq");
             var rawTrigger = S(h, "last_trigger");
             var lastSent   = Fmt(rawTrigger);
@@ -651,7 +651,7 @@ internal static class ControlBoardTLR {
                       <div class="hook-side">
                         <div class="hook-time">{E(timeLine)}</div>
                         <div class="hook-meta">
-                          <span class="mini-badge {(blocking ? "warn" : string.Empty)}">{(blocking ? "blocking" : "non-blocking")}</span>
+                          <span class="mini-badge {(isGate ? "warn" : string.Empty)}">{(isGate ? "gate" : "effect")}</span>
                           {retryHtml}
                           <span class="mini-badge {sentCls}">{totalDispatches} sent</span>
                           <span class="mini-badge {ackedCls}">acked {processed}/{total}</span>

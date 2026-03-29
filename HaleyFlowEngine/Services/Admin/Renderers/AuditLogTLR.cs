@@ -446,7 +446,7 @@ internal static class AuditLogTLR {
                 var label = S(h, "label");
                 var display = !string.IsNullOrWhiteSpace(label) ? label : route;
                 var orderSeq = S(h, "order_seq");
-                var blocking = B(h, "blocking");
+                var isGate = h.TryGetProperty("hook_type", out var htv) && htv.TryGetInt32(out var htInt) ? htInt == 1 : true;
                 var onEntry = B(h, "on_entry");
                 var dispatched = B(h, "dispatched");
                 var rawTrigger = S(h, "last_trigger");
@@ -470,7 +470,7 @@ internal static class AuditLogTLR {
                 var sentHtml = !string.IsNullOrWhiteSpace(rawTrigger) ? $"""<div class="hk-sent">Last sent: {E(lastSent)}</div>""" : string.Empty;
 
                 var flags = new StringBuilder();
-                if (blocking) flags.Append("""<span class="hk-flag">blocking</span> """);
+                flags.Append(isGate ? """<span class="hk-flag">gate</span> """ : """<span class="hk-flag" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0">effect</span> """);
                 if (!onEntry) flags.Append("""<span class="hk-flag" style="background:#fffbeb;color:#92400e;border-color:#fde68a">on-exit</span> """);
                 if (totalSent > 0) flags.Append($"""<span class="hk-flag">{totalSent}× sent</span> """);
                 if (retries > 0) flags.Append($"""<span class="hk-flag" style="background:#fdf2f8;color:#9d174d;border-color:#fbcfe8">{retries} retr.</span>""");

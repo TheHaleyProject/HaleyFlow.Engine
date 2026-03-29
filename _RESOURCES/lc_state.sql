@@ -16,7 +16,7 @@
 
 
 -- Dumping database structure for lcstate
-CREATE DATABASE IF NOT EXISTS `lcstate`; /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */;
+CREATE DATABASE IF NOT EXISTS `lcstate` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */;
 USE `lcstate`;
 
 -- Dumping structure for table lcstate.ack
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS `hook` (
   `on_entry` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Hook phase flag: 1=OnEntry, 0=OnExit.',
   `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   `instance_id` bigint(20) NOT NULL COMMENT 'Workflow instance identifier (FK to instance.id).',
-  `type` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Hook type: 1=Gate (validates; failure terminates chain), 0=Effect (side-effect; result ignored).',
+  `type` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Decides if a hook is bloking or not\n1 - Gate : requires successful hook completion before progression.\n0 - Effect : if fails, nothing happens.',
   `order_seq` smallint(6) NOT NULL DEFAULT 1 COMMENT 'Dispatch order sequence; lower numbers are dispatched first.',
   `ack_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT 'ACK aggregation mode: 0=AllConsumersMustProcess, 1=AnyConsumerMaySatisfy.',
   `route_id` bigint(20) NOT NULL COMMENT 'Route identifier to invoke for this hook (FK to hook_route.id).',
@@ -227,10 +227,10 @@ CREATE TABLE IF NOT EXISTS `hook_group` (
 CREATE TABLE IF NOT EXISTS `hook_lc` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
   `dispatched` bit(1) NOT NULL DEFAULT b'0' COMMENT 'Dispatch marker: 0=NotDispatched, 1=Dispatched.',
-  `status` tinyint NOT NULL DEFAULT 0 COMMENT '0=Pending, 1=Dispatched, 2=Skipped',
   `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   `hook_id` bigint(20) NOT NULL COMMENT 'Hook identifier.',
   `lc_id` bigint(20) NOT NULL COMMENT 'Lifecycle identifier (FK to lifecycle.id).',
+  `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=Pending, 1=Dispatched, 2=Skipped',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unq_hook_lc` (`hook_id`,`lc_id`),
   KEY `fk_hook_lc_lifecycle` (`lc_id`),

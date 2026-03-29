@@ -155,7 +155,7 @@ internal static class TimelineBuilder {
         w.WriteNumber(KEY_LC_ID, r.GetLong(KEY_LC_ID));
         w.WriteString(KEY_ROUTE, r.GetString(KEY_ROUTE));
         w.WriteString(KEY_LABEL, r.GetString(KEY_LABEL));
-        w.WriteBoolean(KEY_BLOCKING, r.GetInt(KEY_BLOCKING) != 0);
+        w.WriteNumber("hook_type", r.GetInt("hook_type"));
         w.WriteBoolean(KEY_ON_ENTRY, r.GetInt(KEY_ON_ENTRY) != 0);
         w.WriteNumber(KEY_ORDER_SEQ, r.GetInt(KEY_ORDER_SEQ));
         w.WriteBoolean(KEY_DISPATCHED, r.GetInt(KEY_DISPATCHED) != 0);

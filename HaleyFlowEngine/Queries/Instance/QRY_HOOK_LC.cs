@@ -22,7 +22,7 @@ namespace Haley.Internal {
         public const string LIST_FOR_TIMELINE =
             $@"SELECT hl.id AS hook_lc_id, hl.lc_id, hl.dispatched,
                       hr.name AS route, COALESCE(hr.label, '') AS label,
-                      h.blocking, h.on_entry, h.order_seq,
+                      h.type AS hook_type, h.on_entry, h.order_seq,
                       COUNT(ac.ack_id) AS total_acks,
                       SUM(IF(ac.status = 3, 1, 0)) AS processed_acks,
                       SUM(IF(ac.status = 4, 1, 0)) AS failed_acks,
@@ -35,7 +35,7 @@ namespace Haley.Internal {
                LEFT JOIN hook_ack ha ON ha.hook_id = hl.id
                LEFT JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
                WHERE h.instance_id = {INSTANCE_ID}
-               GROUP BY hl.id, hl.lc_id, hl.dispatched, hr.name, hr.label, h.blocking, h.on_entry, h.order_seq
+               GROUP BY hl.id, hl.lc_id, hl.dispatched, hr.name, hr.label, h.type, h.on_entry, h.order_seq
                ORDER BY hl.lc_id ASC,
                         CASE WHEN h.order_seq > 0 THEN 0 ELSE 1 END ASC,
                         h.order_seq ASC,

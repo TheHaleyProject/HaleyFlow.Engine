@@ -529,7 +529,7 @@ internal static class LightGlassTLR {
             var route        = S(h, "route");
             var label        = S(h, "label");
             var display      = !string.IsNullOrWhiteSpace(label) ? label : route;
-            var blocking     = B(h, "blocking");
+            var isGate       = h.TryGetProperty("hook_type", out var htv) && htv.TryGetInt32(out var htInt) ? htInt == 1 : true;
             var onEntry      = B(h, "on_entry");
             var dispatched   = B(h, "dispatched");
             var orderSeq     = S(h, "order_seq");
@@ -550,7 +550,7 @@ internal static class LightGlassTLR {
                        : "Dispatched";
 
             var badges = new StringBuilder();
-            if (blocking)           badges.Append("""<span class="hk-badge">blocking</span>""");
+            badges.Append(isGate ? """<span class="hk-badge">gate</span>""" : """<span class="hk-badge" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0">effect</span>""");
             if (!onEntry)           badges.Append("""<span class="hk-badge" style="background:#fef9c3;color:#854d0e;border-color:#fde047">on-exit</span>""");
             if (retries > 0)        badges.Append($"""<span class="hk-badge" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">{retries} retr{(retries != 1 ? "ies" : "y")}</span>""");
             if (totalTrigger > 0)   badges.Append($"""<span class="hk-badge" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0">{totalTrigger} sent</span>""");
