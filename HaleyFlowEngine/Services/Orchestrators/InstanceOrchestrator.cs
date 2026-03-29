@@ -38,9 +38,9 @@ namespace Haley.Services.Orchestrators {
         // 1. Validate request and resolve latest blueprint.
         // 2. Resolve transition consumers up front (must have at least one).
         // 3. Begin DB transaction.
-        // 4. Ensure instance + apply transition + create ACK rows + emit hooks.
+        // 4. Ensure instance + apply transition + create lifecycle ACK + emit hook rows.
         // 5. Commit.
-        // 6. Dispatch events only after commit.
+        // 6. Dispatch transition events only after commit.
         public async Task<LifeCycleTriggerResult> TriggerAsync(LifeCycleTriggerRequest req, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
 
@@ -66,7 +66,6 @@ namespace Haley.Services.Orchestrators {
             // Collect outbound events and ack ids for response.
             var toDispatch = new List<ILifeCycleEvent>(8);
             var lcAckGuids = new List<string>(4);
-            var hookAckGuids = new List<string>(8);
 
             DbRow instance = null!;
             ApplyTransitionResult transition = null!;
@@ -181,9 +180,7 @@ namespace Haley.Services.Orchestrators {
                     return result;
                 }
 
-                var hookConsumers = await _ackManager.GetHookConsumersAsync(bp.DefVersionId, ct);
                 var normTransitionConsumers = InternalUtils.NormalizeConsumers(transitionConsumers);
-                var normHookConsumers = InternalUtils.NormalizeConsumers(hookConsumers);
 
                 var instanceId = result.InstanceId;
                 // Link runtime logs from closed state to current lifecycle row for timeline clarity.
@@ -236,7 +233,8 @@ namespace Haley.Services.Orchestrators {
                     toDispatch.Add(transitionEvent);
                 }
 
-                // Emit hook rows via policy engine and fan out corresponding hook events.
+                // Emit hook rows via policy engine. These stay durable in DB with dispatched=0
+                // until the lifecycle ACK path decides which hook order to release next.
                 var hookEmissions = await _policyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr);
 
                 // Now that we know whether hooks exist, set DispatchMode on transition events.
@@ -246,39 +244,6 @@ namespace Haley.Services.Orchestrators {
                     te.DispatchMode = dispatchMode;
                 }
 
-                for (var h = 0; h < hookEmissions.Count; h++) {
-                    var he = hookEmissions[h];
-                    if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));
-
-                    // Each hook_lc gets its own ack_guid tracked across all hook consumers.
-                    var hookAck = await _ackManager.CreateHookAckAsync(he.HookLcId, normHookConsumers, (int)AckStatus.Pending, load);
-                    var hookAckGuid = hookAck.AckGuid ?? string.Empty;
-                    hookAckGuids.Add(hookAckGuid);
-                    await _dal.HookLc.MarkDispatchedAsync(he.HookLcId, load);
-
-                    var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(he.HookId, load);
-                    for (var i = 0; i < normHookConsumers.Count; i++) {
-                        var consumerId = normHookConsumers[i];
-                        var hookEvent = new LifeCycleHookEvent(lcEvent) {
-                            ConsumerId = consumerId,
-                            AckGuid = hookAckGuid,
-                            OnEntry = he.OnEntry,
-                            Route = he.Route ?? string.Empty,
-                            OnSuccessEvent = he.OnSuccessEvent ?? string.Empty,
-                            OnFailureEvent = he.OnFailureEvent ?? string.Empty,
-                            Params = he.Params,
-                            NotBefore = he.NotBefore,
-                            Deadline = he.Deadline,
-                            HookType = he.HookType,
-                            GroupName = he.GroupName,
-                            OrderSeq = he.OrderSeq,
-                            AckMode = he.AckMode,
-                            RunCount = runCount
-                        };
-                        toDispatch.Add(hookEvent);
-                    }
-                }
-
                 // Durability before delivery: commit first, then dispatch.
                 transaction.Commit();
                 committed = true;
@@ -286,7 +251,7 @@ namespace Haley.Services.Orchestrators {
                 await _dispatchEventsAsync(toDispatch, ct);
 
                 result.LifecycleAckGuids = lcAckGuids;
-                result.HookAckGuids = hookAckGuids;
+                result.HookAckGuids = Array.Empty<string>();
                 return result;
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
                 if (!committed) { try { transaction.Rollback(); } catch { } }
