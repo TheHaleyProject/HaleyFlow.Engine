@@ -45,14 +45,13 @@ namespace Haley.Utils {
         /// <param name="root">The root<see cref="JsonElement"/></param>
         /// <returns>The <see cref="string"/></returns>
         public static string BuildDefinitionHashMaterial(this JsonElement root) {
-            // keep ONLY states/events/transitions
+            // keep ONLY behavior-bearing definition content
             var obj = new JsonObject {
                 [KEY_STATES] = BuildSanitizedStatesForHash(root),
-                [KEY_EVENTS] = root.TryGetProperty(KEY_EVENTS, out var e) ? JsonNode.Parse(e.GetRawText()) : new JsonArray(),
-                [KEY_TRANSITIONS] = root.TryGetProperty(KEY_TRANSITIONS, out var t) ? JsonNode.Parse(t.GetRawText()) : new JsonArray(),
+                [KEY_TRANSITIONS] = BuildSanitizedTransitionsForHash(root),
             };
 
-            var canon = StripDescriptions(obj).Canonicalize(); //ignore case..
+            var canon = StripInformationalFields(obj).Canonicalize(); // ignore display-only fields
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
 
@@ -70,22 +69,22 @@ namespace Haley.Utils {
                 [KEY_TIMEOUTS] = root.TryGetProperty(KEY_TIMEOUTS, out var to) ? JsonNode.Parse(to.GetRawText()) : new JsonArray(),
             };
 
-            var canon = StripDescriptions(obj).Canonicalize();
+            var canon = StripInformationalFields(obj).Canonicalize();
             return canon.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         }
 
-        static JsonNode StripDescriptions(JsonNode? node) {
+        static JsonNode StripInformationalFields(JsonNode? node) {
             if (node is JsonObject obj) {
                 var clean = new JsonObject();
                 foreach (var kv in obj) {
-                    if (kv.Key.Equals(KEY_DESCRIPTION, StringComparison.OrdinalIgnoreCase)) continue;
-                    clean[kv.Key] = StripDescriptions(kv.Value);
+                    if (ShouldIgnoreHashField(kv.Key)) continue;
+                    clean[kv.Key] = StripInformationalFields(kv.Value);
                 }
                 return clean;
             }
             if (node is JsonArray arr) {
                 var clean = new JsonArray();
-                foreach (var item in arr) clean.Add(StripDescriptions(item));
+                foreach (var item in arr) clean.Add(StripInformationalFields(item));
                 return clean;
             }
             return node?.DeepClone() ?? JsonValue.Create((string?)null)!;
@@ -112,7 +111,7 @@ namespace Haley.Utils {
                         k.Equals(KEY_TIMEOUT_MODE_CAMEL, StringComparison.OrdinalIgnoreCase) ||
                         k.Equals(KEY_TIMEOUT_EVENT, StringComparison.OrdinalIgnoreCase) ||
                         k.Equals(KEY_TIMEOUT_EVENT_CAMEL, StringComparison.OrdinalIgnoreCase) ||
-                        k.Equals(KEY_DESCRIPTION, StringComparison.OrdinalIgnoreCase))
+                        ShouldIgnoreHashField(k))
                         continue;
 
                     o[k] = JsonNode.Parse(p.Value.GetRawText());
@@ -122,6 +121,36 @@ namespace Haley.Utils {
             }
 
             return arr;
+        }
+
+        internal static JsonArray BuildSanitizedTransitionsForHash(JsonElement root) {
+            if (!root.TryGetProperty(KEY_TRANSITIONS, out var transitionsEl) || transitionsEl.ValueKind != JsonValueKind.Array)
+                return new JsonArray();
+
+            var arr = new JsonArray();
+
+            foreach (var t in transitionsEl.EnumerateArray()) {
+                if (t.ValueKind != JsonValueKind.Object) continue;
+
+                var o = new JsonObject();
+                foreach (var p in t.EnumerateObject()) {
+                    if (ShouldIgnoreHashField(p.Name)) continue;
+                    o[p.Name] = JsonNode.Parse(p.Value.GetRawText());
+                }
+
+                arr.Add(o);
+            }
+
+            return arr;
+        }
+
+        static bool ShouldIgnoreHashField(string key) {
+            return key.Equals(KEY_DESCRIPTION, StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals(KEY_LABEL, StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals(KEY_CATEGORY, StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("eventName", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals(KEY_DISPLAY_NAME, StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals(KEY_DISPLAY_NAME_CAMEL, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -1,9 +1,7 @@
 {
-  "definition": {
-    "name": "ProjectChangeRequest",
-    "version": 1,
-    "description": "Project change request with impact, cost, schedule and steering review"
-  },
+  "name": "ProjectChangeRequest",
+  "version": 1,
+  "description": "Project change request with impact, cost, schedule and steering review",
   "states": [
     { "name": "RequestLogged", "is_initial": true, "category": "Intake" },
     { "name": "ImpactAssessment", "category": "Assessment" },
@@ -13,19 +11,6 @@
     { "name": "ReworkRequired", "category": "Resubmission" },
     { "name": "Approved", "is_final": true, "category": "Outcome" },
     { "name": "Cancelled", "is_final": true, "category": "Outcome" }
-  ],
-  "events": [
-    { "code": 4000, "name": "AutoStart" },
-    { "code": 4001, "name": "ImpactAccepted" },
-    { "code": 4002, "name": "ImpactRejected" },
-    { "code": 4003, "name": "CostAccepted" },
-    { "code": 4004, "name": "CostReworkNeeded" },
-    { "code": 4005, "name": "ScheduleAccepted" },
-    { "code": 4006, "name": "ScheduleRejected" },
-    { "code": 4007, "name": "SteeringApproved" },
-    { "code": 4008, "name": "SteeringReworkNeeded" },
-    { "code": 4009, "name": "Resubmitted" },
-    { "code": 4010, "name": "ReworkExpired" }
   ],
   "transitions": [
     { "event": 4000, "from": "RequestLogged", "to": "ImpactAssessment" },

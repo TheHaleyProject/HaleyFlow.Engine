@@ -1,9 +1,7 @@
 {
-  "definition": {
-    "name": "VendorRegistration",
-    "version": 1,
-    "description": "Registration workflow for account creation validation"
-  },
+  "name": "VendorRegistration",
+  "version": 1,
+  "description": "Registration workflow for account creation validation",
   "states": [
     { "name": "FormSubmitted", "is_initial": true, "category": "Intake" },
     { "name": "CheckVendorRegistered", "category": "Eligibility" },
@@ -16,20 +14,6 @@
     { "name": "RejectedAlreadyRegistered", "is_final": true, "category": "Outcome" },
     { "name": "RejectedInvalidCompany", "is_final": true, "category": "Outcome" },
     { "name": "DuplicateWithin12Months", "is_final": true, "category": "Outcome" }
-  ],
-  "events": [
-    { "code": 1000, "name": "AutoStart" },
-    { "code": 1001, "name": "VendorAlreadyRegistered" },
-    { "code": 1002, "name": "VendorNotRegistered" },
-    { "code": 1003, "name": "RecentRequestFound" },
-    { "code": 1004, "name": "NoRecentRequest" },
-    { "code": 1005, "name": "BeginPQValidation" },
-    { "code": 1006, "name": "CompanyValid" },
-    { "code": 1007, "name": "VendorCreated" },
-    { "code": 1008, "name": "CompanyInvalid" },
-    { "code": 1010, "name": "PQValidationTimeout" },
-    { "code": 1011, "name": "OverdueReminder" },
-    { "code": 1012, "name": "ResumeValidation" }
   ],
   "transitions": [
     { "event": 1000, "from": "FormSubmitted", "to": "CheckVendorRegistered" },

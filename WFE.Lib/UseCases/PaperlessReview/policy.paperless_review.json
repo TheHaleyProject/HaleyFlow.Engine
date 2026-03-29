@@ -2,192 +2,71 @@
   "policy_name": "paperlessreview.policy",
   "defName": "PaperlessReview",
   "params": [
-    {
-      "code": "PARAMS.REVIEW.GRADE",
-      "data": {
-        "grading": {
-          "scale": "A-F",
-          "passGrades": [ "A", "B", "C" ]
-        }
-      }
-    }
+    { "code": "PARAMS.REVIEW.GRADE", "data": { "grading": { "scale": "A-F", "passGrades": [ "A", "B", "C" ] } } }
   ],
   "rules": [
     {
       "state": "ComplianceReview",
       "emit": [
-        {
-          "route": "APP.REVIEW.COMPLIANCE",
-          "label": "Compliance Review",
-          "blocking": true,
-          "group": "compliance_decision",
-          "order": 1,
-          "complete": { "success": 3001, "failure": 3002 }
-        },
-        {
-          "route": "APP.REVIEW.COMPLIANCE.AUDIT.LOG",
-          "label": "Compliance Audit Log",
-          "blocking": false
-        },
-        {
-          "route": "APP.REVIEW.COMPLIANCE.NOTIFY.TEAM",
-          "label": "Compliance Team Notification",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.COMPLIANCE", "label": "Compliance Review", "group": "compliance_decision", "order": 1, "complete": { "success": 3001, "failure": 3002 }, "type": "gate" },
+        { "route": "APP.REVIEW.COMPLIANCE.AUDIT.LOG", "label": "Compliance Audit Log", "type": "effect" },
+        { "route": "APP.REVIEW.COMPLIANCE.NOTIFY.TEAM", "label": "Compliance Team Notification", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "StructuralReview",
       "emit": [
-        {
-          "route": "APP.REVIEW.STRUCTURAL",
-          "label": "Structural Review",
-          "blocking": true,
-          "group": "structural_decision",
-          "order": 1,
-          "complete": { "success": 3003, "failure": 3004 }
-        },
-        {
-          "route": "APP.REVIEW.STRUCTURAL.LOCAL.BACKUP",
-          "label": "Structural Snapshot Backup",
-          "blocking": false
-        },
-        {
-          "route": "APP.REVIEW.STRUCTURAL.NOTIFY.TEAM",
-          "label": "Structural Team Notification",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.STRUCTURAL", "label": "Structural Review", "group": "structural_decision", "order": 1, "complete": { "success": 3003, "failure": 3004 }, "type": "gate" },
+        { "route": "APP.REVIEW.STRUCTURAL.LOCAL.BACKUP", "label": "Structural Snapshot Backup", "type": "effect" },
+        { "route": "APP.REVIEW.STRUCTURAL.NOTIFY.TEAM", "label": "Structural Team Notification", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "MEPReview",
       "emit": [
-        {
-          "route": "APP.REVIEW.MEP",
-          "label": "MEP Review",
-          "blocking": true,
-          "group": "mep_decision",
-          "order": 1,
-          "complete": { "success": 3005, "failure": 3006 }
-        },
-        {
-          "route": "APP.REVIEW.MEP.LOCAL.BACKUP",
-          "label": "MEP Snapshot Backup",
-          "blocking": false
-        },
-        {
-          "route": "APP.REVIEW.MEP.NOTIFY.TEAM",
-          "label": "MEP Team Notification",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.MEP", "label": "MEP Review", "group": "mep_decision", "order": 1, "complete": { "success": 3005, "failure": 3006 }, "type": "gate" },
+        { "route": "APP.REVIEW.MEP.LOCAL.BACKUP", "label": "MEP Snapshot Backup", "type": "effect" },
+        { "route": "APP.REVIEW.MEP.NOTIFY.TEAM", "label": "MEP Team Notification", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "ConsolidateComments",
       "emit": [
-        {
-          "route": "APP.REVIEW.COMMENTS.CONSOLIDATE",
-          "label": "Consolidate Comments",
-          "blocking": true,
-          "group": "comments_publish",
-          "order": 1,
-          "complete": { "success": 3007 }
-        },
-        {
-          "route": "APP.REVIEW.COMMENTS.PUBLISH",
-          "label": "Publish Consolidated Comments",
-          "blocking": true,
-          "order": 2
-        },
-        {
-          "route": "APP.REVIEW.COMMENTS.NOTIFY.AUTHOR",
-          "label": "Comments Published Notification",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.COMMENTS.CONSOLIDATE", "label": "Consolidate Comments", "group": "comments_publish", "order": 1, "complete": { "success": 3007 }, "type": "gate" },
+        { "route": "APP.REVIEW.COMMENTS.PUBLISH", "label": "Publish Consolidated Comments", "order": 2, "type": "gate" },
+        { "route": "APP.REVIEW.COMMENTS.NOTIFY.AUTHOR", "label": "Comments Published Notification", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "Grading",
       "params": [ "PARAMS.REVIEW.GRADE" ],
       "emit": [
-        {
-          "route": "APP.REVIEW.GRADING",
-          "label": "Review Grading",
-          "blocking": true,
-          "group": "grading_decision",
-          "order": 1,
-          "complete": { "success": 3008, "failure": 3009 }
-        },
-        {
-          "route": "APP.REVIEW.GRADING.AUDIT.LOG",
-          "label": "Grading Audit Log",
-          "blocking": false
-        },
-        {
-          "route": "APP.REVIEW.GRADING.EMAIL.REPORT",
-          "label": "Grading Report Email",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.GRADING", "label": "Review Grading", "group": "grading_decision", "order": 1, "complete": { "success": 3008, "failure": 3009 }, "type": "gate" },
+        { "route": "APP.REVIEW.GRADING.AUDIT.LOG", "label": "Grading Audit Log", "type": "effect" },
+        { "route": "APP.REVIEW.GRADING.EMAIL.REPORT", "label": "Grading Report Email", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "RevisionRequired",
       "via": 3009,
       "emit": [
-        {
-          "route": "APP.REVIEW.REVISION.NOTIFY",
-          "label": "Revision Request Notification",
-          "blocking": true,
-          "group": "revision_cycle",
-          "order": 1,
-          "complete": { "success": 3010 }
-        },
-        {
-          "route": "APP.REVIEW.REVISION.EMAIL.CONSULTANT",
-          "label": "Consultant Revision Email",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.REVISION.NOTIFY", "label": "Revision Request Notification", "group": "revision_cycle", "order": 1, "complete": { "success": 3010 }, "type": "gate" },
+        { "route": "APP.REVIEW.REVISION.EMAIL.CONSULTANT", "label": "Consultant Revision Email", "order": 2, "type": "effect" }
       ]
     },
     {
       "state": "Resubmitted",
       "emit": [
-        {
-          "route": "APP.REVIEW.RESUBMISSION.RECEIVED",
-          "label": "Resubmission Received",
-          "blocking": true,
-          "group": "resubmission_cycle",
-          "order": 1,
-          "complete": { "success": 3011 }
-        },
-        {
-          "route": "APP.REVIEW.RESUBMISSION.AUDIT.LOG",
-          "label": "Resubmission Audit Log",
-          "blocking": false
-        }
+        { "route": "APP.REVIEW.RESUBMISSION.RECEIVED", "label": "Resubmission Received", "group": "resubmission_cycle", "order": 1, "complete": { "success": 3011 }, "type": "gate" },
+        { "route": "APP.REVIEW.RESUBMISSION.AUDIT.LOG", "label": "Resubmission Audit Log", "type": "effect" }
       ]
     },
     {
       "state": "RevisionRequired",
       "via": 3012,
       "emit": [
-        {
-          "route": "APP.REVIEW.REVISION.EXPIRED",
-          "label": "Revision Window Expired",
-          "blocking": false
-        },
-        {
-          "route": "APP.REVIEW.REVISION.EXPIRED.EMAIL",
-          "label": "Revision Expiry Email",
-          "blocking": false,
-          "order": 2
-        }
+        { "route": "APP.REVIEW.REVISION.EXPIRED", "label": "Revision Window Expired", "type": "effect" },
+        { "route": "APP.REVIEW.REVISION.EXPIRED.EMAIL", "label": "Revision Expiry Email", "order": 2, "type": "effect" }
       ]
     }
   ],

@@ -120,7 +120,7 @@ namespace Haley.Services {
                             if (string.IsNullOrWhiteSpace(hookRoute)) continue;
 
                             var (emitSuccess, emitFailure) = ReadCompletionEvents(e);
-                            var orderSeq = e.TryGetProperty(KEY_ORDER, out var orderEl) && orderEl.TryGetInt32(out var oVal) && oVal > 0 ? oVal : 1;
+                            var orderSeq = e.TryGetProperty(KEY_ORDER, out var orderEl) && orderEl.TryGetInt32(out var oVal) && oVal > 0 ? oVal : int.MaxValue;
                             var ackModeStr = e.GetString(KEY_ACK_MODE);
                             var groupRaw = e.GetString(KEY_GROUP);
 
@@ -380,3 +380,4 @@ namespace Haley.Services {
         }
     }
 }
+
