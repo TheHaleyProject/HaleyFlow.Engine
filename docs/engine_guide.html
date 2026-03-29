@@ -482,7 +482,7 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
             <span class="kw">var</span> instGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
             <span class="cm">// all hooks in group done — trigger next macro event</span>
             <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-                EntityId = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
+                InstanceGuid = instGuid, Event = <span class="st">"review_complete"</span>, <span class="cm">/* ... */</span>
             });
             <span class="kw">break</span>;
         <span class="kw">case</span> <span class="st">"ACK_SUSPEND"</span>:
@@ -644,15 +644,15 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
       <li><div class="step-num">5</div><div class="step-body"><strong>Apply transition</strong> (<code>IStateMachine.ApplyTransitionAsync</code>) — validates transition, CAS-updates instance state, inserts lifecycle row. If already moved → commits and returns early.</div></li>
       <li><div class="step-num">6</div><div class="step-body"><strong>Resolve rule context</strong> from policy JSON — extracts <code>params</code>, <code>on_success_event</code>, <code>on_failure_event</code> for the matched rule.</div></li>
       <li><div class="step-num">7</div><div class="step-body"><strong>Create lifecycle ACK</strong> (<code>IAckManager.CreateLifecycleAckAsync</code>) — one <code>ack_guid</code>, multiple consumer rows, linked via <code>lc_ack</code>.</div></li>
-      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hooks</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — upserts <code>hook</code> rows. Resolves route string → <code>hook_route.id</code> (FK). Resolves group name → <code>hook_group.id</code> (FK, nullable). Computes <code>minOrder</code> across all matched emit entries. Hooks at <code>order &gt; minOrder</code> are written with <code>dispatched=0</code> (invisible to the monitor; waiting for prior-order gate hooks to complete). Only min-order hooks are returned in the <code>LifeCycleHookEmission</code> list for step 9.</div></li>
-      <li><div class="step-num">9</div><div class="step-body"><strong>Create hook ACKs</strong> (<code>IAckManager.CreateHookAckAsync</code>) — one <code>ack_guid</code> per dispatched hook, multiple consumer rows, linked via <code>hook_ack</code>. Higher-order hooks (<code>dispatched=0</code>) get no ACK rows here; rows are created later by <code>AdvanceNextHookOrderAsync</code> when prior gate hooks complete.</div></li>
-      <li><div class="step-num">10</div><div class="step-body"><strong>Commit first.</strong> Only after commit does the engine raise C# events via <code>FireEvent</code>. Dispatch failures become notices; monitor will re-send via pending ACK rows.</div></li>
+      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hook plan</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — persists durable <code>hook</code> + <code>hook_lc</code> rows for the matched policy emits. At this point the engine is only capturing the ordered hook plan for the new lifecycle entry; it is <strong>not</strong> fan-outing hook ACKs yet.</div></li>
+      <li><div class="step-num">9</div><div class="step-body"><strong>Stamp transition dispatch mode</strong> — if hooks were emitted, the lifecycle transition event is marked <code>ValidationMode</code>; otherwise it remains <code>NormalRun</code>.</div></li>
+      <li><div class="step-num">10</div><div class="step-body"><strong>Commit first.</strong> Only after commit does the engine raise C# events via <code>FireEvent</code>. In the trigger path, only the lifecycle transition event is dispatched immediately. Ordered hook ACK rows are created later by the ACK orchestration pipeline.</div></li>
     </ol>
   </section>
 
   <section class="doc-section" id="flow-ackgate">
-    <h3 class="sub-title">3.2b ACK Gate &amp; Gate Hook Gate</h3>
-    <p>An opt-in guard on <code>TriggerAsync</code>. When <code>AckGateEnabled=true</code> and <code>SkipAckGate=false</code>, the engine runs <strong>three sequential checks</strong> before applying a state transition. If any check fails, the trigger returns immediately with <code>Applied=false</code>.</p>
+    <h3 class="sub-title">3.2b ACK Gate</h3>
+    <p>An opt-in guard on <code>TriggerAsync</code>. When <code>AckGateEnabled=true</code> and <code>SkipAckGate=false</code>, the engine checks whether the latest lifecycle transition still has unresolved <code>lc_ack</code> consumer rows. If it does, the trigger returns immediately with <code>Applied=false, Reason="BlockedByPendingAck"</code>.</p>
 
     <h4 class="mini-title">Check 1 — Transition ACK gate (<code>lc_ack</code>)</h4>
     <pre><code><span class="cm">-- Have all transition consumers finished with the previous lifecycle entry?</span>
@@ -663,57 +663,17 @@ SELECT COUNT(*) FROM ack_consumer ac
     AND ac.status NOT IN (3, 4, 5);</code><span class="lang-label">SQL</span></pre>
     <p>Scoped to <code>lc_ack</code> — transition consumer delivery rows. If any consumer has not reached a terminal status: <code>Reason: "BlockedByPendingAck"</code>.</p>
 
-    <h4 class="mini-title">Check 2 — Gate hook ACK gate (ack_mode-aware)</h4>
-    <pre><code><span class="cm">-- Are any dispatched gate hooks for the current lifecycle entry still unresolved?</span>
-<span class="cm">-- ack_mode=ALL (0): unresolved if any ack_consumer is not terminal</span>
-<span class="cm">-- ack_mode=ANY (1): unresolved if no ack_consumer has Processed (status=3)</span>
-SELECT COUNT(DISTINCT h.id) FROM hook h
-  JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = &lt;latest_lc_id&gt;
-  WHERE h.instance_id = ? AND h.type = b'1' AND hl.dispatched = 1
-    AND (
-      (h.ack_mode = 0 AND EXISTS (
-        SELECT 1 FROM hook_ack ha JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
-        WHERE ha.hook_id = hl.id AND ac.status NOT IN (3, 4, 5)))
-      OR
-      (h.ack_mode = 1 AND NOT EXISTS (
-        SELECT 1 FROM hook_ack ha JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
-        WHERE ha.hook_id = hl.id AND ac.status = 3))
-    );</code><span class="lang-label">SQL</span></pre>
-    <p>A gate hook is a mandatory business checkpoint. The state machine must not advance until it is resolved. If any dispatched gate hook is unresolved: <code>Reason: "BlockedByPendingBlockingHook"</code>.</p>
-    <div class="table-wrap" style="margin-top:8px">
-      <table>
-        <thead><tr><th>ack_mode</th><th>Hook is "resolved" when…</th></tr></thead>
-        <tbody>
-          <tr><td><code>ALL</code> (0, default)</td><td>Every <code>ack_consumer</code> row is terminal (Processed=3, Failed=4, or Cancelled=5)</td></tr>
-          <tr><td><code>ANY</code> (1)</td><td>At least one <code>ack_consumer</code> row has Processed (status=3)</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h4 class="mini-title">Check 3 — Undispatched gate hook gate</h4>
-    <pre><code><span class="cm">-- Are any gate hooks still waiting to be dispatched?</span>
-<span class="cm">-- (hook_lc rows with dispatched=0 — queued but not yet sent to consumers)</span>
-SELECT COUNT(*) FROM hook h
-  JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = &lt;latest_lc_id&gt;
-  WHERE h.instance_id = ? AND h.type = b'1' AND hl.dispatched = 0;</code><span class="lang-label">SQL</span></pre>
-    <p>Higher-order gate hooks may not be dispatched yet because a lower-order gate hook is still running. These are also unresolved checkpoints: <code>Reason: "BlockedByUndispatchedBlockingHook"</code>.</p>
-
     <div class="card-grid">
       <div class="card">
-        <div class="card-title">All blocked reasons</div>
-        <pre style="margin:8px 0 0"><code><span class="cm">// Check 1 — transition consumers still pending</span>
-{ Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByPendingAck"</span> }
-<span class="cm">// Check 2 — gate hook ACKs unresolved</span>
-{ Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByPendingBlockingHook"</span> }
-<span class="cm">// Check 3 — gate hooks not yet dispatched</span>
-{ Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByUndispatchedBlockingHook"</span> }</code></pre>
+        <div class="card-title">Blocked reason</div>
+        <pre style="margin:8px 0 0"><code>{ Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByPendingAck"</span> }</code></pre>
       </div>
       <div class="card">
-        <div class="card-title">What the gate does NOT check</div>
+        <div class="card-title">What the ACK gate does NOT check</div>
         <ul>
-          <li>Effect hooks (<code>type: "effect"</code>) — never gate transitions</li>
-          <li>Earlier lifecycle entries — only the latest entry is scoped</li>
-          <li>Undispatched effect hooks — only gate hooks matter</li>
+          <li>Hook ACK rows — hook sequencing is owned by the engine ACK orchestration path, not by this trigger guard</li>
+          <li>Effect hooks — they are ordered work, but they are not part of the trigger gate</li>
+          <li>Earlier lifecycle entries — only the latest lifecycle transition ACKs are scoped</li>
         </ul>
       </div>
     </div>
@@ -728,14 +688,14 @@ SELECT COUNT(*) FROM hook h
       <div class="card">
         <div class="card-title">Per-request bypass</div>
         <pre style="margin:8px 0 0"><code>req.SkipAckGate = <span class="nb">true</span>;
-<span class="cm">// bypasses ALL three checks</span>
+<span class="cm">// bypasses the transition ACK gate for this one call</span>
 <span class="cm">// used internally by ReopenAsync</span>
 <span class="cm">// used by monitor on timeout triggers</span></code></pre>
       </div>
     </div>
     <div class="callout tip">
       <div class="callout-title">When to enable it</div>
-      Enable when you need a guarantee that all downstream systems have confirmed delivery <em>and</em> all mandatory business checkpoints (gate hooks) are resolved before the workflow can advance. The transition ACK gate is a <em>delivery reliability</em> guarantee; the gate-hook gate is a <em>business correctness</em> guarantee. Both run together under the same <code>AckGateEnabled</code> flag.
+      Enable when you need a guarantee that the previous lifecycle transition has fully reached its transition consumers before a competing trigger is accepted. Hook progression is handled separately through <code>ValidationMode</code>, ordered hook ACKs, and the later <code>Complete</code> handoff.
     </div>
   </section>
 
@@ -803,7 +763,7 @@ SELECT COUNT(*) FROM hook h
     </div>
     <div class="callout tip">
       <div class="callout-title">Admin debugging</div>
-      The Admin API exposes the in-memory notice stream at <code>GET /api/admin/wf/engine/notices</code>. Filter by <code>code</code>, <code>kind</code>, <code>instanceGuid</code>, or <code>ackGuid</code> when you want to inspect the new Validation / Complete orchestration path without querying raw runtime tables. The stream is intentionally bounded by configurable retention and count limits, and it is not persisted. The ControlBoard HTML timeline renders the same recent instance-scoped stream beside the lifecycle entries.
+      The Admin API exposes the in-memory notice stream at <code>GET /api/admin/wf/engine/notices</code>. Filter by <code>code</code>, <code>kind</code>, <code>instanceGuid</code>, or <code>ackGuid</code> when you want to inspect the new Validation / Complete orchestration path without querying raw runtime tables. The stream is intentionally bounded by configurable retention and count limits, and it is not persisted. The ControlBoard HTML timeline renders the same recent instance-scoped stream in the left-side <code>Recent notices</code> overlay drawer.
     </div>
   </section>
 
@@ -1343,12 +1303,12 @@ SELECT COUNT(*) FROM hook h
           <tr>
             <td><strong>Hook dispatch ordering</strong><br><small>(while running normally)</small></td>
             <td>The next <code>order</code> stage is held back until this hook reaches <code>Processed</code>. All gate hooks at the current order must complete before the engine advances to the next order.</td>
-            <td>Does not gate the next order. The engine skips over effect hooks when checking if an order is complete enough to advance.</td>
+            <td>Still dispatched in ordered batches. Effect hooks do not own business routing and do not suspend the instance on failure, but they are not ignored or silently skipped out of the order plan.</td>
           </tr>
           <tr>
             <td><strong>State transition gate</strong><br><small>(ACK gate)</small></td>
             <td>When <code>AckGateEnabled=true</code>, unresolved gate-hook ACKs prevent competing transitions from being accepted.</td>
-            <td>Effect-hook status never blocks a state transition.</td>
+            <td>Effect-hook status does not participate in the trigger ACK gate. External triggers can still be accepted while only effect work remains.</td>
           </tr>
           <tr>
             <td><strong>Max-retry consequence</strong><br><small>(when consumer exhausts retries)</small></td>
@@ -1415,7 +1375,7 @@ SELECT COUNT(*) FROM hook h
           <tr><td><code>DOWNLOAD_PRIOR_RESPONSE</code></td><td>gate</td><td>1</td><td>Must complete before order 2 dispatches. If it exhausts retries → instance suspended.</td></tr>
           <tr><td><code>CREATE_SUBMISSION</code></td><td>gate</td><td>2</td><td>Dispatched only after order 1 completes. Must succeed; failure suspends instance.</td></tr>
           <tr><td><code>SEND_NOTIFICATION_EMAIL</code></td><td>effect</td><td>2</td><td>Dispatched at the same time as the order 2 gate hook. Failure only fires a warn notice.</td></tr>
-          <tr><td><code>CREATE_PROVISION</code></td><td>effect</td><td>2</td><td>Same — fire-and-forget at order 2. Can be removed from policy tomorrow without code changes.</td></tr>
+          <tr><td><code>CREATE_PROVISION</code></td><td>effect</td><td>2</td><td>Same ordered effect stage as the notification email. Advisory work only; can be removed from policy tomorrow without code changes.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1456,7 +1416,7 @@ SELECT COUNT(*) FROM hook h
         <span class="kw">var</span> instanceGuid = (<span class="ty">string</span>)n.Data[<span class="st">"instanceGuid"</span>];
         <span class="cm">// all hooks in the group are done — trigger next step</span>
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-            EntityId = instanceGuid,
+            InstanceGuid = instanceGuid,
             Event = <span class="st">"review_complete"</span>,
             <span class="cm">// ...</span>
         });
@@ -1471,7 +1431,7 @@ SELECT COUNT(*) FROM hook h
       <li>On trigger, only the <strong>lowest-order</strong> hooks are dispatched (their hook rows get ACK rows and events fired).</li>
       <li>Higher-order hooks are written to the <code>hook</code> table with <code>dispatched=0</code> — invisible to the monitor until promoted.</li>
       <li>When <strong>all gate hooks at the current order reach Processed</strong>, the engine atomically creates ACK rows for the next order, marks those hooks dispatched, and fires their events.</li>
-      <li>If the next order contains <em>only</em> effect hooks, the engine immediately advances through it without waiting for ACKs, continuing until a gate stage or the end.</li>
+      <li>Effect-only orders are still dispatched <strong>one order batch at a time</strong>. They do not decide the business next step, but they are still part of the ordered lifecycle work.</li>
     </ol>
     <div class="callout tip" id="ack-required-design">
       <div class="callout-title">ACK is mandatory</div>
@@ -1499,8 +1459,9 @@ SELECT COUNT(*) FROM hook h
     <p style="margin-top:10px">Dispatch sequence for this example:</p>
     <ol style="margin:8px 0;padding-left:22px;line-height:1.9">
       <li><strong>Trigger fires</strong> → order=1 hooks dispatched (<code>CHECK.ELIGIBILITY</code> + <code>CHECK.CREDIT</code>)</li>
-      <li><strong>Both order=1 gate hooks reach Processed</strong> → engine advances: order=2 dispatched (<code>NOTIFY.SUMMARY_EMAIL</code>). Since order=2 has no gate hooks, engine immediately continues → order=3 dispatched (<code>DECISION.MAKE</code>). Notice <code>HOOK_ORDER_ADVANCED</code> fires twice.</li>
-      <li><strong>DECISION.MAKE reaches Processed</strong> → all hooks done.</li>
+      <li><strong>Both order=1 gate hooks reach Processed</strong> → engine advances: order=2 dispatched (<code>NOTIFY.SUMMARY_EMAIL</code>). The effect batch is released as its own ordered stage; it is not collapsed away.</li>
+      <li><strong>After the effect stage is considered complete enough to advance</strong> → engine dispatches order=3 (<code>DECISION.MAKE</code>).</li>
+      <li><strong>DECISION.MAKE reaches Processed</strong> → all hooks done → engine emits the final <code>Complete</code> handoff.</li>
     </ol>
     <h4 class="mini-title">Handling the order-advanced notice</h4>
     <pre><code>engine.NoticeRaised += <span class="kw">async</span> (n) => {
@@ -1545,8 +1506,8 @@ SELECT COUNT(*) FROM hook h
         <tbody>
           <tr><td>gate</td><td>all</td><td>Next order waits. Every consumer must ACK. Strictest — use for mandatory multi-system operations.</td></tr>
           <tr><td>gate</td><td>any</td><td>Next order waits. One consumer ACKing satisfies the gate. Use for competing-consumer patterns.</td></tr>
-          <tr><td>effect</td><td>all</td><td>Next order does not wait on this hook. All consumers should still ACK but failure only fires a warn.</td></tr>
-          <tr><td>effect</td><td>any</td><td>Fire-and-forget, fastest consumer wins. Failure is not fatal. Use for advisory fan-out.</td></tr>
+          <tr><td>effect</td><td>all</td><td>Still dispatched in order. All consumers should ACK if possible, but effect failure is advisory and does not suspend the instance.</td></tr>
+          <tr><td>effect</td><td>any</td><td>Still dispatched in order. Fastest consumer can satisfy the effect row, but the hook remains advisory rather than route-owning.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1606,7 +1567,7 @@ UPDATE ack_consumer ac
         <tbody>
           <tr><td>1</td><td>Write idempotency marker to <code>lc_timeout</code></td><td>—</td></tr>
           <tr><td>2</td><td>Cancel all non-terminal gate-hook <code>ack_consumer</code> rows (status → 5)</td><td><code>HOOK_ACK_CANCELLED</code> (Info)</td></tr>
-          <tr><td>3</td><td>Call <code>TriggerAsync</code> with <code>SkipAckGate=true</code> — bypasses all three gate checks</td><td><code>TIMEOUT_FIRED</code> (Info)</td></tr>
+          <tr><td>3</td><td>Call <code>TriggerAsync</code> with <code>SkipAckGate=true</code> — bypasses the transition ACK gate for this timeout-driven move</td><td><code>TIMEOUT_FIRED</code> (Info)</td></tr>
         </tbody>
       </table>
     </div>
@@ -2343,7 +2304,7 @@ GET /api/workflow/timeline/html
           <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; the originating ACK was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
           <tr><td><code>COMPLETE_DISPATCHED</code></td><td><span class="badge info">Info</span></td><td>Final Complete handoff dispatched after hook sequencing resolved the engine-side next event suggestion</td><td><code>instanceGuid</code>, <code>nextEvent</code></td></tr>
           <tr><td><code>COMPLETE_DISPATCH_ERROR</code></td><td><span class="badge warn">Warn</span></td><td>Engine failed while creating or dispatching the Complete handoff</td><td><code>instanceGuid</code>, <code>error</code></td></tr>
-          <tr><td><code>STALE_ACK_IGNORED</code></td><td><span class="badge warn">Warn</span></td><td>An ACK was accepted at the row level but ignored for orchestration because the lifecycle is no longer current</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>lifecycleId</code>, <code>currentLifecycleId</code></td></tr>
+          <tr><td><code>STALE_ACK_IGNORED</code></td><td><span class="badge warn">Warn</span></td><td>A stale lifecycle or gate ACK was accepted at the row level but ignored for orchestration because the lifecycle is no longer current. Open stale effect ACKs are accepted quietly instead of raising this notice.</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>lifecycleId</code>, <code>currentLifecycleId</code></td></tr>
           <tr><td><code>VALIDATION_FAILED</code></td><td><span class="badge info">Info</span></td><td>ValidationMode lifecycle ACK failed and the engine triggered the transition failure branch</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>nextEvent</code>, <code>applied</code>, <code>triggerReason</code></td></tr>
           <tr><td><code>VALIDATION_FAILED_NO_ROUTE</code></td><td><span class="badge warn">Warn</span></td><td>ValidationMode lifecycle ACK failed but no transition failure route exists</td><td><code>instanceGuid</code>, <code>ackGuid</code></td></tr>
           <tr><td><code>GATE_FAILED</code></td><td><span class="badge info">Info</span></td><td>A gate hook ACK failed and the engine triggered the resolved failure branch</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>nextEvent</code>, <code>applied</code>, <code>triggerReason</code></td></tr>
@@ -2472,7 +2433,7 @@ engine.NoticeRaised += HandleNoticeAsync;
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
             EnvCode     = envCode,
             DefName     = <span class="st">"LoanApproval"</span>,
-            EntityId    = instGuid,
+            InstanceGuid = instGuid,
             Event       = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>
         });
     }
@@ -2506,7 +2467,7 @@ engine.NoticeRaised += <span class="kw">async</span> (n) => {
     <span class="kw">if</span> (group == <span class="st">"review_checks"</span>) {
         <span class="kw">var</span> approved = <span class="kw">await</span> _reviewDb.IsApprovedAsync(instGuid);
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
-            EntityId = instGuid,
+            InstanceGuid = instGuid,
             Event    = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>,
             EnvCode  = envCode, DefName = <span class="st">"loan-approval"</span>
         });
