@@ -4,42 +4,53 @@ Rules governing how `WorkflowRelay.NextAsync` executes transition handlers and h
 
 ---
 
+## Hook Types
+
+| Type | JSON | Meaning |
+|------|------|---------|
+| **Gate** | `"type": "gate"` | Must succeed before state machine can advance. Failure terminates immediately. |
+| **Effect** | `"type": "effect"` | Side-effect hook. Always runs. Result is completely ignored. |
+
+Backward compat: `"blocking": true` → Gate, `"blocking": false` → Effect.
+
+---
+
 ## Execution Order
 
 1. Transition handler runs (in `FromState` context)
 2. `ctx.CurrentState` advances to `ToState`
-3. Hooks run in `OrderSeq` order
-4. After all hooks complete — fire pending success event (if any)
+3. Hooks run in `OrderSeq` order (same order = parallel; lower fires first)
+4. After all hooks complete with no gate termination — fire pending success event (if any)
 
 ---
 
 ## Transition Handler Rules
 
 | Outcome | Action |
-|---|---|
+|---------|--------|
 | Handler returns `false` (failure) | Skip ALL hooks. Fire failure event immediately if `CompleteFailureCode` is set. |
 | Handler returns `true` (success) | Run all hooks in order. Fire success event AFTER all hooks complete. |
 
 ---
 
-## Hook Rules
+## Hook Execution Contract
 
-| Outcome | Has success code | Has failure code | Action |
-|---|---|---|---|
-| Blocking hook **succeeds** | yes | — | **Terminate immediately** — skip remaining hooks, fire success code now. |
-| Blocking hook **succeeds** | no  | — | Continue to next hook. |
-| Blocking hook **fails**    | —   | yes | **Terminate immediately** — skip remaining hooks, fire failure code now. |
-| Blocking hook **fails**    | —   | no  | Roll back `ctx.CurrentState` to `FromState`. Return `Blocked`. |
-| Non-blocking hook (any result) | — | — | Continue to next hook. Complete codes on non-blocking hooks are ignored entirely. |
+| Hook | Outcome | Has success code | Has failure code | Action |
+|------|---------|-----------------|-----------------|--------|
+| **Gate** | succeeds | yes | — | Remember success code. Skip remaining gate hooks. Run all remaining **effect** hooks in order. Then fire success code. |
+| **Gate** | succeeds | no  | — | Continue to next hook (gate or effect). |
+| **Gate** | fails    | —   | yes | Fire failure code immediately. Skip ALL remaining hooks (gate and effect). |
+| **Gate** | fails    | —   | no  | Roll back `ctx.CurrentState` to `FromState`. Return `Blocked`. |
+| **Effect** | any | — | — | Run handler, ignore result, always continue. Complete codes on effect hooks are ignored entirely. |
 
 ---
 
 ## Key Invariants
 
-- **Both success and failure terminate immediately** — any complete code on a blocking hook (success or failure) fires immediately and skips all remaining hooks.
-- **No complete code = continue** — a blocking hook with no complete codes only stops the chain on failure (rolls back + blocked). On success it passes through to the next hook.
-- **Transition success waits for hooks** — the transition handler's success code is only fired after ALL hooks complete with no termination. If any hook terminates first, the transition code is discarded.
+- **Gate failure terminates immediately** — any gate hook failure skips everything remaining.
+- **Gate success with code drains effects** — effects after the gate still run; success code fires only after they complete.
+- **Gate success without code = pass-through** — chain continues normally to the next hook.
+- **Effect hooks never terminate the chain** — result and complete codes are ignored.
+- **Transition success waits for all hooks** — the transition handler's success code fires after ALL hooks complete with no gate termination. If a gate terminates first, the transition code is discarded.
 - **Transition failure skips all hooks** — if the transition handler returns failure, hooks never run.
-- **Non-blocking hooks cannot drive auto-advance** — `CompleteSuccessCode`/`CompleteFailureCode` on a non-blocking hook are ignored at runtime even if present in JSON.
-- **Rule-level complete codes do NOT cascade to hooks** — each hook's codes come only from its own `complete` block in the policy JSON.
-- **Params do NOT cascade from rule to hooks automatically in code** — resolved at parse time: hook-own params first, parent rule params as fallback if hook defines none.
+- **Params do not cascade from rule to hooks automatically** — resolved at parse time: hook-own params first, parent rule params as fallback if hook defines none.

@@ -1001,7 +1001,7 @@
 			<entity schema="lcstate" name="hook" color="FFFF00" x="57" y="665" />
 			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
 			<entity schema="lcstate" name="hook_group" color="FFFF00" x="57" y="969" />
-			<entity schema="lcstate" name="hook_lc" color="FFFF00" x="57" y="494" />
+			<entity schema="lcstate" name="hook_lc" color="FFFF00" x="57" y="475" />
 			<entity schema="lcstate" name="hook_route" color="FFFF00" x="209" y="969" />
 			<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="722" />
 			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="209" y="247" />

@@ -69,13 +69,13 @@ A **policy** is a separate JSON document linked to a definition. It defines what
     {
       "state": "UnderReview",
       "via": 10,
-      "blocking": true,
+      "type": "gate",
       "params": ["review-params"],
       "complete": { "success": "approve", "failure": "reject" },
       "emit": [
-        { "event": "notify_reviewer", "blocking": true,  "group": "review_hooks" },
-        { "event": "run_credit_check", "blocking": true, "group": "review_hooks" },
-        { "event": "log_submission",   "blocking": false }
+        { "route": "notify_reviewer",  "type": "gate",   "group": "review_hooks" },
+        { "route": "run_credit_check", "type": "gate",   "group": "review_hooks" },
+        { "route": "log_submission",   "type": "effect" }
       ]
     }
   ],
@@ -93,7 +93,7 @@ A **policy** is a separate JSON document linked to a definition. It defines what
 - If both a generic rule (no `via`) and a specific one (with `via`) match, the specific rule wins.
 
 **Inheritance chain for emit fields:**
-- `emit.blocking` → `rule.blocking` → default `true`
+- `emit.type` → `rule.type` → default `"gate"` (backward compat: `blocking: true/false` also accepted)
 - `emit.params` → `rule.params` (emit wins; no merge)
 - `emit.complete` → `rule.complete` (emit wins per field)
 - `emit.group` — optional string; assigns the hook to a named group for completion tracking
@@ -180,23 +180,57 @@ Use this when strict ordering is required — e.g. a downstream system must full
 Each hook stores:
 - `instance_id`, `state_id`, `via_event`, `on_entry`
 - `route_id` — FK to `hook_route` table (normalized string lookup, global)
-- `blocking` — whether failure suspends the instance
+- `type` — `1=Gate` (blocks lifecycle progression) or `0=Effect` (fire-and-forget side effect)
+- `order_seq` — emission order; lower fires first; same value = parallel batch
+- `ack_mode` — `0=All` consumers must ACK; `1=Any` consumer ACK satisfies
 - `group_id` — FK to `hook_group` table (nullable; only set when `emit.group` is provided)
 
-**Route normalization:** Hook route names (e.g. `"notify_reviewer"`) are stored once in `hook_route` and referenced by ID. `IHookDAL` still accepts `string route` — resolution is internal.
+**Policy JSON field:** Use `"type": "gate"` or `"type": "effect"`. Backward compat: `"blocking": true/false` still accepted.
 
-Hook upsert is idempotent: `INSERT ... ON DUPLICATE KEY UPDATE` ensures retrying the same transition does not duplicate hooks.
+**Route normalization:** Hook route names (e.g. `"notify_reviewer"`) are stored once in `hook_route` and referenced by ID.
 
-**Blocking vs Non-blocking on max retry:**
+Hook upsert is idempotent — retrying the same transition does not duplicate hooks.
 
-| `blocking` | Outcome when ACK max retries exceeded |
-|------------|--------------------------------------|
-| `true` (default) | Instance suspended with message |
-| `false` | ACK marked Failed, notice fired, instance continues |
+**Hook type behavior on max retry:**
+
+| Type | Outcome when retries exhausted |
+|------|-------------------------------|
+| `Gate` | Instance suspended (`ACK_SUSPEND` notice) |
+| `Effect` | After `EffectTimeoutSeconds` (60s default) — marked Abandoned, progression continues (`EFFECT_HOOK_ABANDONED` notice) |
+
+**Hook execution contract:**
+
+| Gate succeeds + success code | Skip remaining gates → drain effects in order → dispatch `TransitionMode` event |
+|------------------------------|--------------------------------------------------------------------------------|
+| Gate succeeds + no code | Continue to next hook |
+| Gate fails + failure code | Fire failure code immediately, skip ALL remaining hooks |
+| Gate fails + no code | Roll back state, blocked |
+| Effect hook | Always runs, result ignored, never blocks progression |
 
 ---
 
-## 8. Hook Groups
+## 8. TransitionDispatchMode — Consumer Contract
+
+Every `LifeCycleTransitionEvent` carries a `DispatchMode` that tells the consumer how to process it:
+
+| Mode | Value | Consumer behaviour |
+|------|-------|--------------------|
+| `NormalRun` | 0 | No hooks — run business handler + auto-transition as normal |
+| `ValidationMode` | 1 | Hooks are in progress — run handler + ACK result, but **suppress auto-transition** (engine drives via hook ACK pipeline) |
+| `TransitionMode` | 2 | Engine-driven advance after hooks complete — **skip handler entirely**, just fire `ctx.OnSuccessEvent` as next event |
+
+**Set by engine:**
+- `hookEmissions.Count == 0` → `NormalRun`
+- `hookEmissions.Count > 0` → `ValidationMode`
+- After gate-success effect drain completes → new event with `TransitionMode` carrying the gate's `OnSuccessEvent`
+
+**ACK gate as guardrail:** Even if a consumer ignores `ValidationMode` and calls `TriggerAsync`, the ACK gate (`BlockedByPendingBlockingHook`) prevents the transition from applying while gate hooks are unresolved.
+
+**Persisted in inbox:** `dispatch_mode` is stored in the consumer's `inbox` table so monitor re-dispatch retains the correct mode on retry.
+
+---
+
+## 9. Hook Groups
 
 Two or more emit entries in the same rule sharing the same `"group"` value belong to a **hook group**. The group name is stored once in the global `hook_group` table; each `hook` row carries the `group_id` FK.
 
@@ -324,11 +358,18 @@ Subscribe via `engine.NoticeRaised += async (n) => { ... }` to route these to yo
 | `MONITOR_ERROR` | Error | Unhandled exception in monitor loop tick |
 | `EVENT_HANDLER_ERROR` | Error | Exception thrown by a consumer's event handler |
 | `ACK_RETRY` | Warn | Monitor re-dispatching a due event |
-| `ACK_SUSPEND` | Warn | Instance suspended after max retries (blocking hook or lifecycle) |
-| `ACK_FAIL` | Warn | Non-blocking hook failed after max retries (no suspend) |
+| `ACK_SUSPEND` | Warn | Instance suspended after gate hook max retries exhausted |
+| `ACK_FAIL` | Warn | ACK marked failed (instance not found on suspend path) |
 | `HOOK_GROUP_COMPLETE` | Info | All hooks in a named group are Processed for this instance |
 | `HOOK_GROUP_CHECK_ERROR` | Warn | Group completion DB check failed (ACK itself was still accepted) |
+| `HOOK_ORDER_ADVANCED` | Info | Next ordered hook batch dispatched |
+| `EFFECT_HOOK_ABANDONED` | Warn | Effect hook timed out (60s), marked abandoned, progression continues |
+| `TRANSITION_MODE_DISPATCHED` | Info | Engine dispatched TransitionMode event after gate-success effect drain |
+| `HOOK_ORDER_ADVANCE_ERROR` | Warn | Hook order advancement failed |
 | `STATE_STALE` | OverDue | Instance overdue in current state past configured duration |
+| `TIMEOUT_FIRED` | Info | Policy Case A timeout auto-triggered |
+| `STATE_TIMEOUT_EXCEEDED` | OverDue | Policy Case B timeout advisory notice |
+| `STATE_TIMEOUT_FAILED` | Warn | Instance failed after Case B timeout max retries |
 
 ---
 
