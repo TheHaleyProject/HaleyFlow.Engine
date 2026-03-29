@@ -36,8 +36,10 @@ namespace Haley.Abstractions {
 
     internal interface IAckDispatchDAL {
         Task<DbRows> ListDueLifecyclePagedAsync(long consumer, int status, int ttlSeconds, int skip, int take, DbExecutionLoad load = default);
+        Task<DbRows> ListDueCompletePagedAsync(long consumer, int status, int ttlSeconds, int skip, int take, DbExecutionLoad load = default);
         Task<DbRows> ListDueHookPagedAsync(long consumer, int status, int ttlSeconds, int skip, int take, DbExecutionLoad load = default);
         Task<int?> CountDueLifecycleAsync(int status, DbExecutionLoad load = default);
+        Task<int?> CountDueCompleteAsync(int status, DbExecutionLoad load = default);
         Task<int?> CountDueHookAsync(int status, DbExecutionLoad load = default);
     }
 
@@ -52,6 +54,7 @@ namespace Haley.Abstractions {
 
     internal interface ILcAckDAL {
         Task<long?> GetAckIdByLcIdAsync(long lcId, DbExecutionLoad load = default);
+        Task<long?> GetLcIdByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
         Task<int> AttachAsync(long ackId, long lcId, DbExecutionLoad load = default);
         Task<int> DeleteByLcIdAsync(long lcId, DbExecutionLoad load = default);
         Task<int> CountPendingForInstanceAsync(long instanceId, DbExecutionLoad load = default);

@@ -95,6 +95,9 @@ namespace Haley.Internal {
         public Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default)
             => Db.RowAsync(QRY_HOOK.GET_CONTEXT_BY_ACK_GUID, load, (GUID, ackGuid));
 
+        public Task<DbRow?> GetContextByLcIdAsync(long lcId, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_HOOK.GET_CONTEXT_BY_LC_ID, load, (LC_ID, lcId));
+
         public async Task<int> CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default) {
             var row = await Db.RowAsync(QRY_HOOK.COUNT_INCOMPLETE_BLOCKING_IN_ORDER, load,
                 (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),

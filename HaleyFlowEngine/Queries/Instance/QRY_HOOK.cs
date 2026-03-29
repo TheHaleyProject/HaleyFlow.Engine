@@ -39,6 +39,24 @@ namespace Haley.Internal {
                WHERE a.guid = lower(trim({GUID}))
                LIMIT 1;";
 
+        public const string GET_CONTEXT_BY_LC_ID =
+            $@"SELECT h.id, h.instance_id, h.state_id, h.via_event, h.on_entry,
+                      h.type, h.ack_mode, h.order_seq, h.group_id,
+                      hl.id AS hook_lc_id, hl.lc_id,
+                      i.guid AS instance_guid, i.def_version AS def_version_id,
+                      i.metadata AS metadata,
+                      i.entity_id AS entity_id, i.policy_id,
+                      dv.parent AS definition_id,
+                      hr.name AS route
+               FROM hook_lc hl
+               JOIN hook h ON h.id = hl.hook_id
+               JOIN hook_route hr ON hr.id = h.route_id
+               JOIN instance i ON i.id = h.instance_id
+               JOIN def_version dv ON dv.id = i.def_version
+               WHERE hl.lc_id = {LC_ID}
+               ORDER BY h.order_seq ASC, h.id ASC
+               LIMIT 1;";
+
         // Count gate+dispatched hooks in a given order for the current lifecycle entry
         // where at least one ack_consumer is non-terminal (Processed=3, Failed=4, Cancelled=5 all count as terminal).
         // Used by AckOutcomeOrchestrator to decide whether the current order is done enough to advance to the next.

@@ -14,6 +14,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
     protected readonly UseCaseRuntimeOptions Options;
 
     protected abstract string DefinitionName { get; }
+    protected abstract override int? ResolveTransitionCompleteFallbackEvent(ILifeCycleCompleteEvent evt, ConsumerContext ctx);
 
     protected InteractiveHookWrapperBase(UseCaseRuntimeOptions options) {
         Options = options ?? throw new ArgumentNullException(nameof(options));

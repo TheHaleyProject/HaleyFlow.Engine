@@ -9,6 +9,9 @@ namespace Haley.Internal {
         public Task<long?> GetAckIdByLcIdAsync(long lcId, DbExecutionLoad load = default)
             => Db.ScalarAsync<long?>(QRY_ACK_LC.GET_ACK_ID_BY_LC_ID, load, (LC_ID, lcId));
 
+        public Task<long?> GetLcIdByAckGuidAsync(string ackGuid, DbExecutionLoad load = default)
+            => Db.ScalarAsync<long?>(QRY_ACK_LC.GET_LC_ID_BY_ACK_GUID, load, (GUID, ackGuid));
+
         public Task<int> AttachAsync(long ackId, long lcId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_ACK_LC.ATTACH, load, (ACK_ID, ackId), (LC_ID, lcId));
 

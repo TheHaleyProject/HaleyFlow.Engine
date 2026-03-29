@@ -90,12 +90,13 @@ public sealed class InProcessEngineProxy : ILifeCycleEngineProxy {
     // ── Event ingress ─────────────────────────────────────────────────────────
     // Called on the engine's own thread. Must be fast and non-blocking.
     // TryWrite on an unbounded channel never blocks and never fails.
+    // Complete events travel with transition events because the consumer polls them from the same lane.
 
     private Task OnEventRaised(ILifeCycleEvent evt) {
         var item = new InProcessDispatchItem(evt);
-        var writer = evt.Kind == LifeCycleEventKind.Transition
-            ? _transitions.Writer
-            : _hooks.Writer;
+        var writer = evt.Kind == LifeCycleEventKind.Hook
+            ? _hooks.Writer
+            : _transitions.Writer;
         writer.TryWrite(item);
         return Task.CompletedTask;
     }

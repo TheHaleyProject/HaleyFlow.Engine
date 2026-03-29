@@ -6,13 +6,14 @@ using static Haley.Internal.KeyConstants;
 using static Haley.Enums.HookType;
 
 namespace Haley.Services.Orchestrators {
-    // Handles consumer ACK outcomes and follow-up orchestration that can be triggered by ACK=Processed.
+    // Handles consumer ACK outcomes and the follow-up orchestration triggered by ACK=Processed.
     // This keeps WorkFlowEngine thin while preserving the same semantics:
     // - update ack status
+    // - ValidationMode lifecycle ACK releases hook order 1
     // - AckMode=Any sibling fan-out
     // - hook-group completion checks
     // - ordered gate/effect hook advancement
-    // - gate-success drain: skip remaining gates, drain effects in order, then dispatch TransitionMode event
+    // - gate-success drain: skip remaining gates, drain effects in order, then dispatch Complete
     internal sealed class AckOutcomeOrchestrator {
         private readonly IWorkFlowDAL _dal;
         private readonly IAckManager _ackManager;
@@ -48,7 +49,7 @@ namespace Haley.Services.Orchestrators {
             if (hookCtx == null) return;
 
             try {
-                await AdvanceAndCheckTransitionModeAsync(hookCtx, ct);
+                await AdvanceAndCheckCompletionAsync(hookCtx, ct);
             } catch (Exception ex) {
                 _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                     $"Order advancement failed after effect abandon. ack={ackGuid}: {ex.Message}"));
@@ -70,13 +71,33 @@ namespace Haley.Services.Orchestrators {
             if (outcome != AckOutcome.Processed) return;
 
             // Single hook context lookup reused by fan-out and order-advancement checks.
-            // If ackGuid belongs to lifecycle transition ACK, hook context is null and checks are skipped.
+            // If ackGuid belongs to a lifecycle transition ACK, hook context is null and we use the
+            // lifecycle ACK path below to release the first hook batch for ValidationMode.
             DbRow? hookCtx = null;
             try {
                 hookCtx = await _dal.Hook.GetContextByAckGuidAsync(ackGuid, load);
             } catch (Exception ex) {
                 _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                     $"Hook context lookup failed for ack={ackGuid}: {ex.Message}"));
+            }
+
+            if (hookCtx == null) {
+                try {
+                    var lcId = await _dal.LcAck.GetLcIdByAckGuidAsync(ackGuid, load);
+                    if (lcId.HasValue && lcId.Value > 0) {
+                        var undispatchedHooks = await _dal.HookLc.CountUndispatchedByLcIdAsync(lcId.Value, load);
+                        if (undispatchedHooks > 0) {
+                            var hookCtxForLc = await _dal.Hook.GetContextByLcIdAsync(lcId.Value, load);
+                            if (hookCtxForLc != null) {
+                                await AdvanceNextHookOrderAsync(hookCtxForLc, ct);
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
+                        $"ValidationMode lifecycle ACK handling failed for ack={ackGuid}: {ex.Message}"));
+                }
+                return;
             }
 
             // AckMode=Any: one consumer processing success completes the whole sibling set.
@@ -109,8 +130,6 @@ namespace Haley.Services.Orchestrators {
                     $"Group completion check failed for ack={ackGuid}: {ex.Message}"));
             }
 
-            if (hookCtx == null) return;
-
             var hookType = (HookType)hookCtx.GetInt(KEY_HOOK_TYPE);
 
             // Gate hooks: check if the current order is fully resolved before advancing.
@@ -124,7 +143,7 @@ namespace Haley.Services.Orchestrators {
                         // Check if this gate has an OnSuccessEvent — if so, skip all remaining undispatched gates
                         // before draining effects. This implements the gate-success execution contract.
                         await TrySkipRemainingGatesIfSuccessCodeAsync(hookCtx, ct);
-                        await AdvanceAndCheckTransitionModeAsync(hookCtx, ct);
+                        await AdvanceAndCheckCompletionAsync(hookCtx, ct);
                     }
                 } catch (Exception ex) {
                     _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
@@ -142,7 +161,7 @@ namespace Haley.Services.Orchestrators {
                         hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
                         hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
                     if (incompleteGates == 0)
-                        await AdvanceAndCheckTransitionModeAsync(hookCtx, ct);
+                        await AdvanceAndCheckCompletionAsync(hookCtx, ct);
                 } catch (Exception ex) {
                     _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                         $"Effect order advancement failed for ack={ackGuid}: {ex.Message}"));
@@ -157,6 +176,7 @@ namespace Haley.Services.Orchestrators {
             var policyId = hookCtx.GetLong(KEY_POLICY_ID);
             var stateId = hookCtx.GetLong(KEY_STATE_ID);
             var viaEventId = hookCtx.GetLong(KEY_VIA_EVENT);
+            var lcId = hookCtx.GetLong(KEY_LC_ID);
             var route = hookCtx.GetString(KEY_ROUTE) ?? string.Empty;
             if (string.IsNullOrWhiteSpace(route)) return;
 
@@ -170,60 +190,61 @@ namespace Haley.Services.Orchestrators {
 
             var hctx = _policyEnforcer.ResolveHookContextFromJson(policy.PolicyJson!, toState, viaEvent, route, ct, policyId);
             if (string.IsNullOrWhiteSpace(hctx.OnSuccessEvent)) return;
+            if (!int.TryParse(hctx.OnSuccessEvent, out var resolvedNextEvent) || resolvedNextEvent <= 0) return;
 
             // This gate has a success code — skip all remaining undispatched gates in scope.
             await _dal.Hook.SkipUndispatchedGateHooksAsync(
                 hookCtx.GetLong(KEY_INSTANCE_ID), stateId, viaEventId,
                 hookCtx.GetBool(KEY_ON_ENTRY), hookCtx.GetLong(KEY_LC_ID), new DbExecutionLoad(ct));
+
+            // Persist the winning next code now so later effect ACKs keep the same completion result.
+            await _dal.LcNext.InsertAsync(lcId, resolvedNextEvent, hookCtx.GetLong(KEY_ACK_ID), new DbExecutionLoad(ct));
         }
 
         // Advances to the next undispatched hook order.
         // Returns true when all hooks in scope are dispatched (no more undispatched orders remain).
-        // After all hooks dispatched, checks for a skipped gate — if found, dispatches TransitionMode event.
-        private async Task AdvanceAndCheckTransitionModeAsync(DbRow hookCtx, CancellationToken ct) {
+        // After all hooks dispatches/resolve, emit a Complete event carrying the engine-resolved next code.
+        private async Task AdvanceAndCheckCompletionAsync(DbRow hookCtx, CancellationToken ct) {
             var allDone = await AdvanceNextHookOrderAsync(hookCtx, ct);
             if (!allDone) return;
 
-            // All hooks dispatched — check for a gate-success drain scenario.
-            // If any gate was skipped (status=2), it means a gate succeeded with OnSuccessEvent.
-            // After all effects drained, we now dispatch a TransitionMode event so the consumer
-            // fires the next event code without running business logic again.
-            var instanceId = hookCtx.GetLong(KEY_INSTANCE_ID);
-            var lcId = hookCtx.GetLong(KEY_LC_ID);
             var instanceGuid = hookCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
-
             try {
-                var skippedGate = await _dal.Hook.GetFirstSkippedGateRouteAsync(instanceId, lcId, new DbExecutionLoad(ct));
-                if (skippedGate == null) return;
-
-                // Re-resolve the gate's OnSuccessEvent from policy.
-                var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
-                var policyId = hookCtx.GetLong(KEY_POLICY_ID);
-                var stateId = skippedGate.GetLong(KEY_STATE_ID);
-                var viaEventId = skippedGate.GetLong(KEY_VIA_EVENT);
-                var route = skippedGate.GetString(KEY_ROUTE) ?? string.Empty;
-
-                var bp = await _blueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
-                var policy = await _policyEnforcer.ResolvePolicyByIdAsync(policyId, new DbExecutionLoad(ct));
-                if (string.IsNullOrWhiteSpace(policy.PolicyJson)) return;
-
-                bp.StatesById.TryGetValue(stateId, out var toState);
-                bp.EventsById.TryGetValue(viaEventId, out var viaEvent);
-                if (toState == null) return;
-
-                var hctx = _policyEnforcer.ResolveHookContextFromJson(policy.PolicyJson!, toState, viaEvent, route, ct, policyId);
-                if (string.IsNullOrWhiteSpace(hctx.OnSuccessEvent)) return;
-
-                await DispatchTransitionModeEventAsync(hookCtx, hctx.OnSuccessEvent!, ct);
+                var resolvedNextEvent = await ResolveCompletionNextEventAsync(hookCtx, ct);
+                await DispatchCompleteEventAsync(hookCtx, resolvedNextEvent, ct);
             } catch (Exception ex) {
-                _fireNotice(LifeCycleNotice.Warn("TRANSITION_MODE_DISPATCH_ERROR", "TRANSITION_MODE_DISPATCH_ERROR",
-                    $"TransitionMode dispatch failed after effect drain. instance={instanceGuid}: {ex.Message}"));
+                _fireNotice(LifeCycleNotice.Warn("COMPLETE_DISPATCH_ERROR", "COMPLETE_DISPATCH_ERROR",
+                    $"Complete dispatch failed after hook resolution. instance={instanceGuid}: {ex.Message}"));
             }
         }
 
-        // Dispatches a new TransitionMode lifecycle transition event to all transition consumers.
-        // This drives the consumer to fire the next event code without re-executing business logic.
-        private async Task DispatchTransitionModeEventAsync(DbRow hookCtx, string onSuccessEvent, CancellationToken ct) {
+        private async Task<int> ResolveCompletionNextEventAsync(DbRow hookCtx, CancellationToken ct) {
+            var lcId = hookCtx.GetLong(KEY_LC_ID);
+            var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
+            var policyId = hookCtx.GetLong(KEY_POLICY_ID);
+
+            // If a terminal gate already resolved a winning next code, preserve it through effect drain.
+            var storedNextEvent = await _dal.LcNext.GetNextEventByLcIdAsync(lcId, new DbExecutionLoad(ct));
+            if (storedNextEvent.HasValue && storedNextEvent.Value > 0) return storedNextEvent.Value;
+
+            // Normal all-hooks-done flow falls back to the transition rule's complete.success.
+            var bp = await _blueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
+            var policy = await _policyEnforcer.ResolvePolicyByIdAsync(policyId, new DbExecutionLoad(ct));
+            if (string.IsNullOrWhiteSpace(policy.PolicyJson)) return 0;
+
+            bp.StatesById.TryGetValue(hookCtx.GetLong(KEY_STATE_ID), out var toState);
+            bp.EventsById.TryGetValue(hookCtx.GetLong(KEY_VIA_EVENT), out var viaEvent);
+            if (toState == null) return 0;
+
+            var ruleCtx = _policyEnforcer.ResolveRuleContextFromJson(policy.PolicyJson!, toState, viaEvent, ct, policyId);
+            return int.TryParse(ruleCtx.OnSuccessEvent, out var nextEvent) && nextEvent > 0
+                ? nextEvent
+                : 0;
+        }
+
+        // Dispatches a Complete lifecycle event to all transition consumers.
+        // The event carries the engine-resolved next event suggestion. Consumer code may accept it or override it.
+        private async Task DispatchCompleteEventAsync(DbRow hookCtx, int resolvedNextEvent, CancellationToken ct) {
             var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
             var instanceGuid = hookCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
             var entityId = hookCtx.GetString(KEY_ENTITY_ID) ?? string.Empty;
@@ -231,16 +252,32 @@ namespace Haley.Services.Orchestrators {
             var metadata = hookCtx.GetString(KEY_METADATA);
             var lcId = hookCtx.GetLong(KEY_LC_ID);
 
+            var existingAckId = await _dal.LcNext.GetDispatchedAckIdByLcIdAsync(lcId, new DbExecutionLoad(ct));
+            if (existingAckId.HasValue && existingAckId.Value > 0) return;
+
             var consumers = await _ackManager.GetTransitionConsumersAsync(defVersionId, ct);
             var normConsumers = InternalUtils.NormalizeConsumers(consumers);
-            if (normConsumers.Count == 0) return;
+            if (normConsumers.Count == 0)
+                throw new InvalidOperationException($"No transition consumers found for complete dispatch. defVersionId={defVersionId} lcId={lcId}");
 
-            var txLoad = new DbExecutionLoad(ct);
-            var ackRef = await _ackManager.CreateLifecycleAckAsync(lcId, normConsumers, (int)AckStatus.Pending, txLoad);
+            var transaction = _dal.CreateNewTransaction();
+            using var tx = transaction.Begin(false);
+            var txLoad = new DbExecutionLoad(ct, transaction);
+            var committed = false;
+            IWorkFlowAckRef ackRef;
+            try {
+                await _dal.LcNext.InsertAsync(lcId, resolvedNextEvent, hookCtx.GetLong(KEY_ACK_ID), txLoad);
+                ackRef = await _ackManager.CreateCompleteAckAsync(lcId, normConsumers, (int)AckStatus.Pending, txLoad);
+                transaction.Commit();
+                committed = true;
+            } catch {
+                if (!committed) { try { transaction.Rollback(); } catch { } }
+                throw;
+            }
 
             var toDispatch = new List<ILifeCycleEvent>(normConsumers.Count);
             for (var i = 0; i < normConsumers.Count; i++) {
-                toDispatch.Add(new LifeCycleTransitionEvent {
+                toDispatch.Add(new LifeCycleCompleteEvent {
                     ConsumerId = normConsumers[i],
                     InstanceGuid = instanceGuid,
                     DefinitionId = definitionId,
@@ -249,18 +286,16 @@ namespace Haley.Services.Orchestrators {
                     Metadata = metadata,
                     OccurredAt = DateTimeOffset.UtcNow,
                     AckGuid = ackRef.AckGuid ?? string.Empty,
-                    DispatchMode = TransitionDispatchMode.TransitionMode,
-                    OnSuccessEvent = onSuccessEvent,
                     LifeCycleId = lcId,
-                    EventCode = 0,
-                    EventName = string.Empty
+                    HooksSucceeded = true,
+                    NextEvent = resolvedNextEvent
                 });
             }
 
             await _dispatchEventsAsync(toDispatch, ct);
-            _fireNotice(LifeCycleNotice.Info("TRANSITION_MODE_DISPATCHED", "TRANSITION_MODE_DISPATCHED",
-                $"TransitionMode event dispatched after gate-success effect drain. instance={instanceGuid} onSuccessEvent={onSuccessEvent}",
-                new Dictionary<string, object?> { ["instanceGuid"] = instanceGuid, ["onSuccessEvent"] = onSuccessEvent }));
+            _fireNotice(LifeCycleNotice.Info("COMPLETE_DISPATCHED", "COMPLETE_DISPATCHED",
+                $"Complete event dispatched after hook resolution. instance={instanceGuid} nextEvent={resolvedNextEvent}",
+                new Dictionary<string, object?> { ["instanceGuid"] = instanceGuid, ["nextEvent"] = resolvedNextEvent }));
         }
 
         // Dispatches the next undispatched hook order for the given lifecycle scope.
@@ -281,6 +316,8 @@ namespace Haley.Services.Orchestrators {
 
             var hookConsumers = await _ackManager.GetHookConsumersAsync(defVersionId, ct);
             var normConsumers = InternalUtils.NormalizeConsumers(hookConsumers);
+            if (normConsumers.Count == 0)
+                throw new InvalidOperationException($"No Hook consumers found for ordered hook dispatch. defVersionId={defVersionId} lcId={lcId}");
 
             var baseLcEvent = new LifeCycleEvent {
                 InstanceGuid = instanceGuid,

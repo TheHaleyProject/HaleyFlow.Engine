@@ -72,6 +72,7 @@ namespace Haley.Internal {
         public const string KEY_ORDER_NO = "order_no";
         public const string KEY_DEF_VERSION_NUM = "def_version_num";
         public const string KEY_LAST_EVENT = "last_event";
+        public const string KEY_DISPATCH_MODE = "dispatch_mode";
         public const string KEY_TOTAL_ACKS = "total_acks";
         public const string KEY_PROCESSED_ACKS = "processed_acks";
         public const string KEY_FAILED_ACKS = "failed_acks";

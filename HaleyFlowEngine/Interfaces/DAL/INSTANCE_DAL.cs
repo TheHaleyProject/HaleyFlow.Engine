@@ -58,6 +58,7 @@ namespace Haley.Abstractions {
 
         // Ordered emission support — all order queries now require lcId to scope to the current lifecycle entry.
         Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
+        Task<DbRow?> GetContextByLcIdAsync(long lcId, DbExecutionLoad load = default);
         Task<int>    CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
         Task<int?>   GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default);
         Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
@@ -94,6 +95,8 @@ namespace Haley.Abstractions {
         Task<long> InsertReturnIdAsync(long hookId, long lcId, DbExecutionLoad load = default);
         /// <summary>Marks a hook_lc row as dispatched (ACK rows created, event fired).</summary>
         Task MarkDispatchedAsync(long hookLcId, DbExecutionLoad load = default);
+        /// <summary>Counts hook_lc rows for a lifecycle entry that are still waiting for release.</summary>
+        Task<int> CountUndispatchedByLcIdAsync(long lcId, DbExecutionLoad load = default);
         /// <summary>Returns how many times this hook has been fully dispatched (run count across all lifecycle entries).</summary>
         Task<int> CountDispatchedByHookIdAsync(long hookId, DbExecutionLoad load = default);
     }

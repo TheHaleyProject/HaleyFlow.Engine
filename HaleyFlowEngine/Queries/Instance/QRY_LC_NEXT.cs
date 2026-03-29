@@ -21,6 +21,18 @@ namespace Haley.Internal {
                VALUES ({ACK_ID}, {LC_ID})
                ON DUPLICATE KEY UPDATE ack_id = ack_id;";
 
+        public const string GET_DISPATCHED_ACK_ID_BY_LC_ID =
+            $@"SELECT ack_id AS id
+               FROM lcn_ack
+               WHERE lc_id = {LC_ID}
+               LIMIT 1;";
+
+        public const string GET_NEXT_EVENT_BY_LC_ID =
+            $@"SELECT `next` AS next_event
+               FROM lc_next
+               WHERE id = {LC_ID}
+               LIMIT 1;";
+
         public const string LIST_PENDING =
             $@"SELECT id AS lc_id, `next` AS next_event
                FROM lc_next

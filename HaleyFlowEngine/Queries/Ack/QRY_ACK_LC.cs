@@ -8,6 +8,12 @@ namespace Haley.Internal {
         public const string GET_BY_LC_ID = $@"SELECT * FROM lc_ack WHERE lc_id = {LC_ID} LIMIT 1;";
         public const string GET_BY_ACK_ID = $@"SELECT * FROM lc_ack WHERE ack_id = {ACK_ID} LIMIT 1;";
         public const string GET_ACK_ID_BY_LC_ID = $@"SELECT ack_id AS id FROM lc_ack WHERE lc_id = {LC_ID} LIMIT 1;";
+        public const string GET_LC_ID_BY_ACK_GUID =
+            $@"SELECT la.lc_id AS id
+               FROM lc_ack la
+               JOIN ack a ON a.id = la.ack_id
+               WHERE a.guid = lower(trim({GUID}))
+               LIMIT 1;";
 
         // idempotent attach (lc_id is PK)
         public const string ATTACH = $@"INSERT INTO lc_ack (ack_id, lc_id) VALUES ({ACK_ID}, {LC_ID}) ON DUPLICATE KEY UPDATE ack_id = ack_id;";

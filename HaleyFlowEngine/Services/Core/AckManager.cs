@@ -68,6 +68,20 @@ namespace Haley.Services {
             return await CreateAckAsync(consumerIds, initialAckStatus, load, getExistingAckIdAsync: () => _dal.LcAck.GetAckIdByLcIdAsync(lifecycleId, load), attachAsync: ackId => _dal.LcAck.AttachAsync(ackId, lifecycleId, load));
         }
 
+        // Complete events reuse the same ack/ack_consumer delivery model, but their lifecycle mapping
+        // is stored in lcn_ack (not lc_ack). This keeps the original transition ack and the later
+        // completion ack separate for the same lifecycle row.
+        public async Task<IWorkFlowAckRef> CreateCompleteAckAsync(long lifecycleId, IReadOnlyList<long> consumerIds, int initialAckStatus, DbExecutionLoad load = default) {
+            load.Ct.ThrowIfCancellationRequested();
+            if (lifecycleId <= 0) throw new ArgumentOutOfRangeException(nameof(lifecycleId));
+            return await CreateAckAsync(
+                consumerIds,
+                initialAckStatus,
+                load,
+                getExistingAckIdAsync: () => _dal.LcNext.GetDispatchedAckIdByLcIdAsync(lifecycleId, load),
+                attachAsync: ackId => _dal.LcNext.MarkDispatchedAsync(lifecycleId, ackId, load));
+        }
+
         // Same pattern as CreateLifecycleAckAsync but for hook_lc rows (one ack per hook per lifecycle entry).
         // hookLcId is hook_lc.id — hook_ack.hook_id FKs to hook_lc.id in the new schema.
         // Idempotent on the ack itself; only inserts missing consumer rows.
@@ -173,9 +187,11 @@ namespace Haley.Services {
         // so the consumer always gets the policy snapshot that was active when the instance was created.
         public async Task<IReadOnlyList<ILifeCycleDispatchItem>> ListDueLifecycleDispatchAsync(long consumerId, int ackStatus, int ttlSeconds, int skip, int take, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-            var rows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);
-            var list = new List<ILifeCycleDispatchItem>(rows.Count);
-            foreach (var r in rows) {
+            var lifecycleRows = await _dal.AckDispatch.ListDueLifecyclePagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);
+            var completeRows = await _dal.AckDispatch.ListDueCompletePagedAsync(consumerId, ackStatus, ttlSeconds, skip, take, load);
+            var list = new List<ILifeCycleDispatchItem>(lifecycleRows.Count + completeRows.Count);
+
+            foreach (var r in lifecycleRows) {
                 load.Ct.ThrowIfCancellationRequested();
                 var evt = new LifeCycleTransitionEvent {
                     DefinitionId = r.GetLong(KEY_DEF_ID),
@@ -191,6 +207,7 @@ namespace Haley.Services {
                     ToStateId = r.GetLong(KEY_TO_STATE),
                     EventCode = r.GetNullableInt(KEY_EVENT_CODE) ?? 0,
                     EventName = r.GetString(KEY_EVENT_NAME) ?? string.Empty,
+                    DispatchMode = (TransitionDispatchMode)(r.GetNullableInt(KEY_DISPATCH_MODE) ?? 0),
                     PrevStateMeta = null
                 };
 
@@ -223,7 +240,43 @@ namespace Haley.Services {
                     Event = evt
                 });
             }
-            return list;
+
+            foreach (var r in completeRows) {
+                load.Ct.ThrowIfCancellationRequested();
+                var evt = new LifeCycleCompleteEvent {
+                    DefinitionId = r.GetLong(KEY_DEF_ID),
+                    DefinitionVersionId = r.GetLong(KEY_DEF_VERSION_ID),
+                    ConsumerId = r.GetLong(KEY_CONSUMER),
+                    InstanceGuid = r.GetString(KEY_INSTANCE_GUID),
+                    EntityId = r.GetString(KEY_ENTITY_ID) ?? string.Empty,
+                    OccurredAt = r.GetDateTimeOffset(KEY_LC_CREATED) ?? DateTimeOffset.UtcNow,
+                    AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
+                    Metadata = r.GetString(KEY_METADATA),
+                    LifeCycleId = r.GetLong(KEY_LC_ID),
+                    HooksSucceeded = (r.GetNullableInt(KEY_HOOKS_SUCCEEDED) ?? 0) == 1,
+                    NextEvent = r.GetNullableInt(KEY_NEXT_EVENT) ?? 0
+                };
+
+                list.Add(new LifeCycleDispatchItem {
+                    Kind = LifeCycleEventKind.Complete,
+                    AckId = r.GetLong(KEY_ACK_ID),
+                    AckGuid = r.GetString(KEY_ACK_GUID) ?? string.Empty,
+                    ConsumerId = r.GetLong(KEY_CONSUMER),
+                    AckStatus = r.GetInt(KEY_STATUS),
+                    TriggerCount = r.GetInt(KEY_TRIGGER_COUNT),
+                    MaxTrigger = r.GetInt(KEY_MAX_TRIGGER),
+                    LastTrigger = r.GetDateTime(KEY_LAST_TRIGGER) ?? DateTime.UtcNow,
+                    NextDue = r.GetDateTime(KEY_NEXT_DUE),
+                    Event = evt
+                });
+            }
+
+            return list
+                .OrderBy(x => x.NextDue ?? DateTime.MaxValue)
+                .ThenBy(x => x.AckId)
+                .ThenBy(x => x.ConsumerId)
+                .Take(take)
+                .ToList();
         }
 
         // Same as ListDueLifecycleDispatchAsync but for hook events.
@@ -291,7 +344,9 @@ namespace Haley.Services {
 
         public async Task<int> CountDueLifecycleDispatchAsync(int ackStatus, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
-            return (await _dal.AckDispatch.CountDueLifecycleAsync(ackStatus, load)) ?? 0;
+            var lifecycle = (await _dal.AckDispatch.CountDueLifecycleAsync(ackStatus, load)) ?? 0;
+            var complete = (await _dal.AckDispatch.CountDueCompleteAsync(ackStatus, load)) ?? 0;
+            return lifecycle + complete;
         }
 
         public async Task<int> CountDueHookDispatchAsync(int ackStatus, DbExecutionLoad load = default) {

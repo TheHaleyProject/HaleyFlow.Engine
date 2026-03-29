@@ -119,5 +119,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
             Console.WriteLine($"[CONSUMER] hook route={evt.Route} (no custom action)");
             return Task.FromResult(AckOutcome.Processed);
         }
+
+        protected override int? ResolveTransitionCompleteFallbackEvent(ILifeCycleCompleteEvent evt, ConsumerContext ctx) => null;
     }
 }

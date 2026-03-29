@@ -54,6 +54,8 @@ namespace Haley.Abstractions {
 
     internal interface ILcNextDAL {
         Task<int> InsertAsync(long lcId, int nextEvent, long? sourceAckId, DbExecutionLoad load = default);
+        Task<int?> GetNextEventByLcIdAsync(long lcId, DbExecutionLoad load = default);
+        Task<long?> GetDispatchedAckIdByLcIdAsync(long lcId, DbExecutionLoad load = default);
         Task<int> MarkDispatchedAsync(long lcId, long ackId, DbExecutionLoad load = default);
         Task<DbRows> ListPendingAsync(int take, DbExecutionLoad load = default);
     }

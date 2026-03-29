@@ -175,6 +175,8 @@ namespace WFE.Test.UseCases.ChangeRequest {
             return Task.FromResult(AckOutcome.Processed);
         }
 
+        protected override int? ResolveTransitionCompleteFallbackEvent(ILifeCycleCompleteEvent evt, ConsumerContext ctx) => null;
+
         protected override Task BeforeDecisionAsync(ILifeCycleHookEvent evt, string decisionMessage, CancellationToken ct)
             => UpsertRuntimeStatusAsync(
                 evt,
