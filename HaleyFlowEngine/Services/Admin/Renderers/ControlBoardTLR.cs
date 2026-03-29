@@ -9,7 +9,7 @@ namespace Haley.Services;
 /// <summary>
 /// Converts a timeline JSON string into a self-contained HTML page.
 /// Design: Control Board (D) — fixed control card, scrollable left rail summary,
-/// sticky right-side filter bar, and rich transition cards with activity and hook panels.
+/// sticky top toolbar, rich transition cards, and left-side overlay drawers for notices and hook inventory.
 /// Primary theme uses green accents.
 /// </summary>
 internal static class ControlBoardTLR {
@@ -54,7 +54,7 @@ internal static class ControlBoardTLR {
   <section class="board">
 """);
             WriteBoardHeader(sb, boardTitle);
-            WriteFilterPanel(sb, count);
+            WriteFilterPanel(sb, count, notices.Count, hookCount);
             sb.Append("""
     <div class="board-body">
       <div class="entries" id="entries-area">
@@ -71,13 +71,11 @@ internal static class ControlBoardTLR {
 
             sb.Append("""
       </div>
-""");
-            WriteNoticeRail(sb, notices, noticeWindowLabel, noticeCapLabel);
-            sb.Append("""
     </div>
   </section>
 
 """);
+            WriteLeftDrawers(sb, items, notices, noticeWindowLabel, noticeCapLabel, detail);
         }
 
         sb.Append("""
@@ -190,15 +188,62 @@ internal static class ControlBoardTLR {
     .board-title { font-size: clamp(1.45rem, 2vw, 2.1rem); line-height: 1.08; font-weight: 900; overflow-wrap: anywhere; }
     .board-toolbar-stick { position: sticky; top: 16px; z-index: 8; }
     .board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .board-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+    .board-body { display: block; }
     .toolbar-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
     .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: #ffffff; color: var(--muted); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all .15s ease; }
     .btn:hover { border-color: var(--brand); color: var(--brand-deep); }
     .btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
     .entries { display: flex; flex-direction: column; gap: 18px; padding-bottom: 24px; }
-    .notice-rail { min-width: 0; }
-    .notice-panel { position: sticky; top: 90px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 106px); }
+    body.drawer-open { overflow: hidden; }
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(14, 23, 20, .28);
+      opacity: 0; pointer-events: none; transition: opacity .18s ease; z-index: 80;
+    }
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+    .left-drawer {
+      position: fixed; top: 0; bottom: 0; left: 0; width: min(540px, calc(100vw - 28px));
+      padding: 14px; transform: translateX(-108%); transition: transform .22s ease;
+      z-index: 90; pointer-events: none;
+    }
+    .left-drawer.open { transform: translateX(0); pointer-events: auto; }
+    .drawer-panel {
+      height: calc(100vh - 28px); display: flex; flex-direction: column; gap: 14px;
+      border-radius: 28px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 28px 64px rgba(15, 23, 42, .18);
+      overflow: hidden;
+    }
+    .drawer-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      padding: 20px 22px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #ffffff, var(--panel-soft));
+    }
+    .drawer-title-wrap { min-width: 0; display: grid; gap: 8px; }
+    .drawer-title { font-size: 15px; text-transform: uppercase; letter-spacing: .14em; color: var(--brand-deep); font-weight: 900; }
+    .drawer-subtitle { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .drawer-close {
+      width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--muted);
+      font-size: 18px; font-weight: 900; cursor: pointer; flex-shrink: 0;
+    }
+    .drawer-close:hover { border-color: var(--brand); color: var(--brand-deep); }
+    .drawer-body { min-height: 0; overflow-y: auto; padding: 0 22px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .drawer-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .drawer-chip { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; background: var(--brand-soft-2); color: var(--brand-deep); border: 1px solid var(--line); }
+    .drawer-chip.warn { background: var(--amber-soft); color: var(--amber-text); }
+    .drawer-chip.fail { background: var(--red-soft); color: var(--red-text); }
+    .drawer-chip.info { background: var(--blue-soft); color: var(--blue-text); }
+    .drawer-group { border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); padding: 14px; display: grid; gap: 12px; }
+    .drawer-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .drawer-group-title { font-size: 13px; font-weight: 900; color: var(--text); }
+    .drawer-group-meta { margin-top: 3px; font-size: 11px; color: var(--muted); font-family: Consolas, monospace; }
+    .inventory-list { display: grid; gap: 10px; }
+    .inventory-row { border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; background: rgba(255,255,255,.82); display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+    .inventory-order { font-size: 12px; font-weight: 900; color: var(--brand-deep); font-family: Consolas, monospace; text-align: center; }
+    .inventory-main { min-width: 0; }
+    .inventory-route { font-size: 12px; font-weight: 800; color: var(--brand-deep); font-family: Consolas, monospace; line-height: 1.25; overflow-wrap: anywhere; }
+    .inventory-label { margin-top: 2px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+    .inventory-side { min-width: max-content; display: grid; gap: 6px; justify-items: end; }
+    .inventory-meta { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .inventory-note { font-size: 10px; color: var(--muted); font-family: Consolas, monospace; }
+    .inventory-empty, .notice-empty { color: var(--muted); font-size: 12px; font-style: italic; }
     .notice-subtitle { color: var(--muted); font-size: 11px; line-height: 1.45; }
     .notice-list { display: grid; gap: 10px; overflow-y: auto; padding-right: 4px; }
     .notice-card { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); display: grid; gap: 8px; }
@@ -213,7 +258,6 @@ internal static class ControlBoardTLR {
     .notice-meta { display: grid; gap: 4px; }
     .notice-meta-row { font-size: 10px; color: var(--muted); font-family: Consolas, monospace; overflow-wrap: anywhere; }
     .notice-data { border-top: 1px dashed var(--line); padding-top: 8px; font-size: 10px; color: var(--muted); font-family: Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
-    .notice-empty { color: var(--muted); font-size: 12px; font-style: italic; }
     .entry { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); box-shadow: var(--shadow); }
     .entry-wrap { display: grid; grid-template-columns: 120px minmax(0, 1fr); }
     .entry-index { background: linear-gradient(180deg, var(--brand-deep), #146530); color: #f5fff7; padding: 16px 10px 18px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; }
@@ -310,9 +354,7 @@ internal static class ControlBoardTLR {
       .side { position: static; max-height: none; }
       .side-scroll { max-height: none; overflow: visible; padding-right: 0; }
       .board-toolbar-stick { position: static; }
-      .board-body { grid-template-columns: 1fr; }
-      .notice-panel { position: static; max-height: none; }
-      .notice-list { overflow: visible; padding-right: 0; }
+      .left-drawer { width: min(92vw, 560px); }
     }
     @media (max-width: 760px) {
       .shell { padding: 14px; }
@@ -323,6 +365,11 @@ internal static class ControlBoardTLR {
       .hook-card { grid-template-columns: 1fr; }
       .hook-side { justify-items: start; text-align: left; }
       .hook-meta { justify-content: flex-start; flex-wrap: wrap; white-space: normal; }
+      .inventory-row { grid-template-columns: 1fr; }
+      .inventory-side { justify-items: start; }
+      .inventory-meta { justify-content: flex-start; }
+      .left-drawer { width: calc(100vw - 12px); padding: 6px; }
+      .drawer-panel { height: calc(100vh - 12px); }
       .entity { font-size: 24px; }
     }
   </style>
@@ -366,9 +413,43 @@ internal static class ControlBoardTLR {
       if (entry) entry.classList.toggle('force-open');
     }
 
+    function closeLeftDrawer() {
+      document.body.classList.remove('drawer-open');
+      var backdrop = document.getElementById('drawer-backdrop');
+      if (backdrop) backdrop.classList.remove('open');
+
+      document.querySelectorAll('.left-drawer').forEach(function(drawer) {
+        drawer.classList.remove('open');
+      });
+
+      document.querySelectorAll('[data-drawer-btn]').forEach(function(btn) {
+        btn.classList.remove('active');
+      });
+    }
+
+    function toggleLeftDrawer(kind) {
+      var target = document.getElementById('drawer-' + kind);
+      if (!target) return;
+
+      var alreadyOpen = target.classList.contains('open');
+      closeLeftDrawer();
+      if (alreadyOpen) return;
+
+      document.body.classList.add('drawer-open');
+      var backdrop = document.getElementById('drawer-backdrop');
+      if (backdrop) backdrop.classList.add('open');
+      target.classList.add('open');
+
+      var btn = document.querySelector('[data-drawer-btn="' + kind + '"]');
+      if (btn) btn.classList.add('active');
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
       var active = document.querySelector('.board-toolbar .filter-btn.active');
       setControlBoardFilter('all', active);
+      document.addEventListener('keydown', function(evt) {
+        if (evt.key === 'Escape') closeLeftDrawer();
+      });
     });
   </script>
 """);
@@ -428,7 +509,7 @@ internal static class ControlBoardTLR {
 """);
     }
 
-    private static void WriteFilterPanel(StringBuilder sb, int visibleCount) {
+    private static void WriteFilterPanel(StringBuilder sb, int visibleCount, int noticeCount, int hookCount) {
         sb.Append($"""
     <div class="board-toolbar-stick">
       <section class="panel pad board-toolbar">
@@ -443,6 +524,8 @@ internal static class ControlBoardTLR {
           <button class="btn filter-btn" onclick="setControlBoardFilter('complete', this)">Complete</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('loop', this)">Loop / re-entry</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('edge', this)">Initial / terminal</button>
+          <button class="btn" data-drawer-btn="notices" onclick="toggleLeftDrawer('notices')">Recent notices · {noticeCount}</button>
+          <button class="btn" data-drawer-btn="hooks" onclick="toggleLeftDrawer('hooks')">Hook inventory · {hookCount}</button>
           <button class="btn" id="board-compact-btn" onclick="toggleControlBoardCompact()">Compact</button>
         </div>
       </section>
@@ -509,7 +592,15 @@ internal static class ControlBoardTLR {
 """);
     }
 
-    private static void WriteNoticeRail(StringBuilder sb, IReadOnlyList<Dictionary<string, object?>> notices, string noticeWindowLabel, string noticeCapLabel) {
+    private static void WriteLeftDrawers(StringBuilder sb, List<JsonElement> items, IReadOnlyList<Dictionary<string, object?>> notices, string noticeWindowLabel, string noticeCapLabel, TimelineDetail detail) {
+        sb.Append("""
+  <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeLeftDrawer()"></div>
+""");
+        WriteNoticeDrawer(sb, notices, noticeWindowLabel, noticeCapLabel);
+        WriteHookInventoryDrawer(sb, items, detail);
+    }
+
+    private static void WriteNoticeDrawer(StringBuilder sb, IReadOnlyList<Dictionary<string, object?>> notices, string noticeWindowLabel, string noticeCapLabel) {
         var warningCount = 0;
         var errorCount = 0;
         for (var i = 0; i < notices.Count; i++) {
@@ -519,16 +610,22 @@ internal static class ControlBoardTLR {
         }
 
         sb.Append($"""
-      <aside class="notice-rail">
-        <section class="panel pad notice-panel">
-          <div class="panel-title">Recent notices</div>
-          <div class="notice-subtitle">Filtered to this instance from the in-memory engine notice stream. Only the last {E(noticeWindowLabel)} are shown here, capped to the latest {E(noticeCapLabel)} notices. These notices are not persisted and are intended only for live debugging.</div>
-          <div class="head-meta">
-            <span class="head-pill">{notices.Count} recent</span>
-            <span class="head-pill">{warningCount} warning{(warningCount == 1 ? string.Empty : "s")}</span>
-            <span class="head-pill">{errorCount} error{(errorCount == 1 ? string.Empty : "s")}</span>
+  <aside class="left-drawer" id="drawer-notices" aria-hidden="true">
+    <section class="drawer-panel">
+      <div class="drawer-head">
+        <div class="drawer-title-wrap">
+          <div class="drawer-title">Recent notices</div>
+          <div class="drawer-subtitle">Filtered to this instance from the in-memory engine notice stream. Only the last {E(noticeWindowLabel)} are shown here, capped to the latest {E(noticeCapLabel)} notices. These notices are not persisted and are intended only for live debugging.</div>
+          <div class="drawer-chip-row">
+            <span class="drawer-chip">{notices.Count} recent</span>
+            <span class="drawer-chip warn">{warningCount} warning{(warningCount == 1 ? string.Empty : "s")}</span>
+            <span class="drawer-chip fail">{errorCount} error{(errorCount == 1 ? string.Empty : "s")}</span>
           </div>
-          <div class="notice-list">
+        </div>
+        <button class="drawer-close" type="button" onclick="closeLeftDrawer()" aria-label="Close notices">×</button>
+      </div>
+      <div class="drawer-body">
+        <div class="notice-list">
 """);
 
         if (notices.Count == 0) {
@@ -542,9 +639,96 @@ internal static class ControlBoardTLR {
         }
 
         sb.Append("""
+        </div>
+      </div>
+    </section>
+  </aside>
+""");
+    }
+
+    private static void WriteHookInventoryDrawer(StringBuilder sb, List<JsonElement> items, TimelineDetail detail) {
+        var emitted = CountHooks(items);
+        var dispatched = CountHooksByState(items, hook => hook.Dispatched);
+        var skipped = CountHooksByState(items, hook => hook.Status == 2);
+        var pending = CountHooksByState(items, hook => !hook.Dispatched && hook.Status != 2);
+        var acked = CountHooksByState(items, hook => hook.TotalAcks > 0 && hook.ProcessedAcks >= hook.TotalAcks);
+        var failed = CountHooksByState(items, hook => hook.FailedAcks > 0);
+
+        sb.Append($"""
+  <aside class="left-drawer" id="drawer-hooks" aria-hidden="true">
+    <section class="drawer-panel">
+      <div class="drawer-head">
+        <div class="drawer-title-wrap">
+          <div class="drawer-title">Hook inventory</div>
+          <div class="drawer-subtitle">Every emitted hook row for this instance. Use this to compare what the policy emitted versus what the engine actually dispatched, skipped, or left pending.</div>
+          <div class="drawer-chip-row">
+            <span class="drawer-chip">{emitted} emitted</span>
+            <span class="drawer-chip info">{dispatched} dispatched</span>
+            <span class="drawer-chip warn">{pending} pending</span>
+            <span class="drawer-chip">{acked} acked</span>
+            <span class="drawer-chip fail">{failed} failed</span>
+            <span class="drawer-chip">{skipped} skipped</span>
+          </div>
+        </div>
+        <button class="drawer-close" type="button" onclick="closeLeftDrawer()" aria-label="Close hook inventory">×</button>
+      </div>
+      <div class="drawer-body">
+""");
+
+        if (detail < TimelineDetail.Admin || emitted == 0) {
+            var emptyMsg = detail < TimelineDetail.Admin
+                ? "Hook inventory is available only in Admin detail because the timeline payload must include hook rows."
+                : "No hook emissions were captured for this instance.";
+            sb.Append($"""        
+        <div class="inventory-empty">{E(emptyMsg)}</div>
+""");
+        } else {
+            for (var i = 0; i < items.Count; i++) {
+                var item = items[i];
+                if (!item.TryGetProperty("hooks", out var hooks) || hooks.ValueKind != JsonValueKind.Array || hooks.GetArrayLength() == 0)
+                    continue;
+
+                var eventName = SplitCamel(S(item, "event"));
+                var lcId = S(item, "lifecycle_id");
+                var fromState = S(item, "from_state");
+                var toState = S(item, "to_state");
+                var groupEmitted = hooks.GetArrayLength();
+                var groupDispatched = CountHooks(hooks, hook => B(hook, KEY_DISPATCHED));
+                var groupPending = CountHooks(hooks, hook => !B(hook, KEY_DISPATCHED) && HookStatusInt(hook) != 2);
+                var groupSkipped = CountHooks(hooks, hook => HookStatusInt(hook) == 2);
+
+                sb.Append($"""
+        <section class="drawer-group">
+          <div class="drawer-group-head">
+            <div>
+              <div class="drawer-group-title">Lifecycle #{E(lcId)} · {E(eventName)}</div>
+              <div class="drawer-group-meta">{E(fromState)} → {E(toState)}</div>
+            </div>
+            <div class="drawer-chip-row">
+              <span class="drawer-chip">{groupEmitted} emitted</span>
+              <span class="drawer-chip info">{groupDispatched} dispatched</span>
+              <span class="drawer-chip warn">{groupPending} pending</span>
+              <span class="drawer-chip">{groupSkipped} skipped</span>
+            </div>
+          </div>
+          <div class="inventory-list">
+""");
+
+                foreach (var hook in OrderHooks(hooks)) {
+                    WriteHookInventoryRow(sb, hook);
+                }
+
+                sb.Append("""
           </div>
         </section>
-      </aside>
+""");
+            }
+        }
+
+        sb.Append("""
+      </div>
+    </section>
+  </aside>
 """);
     }
 
@@ -832,6 +1016,50 @@ internal static class ControlBoardTLR {
 """);
     }
 
+    private static void WriteHookInventoryRow(StringBuilder sb, JsonElement hook) {
+        var route = S(hook, "route");
+        var label = S(hook, "label");
+        var display = !string.IsNullOrWhiteSpace(label) ? label : route;
+        var secondary = !string.IsNullOrWhiteSpace(label) ? route : string.Empty;
+        var isGate = hook.TryGetProperty("hook_type", out var htv) && htv.TryGetInt32(out var htInt) ? htInt == 1 : true;
+        var orderSeq = S(hook, "order_seq");
+        var orderLabel = int.TryParse(orderSeq, out var oNum) && oNum > 0 ? $"#{oNum}" : "#–";
+        var totalAcks = hook.TryGetProperty("total_acks", out var tv) ? tv.GetInt32() : 0;
+        var processedAcks = hook.TryGetProperty("processed_acks", out var pv) ? pv.GetInt32() : 0;
+        var failedAcks = hook.TryGetProperty("failed_acks", out var fv) ? fv.GetInt32() : 0;
+        var totalTriggers = hook.TryGetProperty("total_triggers", out var sv) ? sv.GetInt32() : 0;
+        var lastTrigger = Fmt(S(hook, "last_trigger"));
+        var dispatched = B(hook, KEY_DISPATCHED);
+        var hookStatus = HookStatusInt(hook);
+        var statusText = HookStatusText(hook);
+        var statusCls = HookStatusClass(hook);
+        var secondaryHtml = !string.IsNullOrWhiteSpace(secondary)
+            ? $"<div class=\"inventory-label\">{E(secondary)}</div>"
+            : string.Empty;
+        var dispatchNote = string.IsNullOrWhiteSpace(lastTrigger) ? "Last sent: pending" : $"Last sent: {lastTrigger}";
+        var totalDispatches = totalAcks + totalTriggers;
+
+        sb.Append($"""
+            <div class="inventory-row">
+              <div class="inventory-order">{E(orderLabel)}</div>
+              <div class="inventory-main">
+                <div class="inventory-route">{E(display)}</div>
+                {secondaryHtml}
+              </div>
+              <div class="inventory-side">
+                <div class="inventory-meta">
+                  <span class="mini-badge {(isGate ? "warn" : string.Empty)}">{(isGate ? "gate" : "effect")}</span>
+                  <span class="mini-badge {statusCls}">{E(statusText)}</span>
+                  <span class="mini-badge {(dispatched ? "info" : string.Empty)}">{(dispatched ? "dispatched" : hookStatus == 2 ? "closed" : "queued")}</span>
+                  <span class="mini-badge {(processedAcks >= totalAcks && totalAcks > 0 ? "ok" : failedAcks > 0 ? "fail" : string.Empty)}">acked {processedAcks}/{totalAcks}</span>
+                  <span class="mini-badge {(totalDispatches > 0 ? "ok" : string.Empty)}">{totalDispatches} sent</span>
+                </div>
+                <div class="inventory-note">{E(dispatchNote)}</div>
+              </div>
+            </div>
+""");
+    }
+
     private static void WriteNoticeCard(StringBuilder sb, Dictionary<string, object?> notice) {
         var code = DS(notice, "code");
         var kind = DS(notice, "kind");
@@ -898,6 +1126,32 @@ internal static class ControlBoardTLR {
         return total;
     }
 
+    private static int CountHooks(JsonElement hooks, Func<JsonElement, bool> predicate) {
+        if (hooks.ValueKind != JsonValueKind.Array) return 0;
+        var total = 0;
+        foreach (var hook in hooks.EnumerateArray()) {
+            if (predicate(hook)) total++;
+        }
+        return total;
+    }
+
+    private static int CountHooksByState(List<JsonElement> items, Func<HookStats, bool> predicate) {
+        var total = 0;
+        for (var i = 0; i < items.Count; i++) {
+            if (!items[i].TryGetProperty("hooks", out var hooks) || hooks.ValueKind != JsonValueKind.Array) continue;
+            foreach (var hook in hooks.EnumerateArray()) {
+                var stats = new HookStats(
+                    B(hook, KEY_DISPATCHED),
+                    HookStatusInt(hook),
+                    hook.TryGetProperty("total_acks", out var tv) ? tv.GetInt32() : 0,
+                    hook.TryGetProperty("processed_acks", out var pv) ? pv.GetInt32() : 0,
+                    hook.TryGetProperty("failed_acks", out var fv) ? fv.GetInt32() : 0);
+                if (predicate(stats)) total++;
+            }
+        }
+        return total;
+    }
+
     private static int CountValidation(List<JsonElement> items) {
         var total = 0;
         for (var i = 0; i < items.Count; i++) {
@@ -939,6 +1193,36 @@ internal static class ControlBoardTLR {
             ? parsedText
             : int.MaxValue;
     }
+
+    private static int HookStatusInt(JsonElement hook) {
+        if (!hook.TryGetProperty(KEY_HOOK_STATUS, out var value)) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsed)) return parsed;
+        return int.TryParse(value.ToString(), out var fallback) ? fallback : 0;
+    }
+
+    private static string HookStatusText(JsonElement hook) {
+        var status = HookStatusInt(hook);
+        var dispatched = B(hook, KEY_DISPATCHED);
+        var totalAcks = hook.TryGetProperty("total_acks", out var tv) ? tv.GetInt32() : 0;
+        var processedAcks = hook.TryGetProperty("processed_acks", out var pv) ? pv.GetInt32() : 0;
+        var failedAcks = hook.TryGetProperty("failed_acks", out var fv) ? fv.GetInt32() : 0;
+
+        if (status == 2) return "Skipped";
+        if (!dispatched) return "Pending";
+        if (totalAcks > 0 && processedAcks >= totalAcks) return "Acked";
+        if (failedAcks > 0 && processedAcks == 0) return "Failed";
+        if (processedAcks > 0 || failedAcks > 0) return "Partial";
+        return "Dispatched";
+    }
+
+    private static string HookStatusClass(JsonElement hook) => HookStatusText(hook) switch {
+        "Acked" => "ok",
+        "Skipped" => "info",
+        "Failed" => "fail",
+        "Partial" => "warn",
+        "Dispatched" => "info",
+        _ => "warn"
+    };
 
     private static string StatusClass(string status) => status switch {
         "Active" => "s-active",
@@ -1050,4 +1334,6 @@ internal static class ControlBoardTLR {
         DateTime.TryParse(dt, null,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
             out result);
+
+    private readonly record struct HookStats(bool Dispatched, int Status, int TotalAcks, int ProcessedAcks, int FailedAcks);
 }

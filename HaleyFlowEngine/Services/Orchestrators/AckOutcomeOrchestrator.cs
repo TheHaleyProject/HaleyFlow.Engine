@@ -471,10 +471,11 @@ namespace Haley.Services.Orchestrators {
                 new Dictionary<string, object?> { ["instanceGuid"] = instanceGuid, ["nextEvent"] = resolvedNextEvent }));
         }
 
-        // Dispatches the next undispatched hook order(s) for the given lifecycle scope.
-        // Returns true when no more undispatched orders remain (all done), false if progression must pause.
-        // Gate batches pause progression and wait for ACKs.
-        // Effect-only batches are fire-and-forget: dispatch them and continue draining forward immediately.
+        // Dispatches the next undispatched hook order for the given lifecycle scope.
+        // Returns true when no more undispatched orders remain (all done), false when a batch was dispatched
+        // and progression should pause until the batch resolves.
+        // This applies to both gate and effect orders — effects are still dispatched in order, one batch at a time.
+        // Effect ACKs do not control business routing, but they still participate in batch advancement timing.
         private async Task<bool> AdvanceNextHookOrderAsync(DbRow hookCtx, CancellationToken ct) {
             var instanceId = hookCtx.GetLong(KEY_INSTANCE_ID);
             var stateId = hookCtx.GetLong(KEY_STATE_ID);
@@ -501,80 +502,78 @@ namespace Haley.Services.Orchestrators {
                 OccurredAt = DateTimeOffset.UtcNow
             };
 
-            while (true) {
-                var scanLoad = new DbExecutionLoad(ct);
-                var nextOrderRaw = await _dal.Hook.GetMinUndispatchedOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, scanLoad);
-                if (nextOrderRaw == null) return true;  // all done
-                var nextOrder = nextOrderRaw.Value;
+            var scanLoad = new DbExecutionLoad(ct);
+            var nextOrderRaw = await _dal.Hook.GetMinUndispatchedOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, scanLoad);
+            if (nextOrderRaw == null) return true;  // all done
+            var nextOrder = nextOrderRaw.Value;
 
-                var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, scanLoad);
-                if (nextHooks.Count == 0) return true;  // all done
+            var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, scanLoad);
+            if (nextHooks.Count == 0) return true;  // all done
 
-                var hasGate = false;
-                for (var j = 0; j < nextHooks.Count; j++) {
-                    if ((HookType)nextHooks[j].GetInt(KEY_HOOK_TYPE) == HookType.Gate) {
-                        hasGate = true;
-                        break;
-                    }
+            var hasGate = false;
+            for (var j = 0; j < nextHooks.Count; j++) {
+                if ((HookType)nextHooks[j].GetInt(KEY_HOOK_TYPE) == HookType.Gate) {
+                    hasGate = true;
+                    break;
                 }
-
-                // Keep hook_lc dispatched marking and ack rows in a single atomic unit.
-                var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * normConsumers.Count);
-                var transaction = _dal.CreateNewTransaction();
-                using var tx = transaction.Begin(false);
-                var txLoad = new DbExecutionLoad(ct, transaction);
-                var committed = false;
-
-                try {
-                    for (var j = 0; j < nextHooks.Count; j++) {
-                        var hookRow = nextHooks[j];
-                        var hookId = hookRow.GetLong(KEY_ID);
-                        var hookLcId = hookRow.GetLong(KEY_HOOK_LC_ID);
-                        var hookType = (HookType)hookRow.GetInt(KEY_HOOK_TYPE);
-                        var ackMode = hookRow.GetInt(KEY_ACK_MODE);
-                        var route = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
-                        var groupName = hookRow.GetString(KEY_GROUP_NAME);
-                        var hookOnEntry = hookRow.GetBool(KEY_ON_ENTRY);
-
-                        var hookAck = await _ackManager.CreateHookAckAsync(hookLcId, normConsumers, (int)AckStatus.Pending, txLoad);
-                        var hookAckGuid = hookAck.AckGuid ?? string.Empty;
-                        await _dal.HookLc.MarkDispatchedAsync(hookLcId, txLoad);
-
-                        var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(hookId, txLoad);
-                        for (var i = 0; i < normConsumers.Count; i++) {
-                            toDispatch.Add(new LifeCycleHookEvent(baseLcEvent) {
-                                ConsumerId = normConsumers[i],
-                                AckGuid = hookAckGuid,
-                                OnEntry = hookOnEntry,
-                                Route = route,
-                                HookType = hookType,
-                                GroupName = groupName,
-                                OrderSeq = nextOrder,
-                                AckMode = ackMode,
-                                RunCount = runCount
-                            });
-                        }
-                    }
-                    transaction.Commit();
-                    committed = true;
-                } catch {
-                    if (!committed) { try { transaction.Rollback(); } catch { } }
-                    throw;
-                }
-
-                // Fire after commit so monitor can recover from downstream handler failure.
-                await _dispatchEventsAsync(toDispatch, ct);
-                _fireNotice(LifeCycleNotice.Info("HOOK_ORDER_ADVANCED", "HOOK_ORDER_ADVANCED",
-                    $"Next-order hooks dispatched. order={nextOrder} instance={instanceGuid}",
-                    new Dictionary<string, object?> {
-                        ["orderSeq"] = nextOrder,
-                        ["instanceGuid"] = instanceGuid,
-                        ["containsGate"] = hasGate
-                    }));
-
-                // Gate batches pause here and wait for ACKs. Effect-only batches should continue draining.
-                if (hasGate) return false;
             }
+
+            // Keep hook_lc dispatched marking and ack rows in a single atomic unit.
+            var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * normConsumers.Count);
+            var transaction = _dal.CreateNewTransaction();
+            using var tx = transaction.Begin(false);
+            var txLoad = new DbExecutionLoad(ct, transaction);
+            var committed = false;
+
+            try {
+                for (var j = 0; j < nextHooks.Count; j++) {
+                    var hookRow = nextHooks[j];
+                    var hookId = hookRow.GetLong(KEY_ID);
+                    var hookLcId = hookRow.GetLong(KEY_HOOK_LC_ID);
+                    var hookType = (HookType)hookRow.GetInt(KEY_HOOK_TYPE);
+                    var ackMode = hookRow.GetInt(KEY_ACK_MODE);
+                    var route = hookRow.GetString(KEY_ROUTE) ?? string.Empty;
+                    var groupName = hookRow.GetString(KEY_GROUP_NAME);
+                    var hookOnEntry = hookRow.GetBool(KEY_ON_ENTRY);
+
+                    var hookAck = await _ackManager.CreateHookAckAsync(hookLcId, normConsumers, (int)AckStatus.Pending, txLoad);
+                    var hookAckGuid = hookAck.AckGuid ?? string.Empty;
+                    await _dal.HookLc.MarkDispatchedAsync(hookLcId, txLoad);
+
+                    var runCount = await _dal.HookLc.CountDispatchedByHookIdAsync(hookId, txLoad);
+                    for (var i = 0; i < normConsumers.Count; i++) {
+                        toDispatch.Add(new LifeCycleHookEvent(baseLcEvent) {
+                            ConsumerId = normConsumers[i],
+                            AckGuid = hookAckGuid,
+                            OnEntry = hookOnEntry,
+                            Route = route,
+                            HookType = hookType,
+                            GroupName = groupName,
+                            OrderSeq = nextOrder,
+                            AckMode = ackMode,
+                            RunCount = runCount
+                        });
+                    }
+                }
+                transaction.Commit();
+                committed = true;
+            } catch {
+                if (!committed) { try { transaction.Rollback(); } catch { } }
+                throw;
+            }
+
+            // Fire after commit so monitor can recover from downstream handler failure.
+            await _dispatchEventsAsync(toDispatch, ct);
+            _fireNotice(LifeCycleNotice.Info("HOOK_ORDER_ADVANCED", "HOOK_ORDER_ADVANCED",
+                $"Next-order hooks dispatched. order={nextOrder} instance={instanceGuid}",
+                new Dictionary<string, object?> {
+                    ["orderSeq"] = nextOrder,
+                    ["instanceGuid"] = instanceGuid,
+                    ["containsGate"] = hasGate
+                }));
+
+            // Always pause after dispatching one ordered batch.
+            return false;
         }
     }
 }
