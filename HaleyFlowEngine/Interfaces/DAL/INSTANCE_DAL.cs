@@ -74,6 +74,12 @@ namespace Haley.Abstractions {
         /// so that open hook ACKs are properly closed before the state machine advances.
         /// </summary>
         Task<int> CancelPendingBlockingHookAckConsumersAsync(long instanceId, long lcId, DbExecutionLoad load = default);
+        /// <summary>
+        /// Bulk-sets all non-terminal ack_consumer rows for hooks in the given lifecycle entry
+        /// to Cancelled (status=5), clearing next_due. Used when a gate failure closes the
+        /// whole remaining hook plan so late effect ACKs cannot advance the old lifecycle.
+        /// </summary>
+        Task<int> CancelPendingHookAckConsumersAsync(long instanceId, long lcId, DbExecutionLoad load = default);
 
         /// <summary>
         /// Marks all undispatched gate hook_lc rows (type=1, dispatched=0) for the given lifecycle scope
@@ -97,12 +103,15 @@ namespace Haley.Abstractions {
         Task MarkDispatchedAsync(long hookLcId, DbExecutionLoad load = default);
         /// <summary>Counts hook_lc rows for a lifecycle entry that are still waiting for release.</summary>
         Task<int> CountUndispatchedByLcIdAsync(long lcId, DbExecutionLoad load = default);
+        /// <summary>Marks every undispatched hook_lc row in a lifecycle entry as Skipped to close that hook plan.</summary>
+        Task<int> SkipUndispatchedByLcIdAsync(long lcId, DbExecutionLoad load = default);
         /// <summary>Returns how many times this hook has been fully dispatched (run count across all lifecycle entries).</summary>
         Task<int> CountDispatchedByHookIdAsync(long hookId, DbExecutionLoad load = default);
     }
 
     internal interface ILifeCycleDAL {
         Task<long> InsertAsync(long instanceId, long fromStateId, long toStateId, long eventId, DateTime? occurred = null, DbExecutionLoad load = default);
+        Task<DbRow?> GetContextByLcIdAsync(long lcId, DbExecutionLoad load = default);
         Task<DbRow?> GetLastByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstancePagedAsync(long instanceId, int skip, int take, DbExecutionLoad load = default);

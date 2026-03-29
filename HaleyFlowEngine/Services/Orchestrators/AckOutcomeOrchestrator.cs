@@ -6,7 +6,7 @@ using static Haley.Internal.KeyConstants;
 using static Haley.Enums.HookType;
 
 namespace Haley.Services.Orchestrators {
-    // Handles consumer ACK outcomes and the follow-up orchestration triggered by ACK=Processed.
+    // Handles consumer ACK outcomes and the follow-up orchestration driven by lifecycle and hook ACKs.
     // This keeps WorkFlowEngine thin while preserving the same semantics:
     // - update ack status
     // - ValidationMode lifecycle ACK releases hook order 1
@@ -14,6 +14,7 @@ namespace Haley.Services.Orchestrators {
     // - hook-group completion checks
     // - ordered gate/effect hook advancement
     // - gate-success drain: skip remaining gates, drain effects in order, then dispatch Complete
+    // - failure branches triggered directly by engine when validation/gate failure resolves a route
     internal sealed class AckOutcomeOrchestrator {
         private readonly IWorkFlowDAL _dal;
         private readonly IAckManager _ackManager;
@@ -21,16 +22,18 @@ namespace Haley.Services.Orchestrators {
         private readonly IPolicyEnforcer _policyEnforcer;
         private readonly WorkFlowEngineOptions _opt;
         private readonly Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> _dispatchEventsAsync;
+        private readonly Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> _triggerAsync;
         private readonly Action<LifeCycleNotice> _fireNotice;
 
         // dispatchEventsAsync / fireNotice are engine callbacks so subscribers stay centralized.
-        public AckOutcomeOrchestrator(IWorkFlowDAL dal, IAckManager ackManager, IBlueprintManager blueprintManager, IPolicyEnforcer policyEnforcer, WorkFlowEngineOptions opt, Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync, Action<LifeCycleNotice> fireNotice) {
+        public AckOutcomeOrchestrator(IWorkFlowDAL dal, IAckManager ackManager, IBlueprintManager blueprintManager, IPolicyEnforcer policyEnforcer, WorkFlowEngineOptions opt, Func<IReadOnlyList<ILifeCycleEvent>, CancellationToken, Task> dispatchEventsAsync, Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> triggerAsync, Action<LifeCycleNotice> fireNotice) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _ackManager = ackManager ?? throw new ArgumentNullException(nameof(ackManager));
             _blueprintManager = blueprintManager ?? throw new ArgumentNullException(nameof(blueprintManager));
             _policyEnforcer = policyEnforcer ?? throw new ArgumentNullException(nameof(policyEnforcer));
             _opt = opt ?? throw new ArgumentNullException(nameof(opt));
             _dispatchEventsAsync = dispatchEventsAsync ?? throw new ArgumentNullException(nameof(dispatchEventsAsync));
+            _triggerAsync = triggerAsync ?? throw new ArgumentNullException(nameof(triggerAsync));
             _fireNotice = fireNotice ?? throw new ArgumentNullException(nameof(fireNotice));
         }
 
@@ -58,22 +61,21 @@ namespace Haley.Services.Orchestrators {
 
         // ACK flow:
         // 1. Persist ack outcome through AckManager.
-        // 2. For non-Processed outcomes, stop.
-        // 3. For Processed, run hook-related checks and ordered progression.
+        // 2. Processed ACKs advance validation/hook progression.
+        // 3. Failed ACKs may close the current hook plan and trigger the engine-owned failure branch.
+        // 4. Retry/Delivered keep the current plan alive and rely on resend / later ACKs.
         public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, CancellationToken ct = default) {
             ct.ThrowIfCancellationRequested();
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
             if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
             var load = new DbExecutionLoad(ct);
-            await _ackManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, load);
+            var ackApplied = await _ackManager.AckAsync(consumerId, ackGuid, outcome, message, retryAt, load);
+            if (!ackApplied) return;
 
-            // Retry/Dead do not participate in completion-based progression.
-            if (outcome != AckOutcome.Processed) return;
-
-            // Single hook context lookup reused by fan-out and order-advancement checks.
-            // If ackGuid belongs to a lifecycle transition ACK, hook context is null and we use the
-            // lifecycle ACK path below to release the first hook batch for ValidationMode.
+            // Single context lookup reused by failure handling and ordered progression.
+            // hookCtx = hook ACK path; lcCtx = lifecycle ACK path.
             DbRow? hookCtx = null;
+            DbRow? lcCtx = null;
             try {
                 hookCtx = await _dal.Hook.GetContextByAckGuidAsync(ackGuid, load);
             } catch (Exception ex) {
@@ -85,9 +87,39 @@ namespace Haley.Services.Orchestrators {
                 try {
                     var lcId = await _dal.LcAck.GetLcIdByAckGuidAsync(ackGuid, load);
                     if (lcId.HasValue && lcId.Value > 0) {
-                        var undispatchedHooks = await _dal.HookLc.CountUndispatchedByLcIdAsync(lcId.Value, load);
+                        lcCtx = await _dal.LifeCycle.GetContextByLcIdAsync(lcId.Value, load);
+                    }
+                } catch (Exception ex) {
+                    _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
+                        $"Lifecycle context lookup failed for ack={ackGuid}: {ex.Message}"));
+                }
+            }
+
+            // Retry/Delivered keep the current plan alive. Failed may trigger a failure branch.
+            if (outcome != AckOutcome.Processed) {
+                if (hookCtx != null) {
+                    if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(hookCtx, ackGuid, ct)) return;
+
+                    var hookTypeForFailure = (HookType)hookCtx.GetInt(KEY_HOOK_TYPE);
+                    if (hookTypeForFailure == HookType.Gate && outcome == AckOutcome.Failed) {
+                        await HandleGateFailureAsync(hookCtx, ackGuid, ct);
+                    } else if (hookTypeForFailure == HookType.Effect && outcome == AckOutcome.Failed) {
+                        await HandleEffectTerminalAsync(hookCtx, ackGuid, ct);
+                    }
+                } else if (lcCtx != null && outcome == AckOutcome.Failed) {
+                    if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(lcCtx, ackGuid, ct)) return;
+                    await HandleValidationFailureAsync(lcCtx, ackGuid, ct);
+                }
+                return;
+            }
+
+            if (hookCtx == null) {
+                try {
+                    if (lcCtx != null) {
+                        var lcId = lcCtx.GetLong(KEY_LC_ID);
+                        var undispatchedHooks = await _dal.HookLc.CountUndispatchedByLcIdAsync(lcId, load);
                         if (undispatchedHooks > 0) {
-                            var hookCtxForLc = await _dal.Hook.GetContextByLcIdAsync(lcId.Value, load);
+                            var hookCtxForLc = await _dal.Hook.GetContextByLcIdAsync(lcId, load);
                             if (hookCtxForLc != null) {
                                 await AdvanceNextHookOrderAsync(hookCtxForLc, ct);
                             }
@@ -99,6 +131,8 @@ namespace Haley.Services.Orchestrators {
                 }
                 return;
             }
+
+            if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(hookCtx, ackGuid, ct)) return;
 
             // AckMode=Any: one consumer processing success completes the whole sibling set.
             if (hookCtx != null && hookCtx.GetInt(KEY_ACK_MODE) == 1) {
@@ -167,6 +201,145 @@ namespace Haley.Services.Orchestrators {
                         $"Effect order advancement failed for ack={ackGuid}: {ex.Message}"));
                 }
             }
+        }
+
+        private async Task<bool> TryIgnoreIfLifecycleNoLongerCurrentAsync(DbRow ctx, string ackGuid, CancellationToken ct) {
+            var instanceId = ctx.GetLong(KEY_INSTANCE_ID);
+            var lcId = ctx.GetLong(KEY_LC_ID);
+            var lastLc = await _dal.LifeCycle.GetLastByInstanceAsync(instanceId, new DbExecutionLoad(ct));
+            var lastLcId = lastLc?.GetLong(KEY_ID) ?? 0;
+            if (lastLcId == lcId) return false;
+
+            _fireNotice(LifeCycleNotice.Warn("STALE_ACK_IGNORED", "STALE_ACK_IGNORED",
+                $"Ignoring ACK because lifecycle {lcId} is no longer current for instance={ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty}. ack={ackGuid} currentLc={lastLcId}",
+                new Dictionary<string, object?> {
+                    ["ackGuid"] = ackGuid,
+                    ["instanceGuid"] = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty,
+                    ["lifecycleId"] = lcId,
+                    ["currentLifecycleId"] = lastLcId
+                }));
+            return true;
+        }
+
+        private async Task HandleValidationFailureAsync(DbRow lcCtx, string ackGuid, CancellationToken ct) {
+            var lcId = lcCtx.GetLong(KEY_LC_ID);
+            await _dal.HookLc.SkipUndispatchedByLcIdAsync(lcId, new DbExecutionLoad(ct));
+
+            var failureEvent = await ResolveTransitionFailureEventAsync(lcCtx, ct);
+            if (failureEvent <= 0) {
+                _fireNotice(LifeCycleNotice.Warn("VALIDATION_FAILED_NO_ROUTE", "VALIDATION_FAILED_NO_ROUTE",
+                    $"ValidationMode ACK failed but no transition failure route exists. instance={lcCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty} ack={ackGuid}"));
+                return;
+            }
+
+            await TriggerResolvedEventAsync(lcCtx, failureEvent, "VALIDATION_FAILED", ackGuid, ct);
+        }
+
+        private async Task HandleGateFailureAsync(DbRow hookCtx, string ackGuid, CancellationToken ct) {
+            var instanceId = hookCtx.GetLong(KEY_INSTANCE_ID);
+            var lcId = hookCtx.GetLong(KEY_LC_ID);
+            var load = new DbExecutionLoad(ct);
+
+            // Once a gate fails, the remaining hook plan is closed. Cancel every still-open hook ACK
+            // for this lifecycle (including effects) so late arrivals cannot advance the old plan.
+            await _dal.Hook.CancelPendingHookAckConsumersAsync(instanceId, lcId, load);
+            await _dal.HookLc.SkipUndispatchedByLcIdAsync(lcId, load);
+
+            var failureEvent = await ResolveGateFailureEventAsync(hookCtx, ct);
+            if (failureEvent <= 0) {
+                _fireNotice(LifeCycleNotice.Warn("GATE_FAILED_NO_ROUTE", "GATE_FAILED_NO_ROUTE",
+                    $"Gate ACK failed but no failure route exists. instance={hookCtx.GetString(KEY_INSTANCE_GUID) ?? string.Empty} route={hookCtx.GetString(KEY_ROUTE) ?? string.Empty} ack={ackGuid}"));
+                return;
+            }
+
+            await TriggerResolvedEventAsync(hookCtx, failureEvent, "GATE_FAILED", ackGuid, ct);
+        }
+
+        private async Task HandleEffectTerminalAsync(DbRow hookCtx, string ackGuid, CancellationToken ct) {
+            try {
+                var incompleteGates = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
+                    hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
+                    hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
+                    hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), new DbExecutionLoad(ct));
+                if (incompleteGates == 0)
+                    await AdvanceAndCheckCompletionAsync(hookCtx, ct);
+            } catch (Exception ex) {
+                _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
+                    $"Effect failure advancement failed for ack={ackGuid}: {ex.Message}"));
+            }
+        }
+
+        private async Task<int> ResolveGateFailureEventAsync(DbRow hookCtx, CancellationToken ct) {
+            var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
+            var policyId = hookCtx.GetLong(KEY_POLICY_ID);
+            var stateId = hookCtx.GetLong(KEY_STATE_ID);
+            var viaEventId = hookCtx.GetLong(KEY_VIA_EVENT);
+            var route = hookCtx.GetString(KEY_ROUTE) ?? string.Empty;
+
+            var policy = await _policyEnforcer.ResolvePolicyByIdAsync(policyId, new DbExecutionLoad(ct));
+            if (!string.IsNullOrWhiteSpace(policy.PolicyJson)) {
+                var bp = await _blueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
+                bp.StatesById.TryGetValue(stateId, out var toState);
+                bp.EventsById.TryGetValue(viaEventId, out var viaEvent);
+                if (toState != null) {
+                    var hookRule = _policyEnforcer.ResolveHookContextFromJson(policy.PolicyJson!, toState, viaEvent, route, ct, policyId);
+                    if (int.TryParse(hookRule.OnFailureEvent, out var hookFailureEvent) && hookFailureEvent > 0)
+                        return hookFailureEvent;
+                }
+            }
+
+            return await ResolveTransitionFailureEventAsync(hookCtx, ct);
+        }
+
+        private async Task<int> ResolveTransitionFailureEventAsync(DbRow ctx, CancellationToken ct) {
+            var defVersionId = ctx.GetLong(KEY_DEF_VERSION_ID);
+            var policyId = ctx.GetLong(KEY_POLICY_ID);
+            var stateId = ctx.GetLong(KEY_STATE_ID);
+            var viaEventId = ctx.GetLong(KEY_VIA_EVENT);
+
+            var policy = await _policyEnforcer.ResolvePolicyByIdAsync(policyId, new DbExecutionLoad(ct));
+            if (string.IsNullOrWhiteSpace(policy.PolicyJson)) return 0;
+
+            var bp = await _blueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
+            bp.StatesById.TryGetValue(stateId, out var toState);
+            bp.EventsById.TryGetValue(viaEventId, out var viaEvent);
+            if (toState == null) return 0;
+
+            var ruleCtx = _policyEnforcer.ResolveRuleContextFromJson(policy.PolicyJson!, toState, viaEvent, ct, policyId);
+            return int.TryParse(ruleCtx.OnFailureEvent, out var failureEvent) && failureEvent > 0
+                ? failureEvent
+                : 0;
+        }
+
+        private async Task TriggerResolvedEventAsync(DbRow ctx, int nextEvent, string noticeCode, string ackGuid, CancellationToken ct) {
+            var defVersionId = ctx.GetLong(KEY_DEF_VERSION_ID);
+            var entityId = ctx.GetString(KEY_ENTITY_ID) ?? string.Empty;
+            var instanceGuid = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty;
+            if (defVersionId <= 0 || string.IsNullOrWhiteSpace(entityId) || nextEvent <= 0) return;
+
+            var bp = await _blueprintManager.GetBlueprintByVersionIdAsync(defVersionId, ct);
+            var result = await _triggerAsync(new LifeCycleTriggerRequest {
+                EnvCode = bp.EnvCode,
+                DefName = bp.DefName,
+                EntityId = entityId,
+                Event = nextEvent.ToString(),
+                Actor = "haleyflow.engine.ack",
+                Payload = new Dictionary<string, object?> {
+                    ["source"] = "ack-outcome",
+                    ["ackGuid"] = ackGuid,
+                    ["reason"] = noticeCode
+                }
+            }, ct);
+
+            _fireNotice(LifeCycleNotice.Info(noticeCode, noticeCode,
+                $"Engine triggered failure branch. instance={instanceGuid} nextEvent={nextEvent} applied={result.Applied} reason={result.Reason}",
+                new Dictionary<string, object?> {
+                    ["ackGuid"] = ackGuid,
+                    ["instanceGuid"] = instanceGuid,
+                    ["nextEvent"] = nextEvent,
+                    ["applied"] = result.Applied,
+                    ["triggerReason"] = result.Reason
+                }));
         }
 
         // If the current gate hook has an OnSuccessEvent in policy, skip all remaining undispatched gates

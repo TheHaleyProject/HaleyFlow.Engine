@@ -5,6 +5,16 @@ namespace Haley.Internal {
         public const string EXISTS_BY_ID = $@"SELECT 1 FROM lifecycle WHERE id = {ID} LIMIT 1;";
 
         public const string GET_BY_ID = $@"SELECT * FROM lifecycle WHERE id = {ID} LIMIT 1;";
+        public const string GET_CONTEXT_BY_LC_ID =
+            $@"SELECT l.id AS lc_id, l.instance_id, l.from_state, l.to_state AS state_id, l.event AS via_event,
+                      i.guid AS instance_guid, i.def_version AS def_version_id, i.metadata AS metadata,
+                      i.entity_id AS entity_id, i.policy_id,
+                      dv.parent AS definition_id
+               FROM lifecycle l
+               JOIN instance i ON i.id = l.instance_id
+               JOIN def_version dv ON dv.id = i.def_version
+               WHERE l.id = {LC_ID}
+               LIMIT 1;";
         public const string GET_LAST_BY_INSTANCE = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC LIMIT 1;";
 
         public const string LIST_BY_INSTANCE = $@"SELECT * FROM lifecycle WHERE instance_id = {INSTANCE_ID} ORDER BY created DESC, id DESC;";

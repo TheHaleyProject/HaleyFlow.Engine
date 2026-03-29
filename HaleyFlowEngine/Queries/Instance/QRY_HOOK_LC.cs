@@ -18,6 +18,12 @@ namespace Haley.Internal {
                WHERE lc_id = {LC_ID}
                  AND dispatched = 0;";
 
+        public const string SKIP_UNDISPATCHED_BY_LC_ID =
+            $@"UPDATE hook_lc
+               SET dispatched = 1, status = 2
+               WHERE lc_id = {LC_ID}
+                 AND dispatched = 0;";
+
         // Count how many times this hook has been fully dispatched across all lifecycle entries.
         // Used to populate RunCount on ILifeCycleHookEvent so consumers can detect reruns.
         public const string COUNT_DISPATCHED_BY_HOOK_ID =

@@ -19,6 +19,9 @@ namespace Haley.Internal {
             return row?.GetInt(KEY_CNT) ?? 0;
         }
 
+        public Task<int> SkipUndispatchedByLcIdAsync(long lcId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_HOOK_LC.SKIP_UNDISPATCHED_BY_LC_ID, load, (LC_ID, lcId));
+
         public async Task<int> CountDispatchedByHookIdAsync(long hookId, DbExecutionLoad load = default) {
             var row = await Db.RowAsync(QRY_HOOK_LC.COUNT_DISPATCHED_BY_HOOK_ID, load, (HOOK_ID, hookId));
             return row?.GetInt(KEY_CNT) ?? 0;

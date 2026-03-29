@@ -157,6 +157,18 @@ namespace Haley.Internal {
                WHERE h.type = 1
                  AND ac.status NOT IN (3, 4, 5);";
 
+        // Gate failure closes the entire remaining hook plan for this lifecycle entry.
+        // Cancel all still-open hook ack_consumer rows so late effect ACKs cannot keep advancing
+        // the old lifecycle while the engine is triggering the failure branch.
+        public const string CANCEL_PENDING_HOOK_ACK_CONSUMERS =
+            $@"UPDATE ack_consumer ac
+               JOIN ack a ON a.id = ac.ack_id
+               JOIN hook_ack ha ON ha.ack_id = a.id
+               JOIN hook_lc hl ON hl.id = ha.hook_id AND hl.lc_id = {LC_ID}
+               JOIN hook h ON h.id = hl.hook_id AND h.instance_id = {INSTANCE_ID}
+               SET ac.status = {ACK_STATUS}, ac.next_due = NULL
+               WHERE ac.status NOT IN (3, 4, 5);";
+
         // Gate-success drain: mark all undispatched gate hook_lc rows as Skipped (status=2, dispatched=1)
         // so they never get dispatched. Called by AckOutcomeOrchestrator when a gate ACKs success with
         // an OnSuccessEvent, before draining the remaining effect hooks.

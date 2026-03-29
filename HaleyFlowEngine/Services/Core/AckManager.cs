@@ -121,7 +121,7 @@ namespace Haley.Services {
         //   (default) → status=Pending,   next_due=now+pendingWindow
         // Only the consumer's own row is updated — keyed by (ackGuid, consumerId). Other consumers
         // tracking the same ack are unaffected.
-        public async Task AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
+        public async Task<bool> AckAsync(long consumerId, string ackGuid, AckOutcome outcome, string? message = null, DateTimeOffset? retryAt = null, DbExecutionLoad load = default) {
             load.Ct.ThrowIfCancellationRequested();
             if (consumerId <= 0) throw new ArgumentOutOfRangeException(nameof(consumerId));
             if (string.IsNullOrWhiteSpace(ackGuid)) throw new ArgumentNullException(nameof(ackGuid));
@@ -144,7 +144,7 @@ namespace Haley.Services {
                             ["currentStatus"]   = currentStatus,
                             ["attemptedOutcome"] = outcome.ToString()
                         }));
-                    return;
+                    return false;
                 }
             }
 
@@ -154,6 +154,7 @@ namespace Haley.Services {
             // Single DB call; no ackId fetch needed.
             var affected = await _dal.AckConsumer.SetStatusAndDueByGuidAsync(ackGuid, consumerId, (int)status, nextDueUtc, message, load);
             if (affected <= 0) throw new InvalidOperationException($"AckConsumer not found. guid={ackGuid}, consumer={consumerId}");
+            return true;
 
         }
 

@@ -99,7 +99,7 @@ namespace Haley.Services {
             Runtime = new RuntimeEngine(_dal);
             Care = new EngineCare(_dal.EngineCare, AckManager);
             _instanceOrchestrator = new InstanceOrchestrator(_dal, _opt, BlueprintManager, StateMachine, PolicyEnforcer, AckManager, DispatchEventsSafeAsync, FireNotice);
-            _ackOutcomeOrchestrator = new AckOutcomeOrchestrator(_dal, AckManager, BlueprintManager, PolicyEnforcer, _opt, DispatchEventsSafeAsync, FireNotice);
+            _ackOutcomeOrchestrator = new AckOutcomeOrchestrator(_dal, AckManager, BlueprintManager, PolicyEnforcer, _opt, DispatchEventsSafeAsync, (req, ct) => _instanceOrchestrator.TriggerAsync(req, ct), FireNotice);
             _monitorOrchestrator = new MonitorOrchestrator(_dal, _opt, AckManager, FireEvent, FireNotice,
                 (req, ct) => _instanceOrchestrator.TriggerAsync(req, ct),
                 (ackId, consumerId, ackGuid, instanceGuid, hookRoute, ct) => _ackOutcomeOrchestrator.AbandonEffectHookAsync(ackId, consumerId, ackGuid, instanceGuid, hookRoute, ct));
