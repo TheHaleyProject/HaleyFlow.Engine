@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkflowRelay Guide</title>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --paper: #fffdf8;
+      --ink: #1f2933;
+      --muted: #5f6b76;
+      --line: #ddd3c3;
+      --brand: #8b5e34;
+      --brand-dark: #5b3820;
+      --accent: #1d6f74;
+      --tip: #edf8f5;
+      --warn: #fff3dd;
+      --code: #18222d;
+      --shadow: 0 12px 30px rgba(49, 35, 23, 0.08);
+      --radius: 20px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(139, 94, 52, 0.10), transparent 28%),
+        linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+      padding: 28px 22px;
+      background: #17202b;
+      color: #f3efe7;
+      border-right: 1px solid rgba(255,255,255,0.08);
+    }
+    .brand {
+      font-size: 12px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: #d7c4af;
+      margin-bottom: 10px;
+    }
+    .side-title {
+      font-size: 27px;
+      line-height: 1.05;
+      font-weight: 800;
+      margin: 0 0 18px;
+    }
+    .side-copy {
+      margin: 0 0 24px;
+      color: #c7d1db;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+    .nav a {
+      color: #edf2f7;
+      text-decoration: none;
+      font-size: 14px;
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+    }
+    .nav a:hover { background: rgba(255,255,255,0.08); }
+    .content {
+      padding: 34px;
+    }
+    .hero, .section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .hero {
+      padding: 28px 30px;
+      margin-bottom: 22px;
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: 34px;
+      line-height: 1.08;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+      max-width: 920px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fffefb 0%, #fbf7ef 100%);
+      padding: 16px;
+    }
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .section {
+      padding: 24px 26px;
+      margin-bottom: 18px;
+    }
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--brand);
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 23px;
+    }
+    h3 {
+      margin: 18px 0 10px;
+      font-size: 17px;
+    }
+    p, li {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ink);
+    }
+    ul, ol {
+      margin: 10px 0 0;
+      padding-left: 20px;
+    }
+    .callout {
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+    }
+    .tip { background: var(--tip); }
+    .warn { background: var(--warn); }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      margin-top: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fffdfa;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    th {
+      background: #f6efe3;
+      color: var(--brand-dark);
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    pre {
+      margin: 14px 0 0;
+      padding: 16px 18px;
+      background: var(--code);
+      color: #eaf2ff;
+      border-radius: 16px;
+      overflow: auto;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      background: #efe3d3;
+      color: var(--brand-dark);
+    }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+      .content { padding: 18px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">HaleyFlow</div>
+      <h1 class="side-title">WorkflowRelay</h1>
+      <p class="side-copy">A local protocol interpreter for definition + policy JSON. No engine DB, no consumer inbox/outbox, no ACK pipeline.</p>
+      <nav class="nav">
+        <a href="#overview">Overview</a>
+        <a href="#execution">Execution Model</a>
+        <a href="#hooks">Hooks</a>
+        <a href="#routing">Routing Tiers</a>
+        <a href="#host">Relay Host</a>
+        <a href="#example">Example</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <section class="hero" id="overview">
+        <div class="eyebrow">Protocol Runtime</div>
+        <h1>WorkflowRelay is the zero-infrastructure runner for HaleyFlowProtocol.</h1>
+        <p>It loads the same definition and policy JSON used by the engine, interprets the sequence locally, and advances one step at a time inside your process. It is meant for local orchestration, lightweight apps, testing, and early-stage workflows where you want the protocol semantics without standing up the full engine + consumer delivery pipeline.</p>
+        <div class="grid">
+          <div class="card">
+            <h3>What it gives you</h3>
+            <p>Transition routing, gate/effect hook ordering, policy complete codes, parameter resolution, and inline progression with no external services.</p>
+          </div>
+          <div class="card">
+            <h3>What it does not do</h3>
+            <p>No retries, no crash recovery, no timeout monitor, no ACK tracking, and no durable inbox/outbox semantics.</p>
+          </div>
+          <div class="card">
+            <h3>Best fit</h3>
+            <p>Development, prototypes, internal tools, and apps that want protocol-driven workflow logic but do not need distributed delivery guarantees yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="execution">
+        <div class="eyebrow">Execution</div>
+        <h2>Execution model</h2>
+        <p><code>WorkflowRelay.FromJson(definitionJson, policyJson)</code> parses the protocol into a <code>WorkflowDefinitionSnapshot</code>, validates it, and then drives everything from <code>NextAsync</code>. The relay keeps sequence knowledge inside the runtime so your business handlers only return <code>true</code> or <code>false</code>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Stage</th><th>What relay does</th></tr></thead>
+            <tbody>
+              <tr><td>Load</td><td>Parses states, transitions, policy rules, hook routes, complete codes, and parameter references from protocol JSON.</td></tr>
+              <tr><td>Validate</td><td>Runs <code>PolicyValidator</code>. Critical findings stop startup. Warnings are surfaced but do not block registration.</td></tr>
+              <tr><td>NextAsync</td><td>Finds the matching transition from <code>ctx.CurrentState + eventCode</code>, runs the transition handler, advances state, then runs hooks in order.</td></tr>
+              <tr><td>Auto-advance</td><td>Uses policy <code>complete.success</code> / <code>complete.failure</code> or code overrides to decide the next event code inline.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout tip">
+          <strong>Important:</strong> relay does not use consumer <code>DispatchMode</code>. <code>NormalRun</code>, <code>ValidationMode</code>, and <code>TransitionMode</code> are engine-to-consumer delivery concepts. Relay is a single in-process interpreter, so it runs the sequence directly inside <code>NextAsync</code>.
+        </div>
+      </section>
+
+      <section class="section" id="hooks">
+        <div class="eyebrow">Hooks</div>
+        <h2>Gate and effect behavior</h2>
+        <p>Relay follows the protocol hook ordering rules exactly:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Hook type</th><th>Behavior in relay</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="badge">gate</span></td>
+                <td>Runs in order. Failure stops the sequence immediately. If the gate has <code>complete.failure</code>, relay jumps to that event. If the gate succeeds with <code>complete.success</code>, relay remembers that code, skips remaining gates, still drains effect hooks, then fires the success event.</td>
+              </tr>
+              <tr>
+                <td><span class="badge">effect</span></td>
+                <td>Runs as fire-and-continue work. Relay does not block progression on the returned boolean. It keeps moving after the effect handler finishes.</td>
+              </tr>
+              <tr>
+                <td>Missing order</td>
+                <td>Defaults to <code>int.MaxValue</code>, so unordered hooks run last.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <strong>Tradeoff:</strong> because relay has no durable ACK pipeline, application code is responsible for idempotency. If a process crashes halfway through local work, relay will not replay from a stored inbox or outbox row.
+        </div>
+      </section>
+
+      <section class="section" id="routing">
+        <div class="eyebrow">Routing</div>
+        <h2>Three routing tiers</h2>
+        <p>Both transition handlers and hook handlers support the same precedence model:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tier</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>Tier 1</td><td>Policy JSON complete codes are the default routing source.</td></tr>
+              <tr><td>Tier 2</td><td>Code override on <code>On(..., successCode, failureCode)</code> or <code>OnHook(...)</code> when policy omits complete codes.</td></tr>
+              <tr><td>Tier 3</td><td>A callback <code>Func&lt;bool, RelayContext, Task&lt;int?&gt;&gt;</code> decides the next event dynamically for advanced logic.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>RelayContext</code> carries the local entity reference, current state, actor, payload, and resolved parameter catalog entries for the transition or hook currently executing.</p>
+        <pre><code>var relay = WorkflowRelay.FromJson(definitionJson, policyJson)
+    .On(4000, async ctx => { await review.ValidateAsync(ctx.EntityRef); return true; })
+    .OnHook("APP.REVIEW.AUDIT", async ctx => { await audit.WriteAsync(ctx.EntityRef); return true; })
+    .SetMonitor((eventCode, entityRef) => monitor.AllowAsync(eventCode, entityRef));</code></pre>
+      </section>
+
+      <section class="section" id="host">
+        <div class="eyebrow">Host</div>
+        <h2>WorkflowRelayBase and WorkflowRelayHost</h2>
+        <p>If you want relay execution managed by DI, use <code>WorkflowRelayBase</code> plus <code>WorkflowRelayHost</code>.</p>
+        <ol>
+          <li>Subclass <code>WorkflowRelayBase</code>.</li>
+          <li>Decorate the class with <code>[LifeCycleDefinition("definition-name")]</code>.</li>
+          <li>Return protocol JSON from <code>DefinitionJson</code> and optionally <code>PolicyJson</code>.</li>
+          <li>Implement <code>ConfigureRelay(WorkflowRelay relay)</code> and register <code>On</code> / <code>OnHook</code> handlers.</li>
+          <li><code>WorkflowRelayHost</code> discovers the relay at startup and routes <code>FlowInitiateRequest</code> by <code>WorkflowName</code>.</li>
+        </ol>
+        <div class="callout tip">
+          <strong>Host contract:</strong> <code>FlowInitiateRequest.StartEvent</code> must parse to an integer event code. Relay host converts it and then calls <code>Relay.NextAsync(...)</code>.
+        </div>
+      </section>
+
+      <section class="section" id="example">
+        <div class="eyebrow">Example</div>
+        <h2>Minimal example</h2>
+        <pre><code>[LifeCycleDefinition("loan-approval")]
+public sealed class LoanApprovalRelay : WorkflowRelayBase {
+    private readonly ILoanReviewService _review;
+    private readonly IAuditService _audit;
+
+    public LoanApprovalRelay(ILoanReviewService review, IAuditService audit) {
+        _review = review;
+        _audit = audit;
+    }
+
+    protected override string DefinitionJson => """
+    { "name": "loan-approval",
+      "states": [{ "name": "Submitted", "is_initial": true }, { "name": "UnderReview" }, { "name": "Approved", "is_final": true }],
+      "transitions": [{ "event": 4000, "from": "Submitted", "to": "UnderReview" }, { "event": 4001, "from": "UnderReview", "to": "Approved" }] }
+    """;
+
+    protected override string? PolicyJson => """
+    { "policy_name": "loan-approval",
+      "rules": [{ "state": "UnderReview", "via": 4000, "complete": { "success": 4001 }, "emit": [{ "route": "APP.LOAN.AUDIT", "type": "effect" }] }] }
+    """;
+
+    protected override void ConfigureRelay(WorkflowRelay relay) {
+        relay.On(4000, async ctx => await _review.ValidateAsync(ctx.EntityRef));
+        relay.OnHook("APP.LOAN.AUDIT", async ctx => { await _audit.WriteAsync(ctx.EntityRef); return true; });
+    }
+}</code></pre>
+        <pre><code>var result = await relayHost.InitiateAsync(new FlowInitiateRequest {
+    WorkflowName = "loan-approval",
+    EntityId = "loan-123",
+    StartEvent = "4000",
+    Actor = "analyst"
+}, ct);</code></pre>
+        <div class="callout tip">
+          <strong>Migration path:</strong> if the workflow later needs durable retries, inbox/outbox tracking, or engine-monitored timeouts, keep the same protocol JSON and move the workload to the full engine + consumer runtime.
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

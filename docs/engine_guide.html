@@ -330,7 +330,7 @@
       <div class="nav-items">
         <button class="nav-item" onclick="gotoSection('pol-structure')">Policy Structure</button>
         <button class="nav-item" onclick="gotoSection('pol-emit')">Emit Fields</button>
-        <button class="nav-item" onclick="gotoSection('pol-blocking')">Blocking Flag</button>
+        <button class="nav-item" onclick="gotoSection('pol-blocking')">Hook Type (Gate / Effect)</button>
         <button class="nav-item" onclick="gotoSection('pol-groups')">Hook Groups</button>
         <button class="nav-item" onclick="gotoSection('pol-order')">Ordered Emission</button>
         <button class="nav-item" onclick="gotoSection('pol-ackmode')">ACK Mode: All vs Any</button>
@@ -404,14 +404,19 @@
     <div class="hero-logo">h.</div>
     <div>
       <h1>Haley Workflow Engine</h1>
-      <p>A reliable, DB-backed workflow engine for .NET. Define workflows as JSON policies. Fire events to advance state. React to hook emissions in your services. The engine handles persistence, delivery guarantees, retry, and timeout — your code handles business logic.</p>
+      <p>A reliable, DB-backed interpreter for HaleyFlowProtocol v1. Import protocol definitions and policies, fire events to advance state, and let the engine handle persistence, ACK scheduling, retries, timeout rules, and hook delivery.</p>
       <div class="hero-meta">
         <span class="hero-tag">MariaDB</span>
         <span class="hero-tag">C# / .NET</span>
-        <span class="hero-tag">v0.7</span>
+        <span class="hero-tag">Protocol v1</span>
         <span class="hero-tag">Saga Choreography</span>
       </div>
     </div>
+  </div>
+
+  <div class="callout tip" style="margin-bottom:32px">
+    <div class="callout-title">Authoritative contract</div>
+    <code>HaleyFlowProtocol_v1.html</code> is the source of truth for definition and policy JSON. This engine guide is the operational companion: it explains how the engine imports that protocol into SQL, derives version hashes, dispatches ACK-backed deliveries, and exposes runtime/admin APIs.
   </div>
 
   <!-- ──────────────── QUICK START ──────────────── -->
@@ -445,7 +450,7 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
 <span class="cm">// 6. Trigger a transition</span>
 <span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
     EnvCode     = envCode,
-    DefName     = <span class="st">"loan-approval"</span>,
+    DefName     = <span class="st">"LoanApproval"</span>,
     EntityId    = loanId.ToString(),
     Event       = <span class="st">"submit"</span>,
     Actor       = userId,
@@ -613,7 +618,7 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
         <tbody>
           <tr><td><code>EnvCode</code></td><td>✅</td><td>Environment identifier</td></tr>
           <tr><td><code>DefName</code></td><td>✅</td><td>Definition name — finds the target def_version</td></tr>
-          <tr><td><code>EntityId</code></td><td>✅</td><td>Application entity key (e.g. loan ID, order ID). Combined with <code>def_version_id</code> to uniquely identify an instance. Stored in <code>instance.entity_id</code>.</td></tr>
+          <tr><td><code>EntityId</code></td><td>✅</td><td>Application entity key (e.g. loan ID, order ID). The engine keeps one active instance per <code>(def_id, entity_id)</code>; the chosen <code>def_version</code> is then pinned onto that instance. Stored in <code>instance.entity_id</code>.</td></tr>
           <tr><td><code>Event</code></td><td>✅</td><td>Event name or code to trigger the transition</td></tr>
           <tr><td><code>Actor</code></td><td>Optional</td><td>For timeline tracking</td></tr>
           <tr><td><code>PolicyId</code></td><td>Optional</td><td><code>long?</code> — override the policy resolved for this trigger; omit to use the instance's attached policy</td></tr>
@@ -639,14 +644,14 @@ _ = Task.Run(() => BeatLoop(engine, envCode, myGuid, cts.Token)); <span class="c
       <li><div class="step-num">5</div><div class="step-body"><strong>Apply transition</strong> (<code>IStateMachine.ApplyTransitionAsync</code>) — validates transition, CAS-updates instance state, inserts lifecycle row. If already moved → commits and returns early.</div></li>
       <li><div class="step-num">6</div><div class="step-body"><strong>Resolve rule context</strong> from policy JSON — extracts <code>params</code>, <code>on_success_event</code>, <code>on_failure_event</code> for the matched rule.</div></li>
       <li><div class="step-num">7</div><div class="step-body"><strong>Create lifecycle ACK</strong> (<code>IAckManager.CreateLifecycleAckAsync</code>) — one <code>ack_guid</code>, multiple consumer rows, linked via <code>lc_ack</code>.</div></li>
-      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hooks</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — upserts <code>hook</code> rows. Resolves route string → <code>hook_route.id</code> (FK). Resolves group name → <code>hook_group.id</code> (FK, nullable). Computes <code>minOrder</code> across all matched emit entries. Hooks at <code>order &gt; minOrder</code> are written with <code>dispatched=0</code> (invisible to the monitor; waiting for prior-order blocking hooks to complete). Only min-order hooks are returned in the <code>LifeCycleHookEmission</code> list for step 9.</div></li>
-      <li><div class="step-num">9</div><div class="step-body"><strong>Create hook ACKs</strong> (<code>IAckManager.CreateHookAckAsync</code>) — one <code>ack_guid</code> per dispatched hook, multiple consumer rows, linked via <code>hook_ack</code>. Higher-order hooks (<code>dispatched=0</code>) get no ACK rows here; rows are created later by <code>AdvanceNextHookOrderAsync</code> when prior blocking hooks complete.</div></li>
+      <li><div class="step-num">8</div><div class="step-body"><strong>Emit hooks</strong> (<code>IPolicyEnforcer.EmitHooksAsync</code>) — upserts <code>hook</code> rows. Resolves route string → <code>hook_route.id</code> (FK). Resolves group name → <code>hook_group.id</code> (FK, nullable). Computes <code>minOrder</code> across all matched emit entries. Hooks at <code>order &gt; minOrder</code> are written with <code>dispatched=0</code> (invisible to the monitor; waiting for prior-order gate hooks to complete). Only min-order hooks are returned in the <code>LifeCycleHookEmission</code> list for step 9.</div></li>
+      <li><div class="step-num">9</div><div class="step-body"><strong>Create hook ACKs</strong> (<code>IAckManager.CreateHookAckAsync</code>) — one <code>ack_guid</code> per dispatched hook, multiple consumer rows, linked via <code>hook_ack</code>. Higher-order hooks (<code>dispatched=0</code>) get no ACK rows here; rows are created later by <code>AdvanceNextHookOrderAsync</code> when prior gate hooks complete.</div></li>
       <li><div class="step-num">10</div><div class="step-body"><strong>Commit first.</strong> Only after commit does the engine raise C# events via <code>FireEvent</code>. Dispatch failures become notices; monitor will re-send via pending ACK rows.</div></li>
     </ol>
   </section>
 
   <section class="doc-section" id="flow-ackgate">
-    <h3 class="sub-title">3.2b ACK Gate &amp; Blocking Hook Gate</h3>
+    <h3 class="sub-title">3.2b ACK Gate &amp; Gate Hook Gate</h3>
     <p>An opt-in guard on <code>TriggerAsync</code>. When <code>AckGateEnabled=true</code> and <code>SkipAckGate=false</code>, the engine runs <strong>three sequential checks</strong> before applying a state transition. If any check fails, the trigger returns immediately with <code>Applied=false</code>.</p>
 
     <h4 class="mini-title">Check 1 — Transition ACK gate (<code>lc_ack</code>)</h4>
@@ -658,13 +663,13 @@ SELECT COUNT(*) FROM ack_consumer ac
     AND ac.status NOT IN (3, 4, 5);</code><span class="lang-label">SQL</span></pre>
     <p>Scoped to <code>lc_ack</code> — transition consumer delivery rows. If any consumer has not reached a terminal status: <code>Reason: "BlockedByPendingAck"</code>.</p>
 
-    <h4 class="mini-title">Check 2 — Blocking hook ACK gate (ack_mode-aware)</h4>
-    <pre><code><span class="cm">-- Are any dispatched blocking hooks for the current lifecycle entry still unresolved?</span>
+    <h4 class="mini-title">Check 2 — Gate hook ACK gate (ack_mode-aware)</h4>
+    <pre><code><span class="cm">-- Are any dispatched gate hooks for the current lifecycle entry still unresolved?</span>
 <span class="cm">-- ack_mode=ALL (0): unresolved if any ack_consumer is not terminal</span>
 <span class="cm">-- ack_mode=ANY (1): unresolved if no ack_consumer has Processed (status=3)</span>
 SELECT COUNT(DISTINCT h.id) FROM hook h
   JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = &lt;latest_lc_id&gt;
-  WHERE h.instance_id = ? AND h.blocking = 1 AND hl.dispatched = 1
+  WHERE h.instance_id = ? AND h.type = b'1' AND hl.dispatched = 1
     AND (
       (h.ack_mode = 0 AND EXISTS (
         SELECT 1 FROM hook_ack ha JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
@@ -674,7 +679,7 @@ SELECT COUNT(DISTINCT h.id) FROM hook h
         SELECT 1 FROM hook_ack ha JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
         WHERE ha.hook_id = hl.id AND ac.status = 3))
     );</code><span class="lang-label">SQL</span></pre>
-    <p>A blocking hook is a mandatory business checkpoint. The state machine must not advance until it is resolved. If any dispatched blocking hook is unresolved: <code>Reason: "BlockedByPendingBlockingHook"</code>.</p>
+    <p>A gate hook is a mandatory business checkpoint. The state machine must not advance until it is resolved. If any dispatched gate hook is unresolved: <code>Reason: "BlockedByPendingBlockingHook"</code>.</p>
     <div class="table-wrap" style="margin-top:8px">
       <table>
         <thead><tr><th>ack_mode</th><th>Hook is "resolved" when…</th></tr></thead>
@@ -685,30 +690,30 @@ SELECT COUNT(DISTINCT h.id) FROM hook h
       </table>
     </div>
 
-    <h4 class="mini-title">Check 3 — Undispatched blocking hook gate</h4>
-    <pre><code><span class="cm">-- Are any blocking hooks still waiting to be dispatched?</span>
+    <h4 class="mini-title">Check 3 — Undispatched gate hook gate</h4>
+    <pre><code><span class="cm">-- Are any gate hooks still waiting to be dispatched?</span>
 <span class="cm">-- (hook_lc rows with dispatched=0 — queued but not yet sent to consumers)</span>
 SELECT COUNT(*) FROM hook h
   JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = &lt;latest_lc_id&gt;
-  WHERE h.instance_id = ? AND h.blocking = 1 AND hl.dispatched = 0;</code><span class="lang-label">SQL</span></pre>
-    <p>Higher-order blocking hooks may not be dispatched yet because a lower-order blocking hook is still running. These are also unresolved checkpoints: <code>Reason: "BlockedByUndispatchedBlockingHook"</code>.</p>
+  WHERE h.instance_id = ? AND h.type = b'1' AND hl.dispatched = 0;</code><span class="lang-label">SQL</span></pre>
+    <p>Higher-order gate hooks may not be dispatched yet because a lower-order gate hook is still running. These are also unresolved checkpoints: <code>Reason: "BlockedByUndispatchedBlockingHook"</code>.</p>
 
     <div class="card-grid">
       <div class="card">
         <div class="card-title">All blocked reasons</div>
         <pre style="margin:8px 0 0"><code><span class="cm">// Check 1 — transition consumers still pending</span>
 { Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByPendingAck"</span> }
-<span class="cm">// Check 2 — blocking hook ACKs unresolved</span>
+<span class="cm">// Check 2 — gate hook ACKs unresolved</span>
 { Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByPendingBlockingHook"</span> }
-<span class="cm">// Check 3 — blocking hooks not yet dispatched</span>
+<span class="cm">// Check 3 — gate hooks not yet dispatched</span>
 { Applied: <span class="nb">false</span>, Reason: <span class="st">"BlockedByUndispatchedBlockingHook"</span> }</code></pre>
       </div>
       <div class="card">
         <div class="card-title">What the gate does NOT check</div>
         <ul>
-          <li>Non-blocking hooks (<code>blocking: false</code>) — never gate transitions</li>
+          <li>Effect hooks (<code>type: "effect"</code>) — never gate transitions</li>
           <li>Earlier lifecycle entries — only the latest entry is scoped</li>
-          <li>Undispatched non-blocking hooks — only blocking ones matter</li>
+          <li>Undispatched effect hooks — only gate hooks matter</li>
         </ul>
       </div>
     </div>
@@ -730,7 +735,7 @@ SELECT COUNT(*) FROM hook h
     </div>
     <div class="callout tip">
       <div class="callout-title">When to enable it</div>
-      Enable when you need a guarantee that all downstream systems have confirmed delivery <em>and</em> all mandatory business checkpoints (blocking hooks) are resolved before the workflow can advance. The transition ACK gate is a <em>delivery reliability</em> guarantee; the blocking hook gate is a <em>business correctness</em> guarantee. Both run together under the same <code>AckGateEnabled</code> flag.
+      Enable when you need a guarantee that all downstream systems have confirmed delivery <em>and</em> all mandatory business checkpoints (gate hooks) are resolved before the workflow can advance. The transition ACK gate is a <em>delivery reliability</em> guarantee; the gate-hook gate is a <em>business correctness</em> guarantee. Both run together under the same <code>AckGateEnabled</code> flag.
     </div>
   </section>
 
@@ -774,13 +779,13 @@ SELECT COUNT(*) FROM hook h
         <thead><tr><th>Code</th><th>Kind</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><code>ACK_RETRY</code></td><td><span class="badge warn">Warn</span></td><td>ACK pending/delivered too long; event re-raised</td></tr>
-          <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>blocking</strong> hook; instance suspended</td></tr>
-          <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td></tr>
+          <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>gate</strong> hook; instance suspended</td></tr>
+          <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on an <strong>effect</strong> hook; instance continues</td></tr>
           <tr><td><code>STALE_ACK_RECEIVED</code></td><td><span class="badge warn">Warn</span></td><td>Consumer ACKed an already-terminal row (Processed/Failed/Cancelled); ACK rejected</td></tr>
-          <tr><td><code>HOOK_ACK_CANCELLED</code></td><td><span class="badge info">Info</span></td><td>Monitor cancelled open blocking hook ACKs before a Case A timeout transition</td></tr>
+          <tr><td><code>HOOK_ACK_CANCELLED</code></td><td><span class="badge info">Info</span></td><td>Monitor cancelled open gate-hook ACKs before a Case A timeout transition</td></tr>
           <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td> All hooks in a named group are Processed for this instance</td></tr>
           <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td></tr>
-          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks dispatched after all blocking hooks at the prior order completed</td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks dispatched after all gate hooks at the prior order completed</td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; originating ACK was still accepted</td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance stuck in state with no open ACKs and no policy timeout</td></tr>
           <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop</td></tr>
@@ -832,7 +837,7 @@ SELECT COUNT(*) FROM hook h
       <div class="callout-title">Retry does not grant unlimited time</div>
       <p>
         The consumer can push the re-delivery date forward using <code>retryAt</code>, but each time the monitor eventually re-delivers, <code>trigger_count</code> increments.
-        Once <code>trigger_count &ge; MaxRetryCount</code>, the engine marks the ACK <code>Failed</code> and suspends the instance (for blocking hooks) regardless of how far out the consumer kept scheduling retries.
+        Once <code>trigger_count &ge; MaxRetryCount</code>, the engine marks the ACK <code>Failed</code> and suspends the instance (for gate hooks) regardless of how far out the consumer kept scheduling retries.
       </p>
       <p style="margin-top:8px">
         <strong>For genuinely long-running human tasks</strong> (reviews that take days or weeks), the right pattern is to ACK <code>Processed</code> immediately when the hook fires — recording that the task was handed off — and then call <code>TriggerAsync</code> with the appropriate event when the human completes their work. This keeps the ACK clean and the workflow from being held hostage to a retry counter.
@@ -871,8 +876,8 @@ SELECT COUNT(*) FROM hook h
       <li>If <code>TriggerCount &gt;= MaxRetryCount</code>:
         <ul>
           <li>Mark ACK Failed (<code>next_due = NULL</code>)</li>
-          <li>If hook was <strong>blocking</strong>: suspend instance + fire <code>ACK_SUSPEND</code></li>
-          <li>If hook was <strong>non-blocking</strong>: fire <code>ACK_FAIL</code> notice, instance continues</li>
+          <li>If hook was <strong>gate</strong>: suspend instance + fire <code>ACK_SUSPEND</code></li>
+          <li>If hook was <strong>effect</strong>: fire <code>ACK_FAIL</code> notice, instance continues</li>
         </ul>
       </li>
       <li>Otherwise: increment trigger count, set next <code>next_due</code>, fire <code>ACK_RETRY</code>, re-raise event</li>
@@ -941,10 +946,12 @@ SELECT COUNT(*) FROM hook h
     <h3 class="sub-title">4.2 BlueprintImporter</h3>
     <p><strong>Role:</strong> Import-time canonicalization (JSON → SQL).</p>
     <ul>
-      <li>Loads definition JSON: states / events / transitions / categories / timeouts</li>
-      <li>Loads policy JSON: rules / hooks / emit entries / params / timeouts</li>
+      <li>Loads protocol definition JSON: states / transitions / categories</li>
+      <li>Derives event rows from <code>transitions[].event</code> rather than requiring a separate top-level <code>events</code> list</li>
+      <li>Loads policy JSON: rules / emit entries / params / timeouts</li>
       <li>Writes normalized SQL rows in one transaction</li>
-      <li>Policy hashed (SHA-256) for deduplication — same content = same policy row</li>
+      <li>Definition and policy versions are hash-deduped from behavioral content only</li>
+      <li>Display-only metadata such as <code>description</code>, <code>label</code>, <code>category</code>, and <code>eventName</code> do <strong>not</strong> create a new version hash</li>
       <li>Timeouts parsed from ISO 8601 (<code>"P2D"</code>) or direct <code>timeout_minutes</code></li>
     </ul>
   </section>
@@ -987,14 +994,14 @@ SELECT COUNT(*) FROM hook h
           <li>Matches policy rules by <code>(state, via_event)</code></li>
           <li>For each emit entry: resolves <code>route</code> string → <code>hook_route.id</code> (upsert, global table) </li>
           <li>If <code>"group"</code> present: resolves group name → <code>hook_group.id</code> (upsert, global table) </li>
-          <li>Upserts <code>hook</code> row with <code>route_id</code>, <code>blocking</code>, <code>group_id</code></li>
-          <li>Returns <code>LifeCycleHookEmission</code> with: <code>HookId</code>, <code>HookCode</code>, <code>OnEntry</code>, <code>IsBlocking</code> , <code>GroupName</code> , <code>OnSuccessEvent</code>, <code>OnFailureEvent</code>, <code>NotBefore</code>, <code>Deadline</code>, <code>Params</code></li>
+          <li>Upserts <code>hook</code> row with <code>route_id</code>, <code>type</code>, <code>group_id</code></li>
+          <li>Returns <code>LifeCycleHookEmission</code> with: <code>HookId</code>, <code>HookCode</code>, <code>OnEntry</code>, <code>HookType</code>, <code>GroupName</code>, <code>OnSuccessEvent</code>, <code>OnFailureEvent</code>, <code>NotBefore</code>, <code>Deadline</code>, <code>Params</code></li>
         </ul>
       </li>
     </ul>
     <div class="callout tip">
-      <div class="callout-title">Blocking inheritance chain</div>
-      <code>emit.blocking</code> → <code>rule.blocking</code> → default <code>true</code>. The emit-level value wins if present.
+      <div class="callout-title">Hook type inheritance chain</div>
+      <code>emit.type</code> → <code>rule.type</code> → default <code>"gate"</code>. The emit-level value wins if present.
     </div>
   </section>
 
@@ -1236,7 +1243,7 @@ SELECT COUNT(*) FROM hook h
     <h3 class="sub-title">6.1 Policy Structure</h3>
     <pre><code>{
   <span class="jk">"policy_name"</span>: <span class="jv">"vendor-registration.policy"</span>,
-  <span class="jk">"for"</span>: { <span class="jk">"definition"</span>: <span class="jv">"vendorregistration"</span>, <span class="jk">"version"</span>: <span class="jn">1</span> },
+  <span class="jk">"defName"</span>: <span class="jv">"VendorRegistration"</span>,
 
   <span class="jk">"params"</span>: [
     {
@@ -1249,24 +1256,26 @@ SELECT COUNT(*) FROM hook h
     {
       <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>,
       <span class="jk">"via"</span>: <span class="jn">1001</span>,
-      <span class="jk">"blocking"</span>: <span class="nb">true</span>,
+      <span class="jk">"params"</span>: [<span class="jv">"PARAMS.REG.PQ.VALIDATE"</span>],
       <span class="jk">"complete"</span>: { <span class="jk">"success"</span>: <span class="jn">2001</span>, <span class="jk">"failure"</span>: <span class="jn">2002</span> },
       <span class="jk">"emit"</span>: [
         {
-          <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.NOTIFY_REVIEWER"</span>,
-          <span class="jk">"blocking"</span>: <span class="nb">true</span>,
+          <span class="jk">"route"</span>: <span class="jv">"APP.REVIEW.NOTIFY_REVIEWER"</span>,
+          <span class="jk">"label"</span>: <span class="jv">"Notify Reviewer"</span>,
+          <span class="jk">"type"</span>: <span class="jv">"gate"</span>,
           <span class="jk">"group"</span>: <span class="jv">"review_checks"</span>,
+          <span class="jk">"order"</span>: <span class="jn">1</span>,
           <span class="jk">"params"</span>: [<span class="jv">"PARAMS.REG.PQ.VALIDATE"</span>],
           <span class="jk">"complete"</span>: { <span class="jk">"success"</span>: <span class="jn">2001</span>, <span class="jk">"failure"</span>: <span class="jn">2002</span> }
         },
         {
-          <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.RUN_CREDIT_CHECK"</span>,
-          <span class="jk">"blocking"</span>: <span class="nb">true</span>,
+          <span class="jk">"route"</span>: <span class="jv">"APP.REVIEW.RUN_CREDIT_CHECK"</span>,
+          <span class="jk">"type"</span>: <span class="jv">"gate"</span>,
           <span class="jk">"group"</span>: <span class="jv">"review_checks"</span>
         },
         {
-          <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.AUDIT_LOG"</span>,
-          <span class="jk">"blocking"</span>: <span class="nb">false</span>
+          <span class="jk">"route"</span>: <span class="jv">"APP.REVIEW.AUDIT_LOG"</span>,
+          <span class="jk">"type"</span>: <span class="jv">"effect"</span>
         }
       ]
     }
@@ -1288,94 +1297,118 @@ SELECT COUNT(*) FROM hook h
       <table>
         <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><code>event</code></td><td>string</td><td>Route / hook code. Stored in <code>hook_route</code> table (normalized). Consumers use this to dispatch work.</td></tr>
-          <tr><td><code>blocking</code></td><td>bool</td><td> If <code>true</code> (default), ACK failure suspends the instance. If <code>false</code>, failure fires <code>ACK_FAIL</code> notice and instance continues.</td></tr>
-          <tr><td><code>group</code></td><td>string?</td><td> Group name. Emits sharing the same group in the same rule are tracked together. <code>HOOK_GROUP_COMPLETE</code> fires when all are Processed.</td></tr>
-          <tr><td><code>order</code></td><td>int</td><td> Emission order stage (default <code>1</code>). Lower-numbered stages fire first. Same-order emits dispatch in parallel. Blocking hooks at stage N must all reach <code>Processed</code> before stage N+1 is dispatched.</td></tr>
-          <tr><td><code>ack_mode</code></td><td>string</td><td> <code>"all"</code> (default) — every consumer must ACK Processed. <code>"any"</code> — the first consumer to ACK Processed marks all sibling <code>ack_consumer</code> rows Processed automatically.</td></tr>
+          <tr><td><code>route</code></td><td>string</td><td>Stable hook route. Stored in <code>hook_route</code>. Consumers dispatch by this value.</td></tr>
+          <tr><td><code>label</code></td><td>string?</td><td>Display-only text for logs and admin UIs. It does not change runtime behaviour and is ignored by version hashing.</td></tr>
+          <tr><td><code>type</code></td><td>string</td><td><code>"gate"</code> or <code>"effect"</code>. Gate hooks participate in ordering and can suspend an instance on retry exhaustion. Effect hooks are advisory side effects.</td></tr>
+          <tr><td><code>group</code></td><td>string?</td><td>Group name. Emits sharing the same group in the same rule are tracked together. <code>HOOK_GROUP_COMPLETE</code> fires when all are Processed.</td></tr>
+          <tr><td><code>order</code></td><td>int</td><td>Emission order stage. Lower values run first. If omitted, the hook runs last (<code>int.MaxValue</code> semantics in both engine and relay).</td></tr>
+          <tr><td><code>ack_mode</code></td><td>string</td><td><code>"all"</code> (default) — every targeted consumer must ACK Processed. <code>"any"</code> — the first successful consumer satisfies the group.</td></tr>
           <tr><td><code>params</code></td><td>string[]</td><td>Param codes to resolve from the <code>params</code> catalog. Overrides rule-level params.</td></tr>
           <tr><td><code>complete</code></td><td>object</td><td><code>{ "success": eventCode, "failure": eventCode }</code>. Overrides rule-level complete.</td></tr>
           <tr><td><code>on_entry</code></td><td>bool</td><td>Default <code>true</code>. Set <code>false</code> for on-exit hooks.</td></tr>
-          <tr><td><code>not_before</code></td><td>duration?</td><td>Delay before the hook becomes deliverable</td></tr>
-          <tr><td><code>deadline</code></td><td>duration?</td><td>Time window; after deadline the hook may be considered expired</td></tr>
+          <tr><td><code>notBefore</code></td><td>datetime/duration?</td><td>Optional delay before the hook becomes deliverable.</td></tr>
+          <tr><td><code>deadline</code></td><td>datetime/duration?</td><td>Optional expiry boundary for the hook.</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
   <section class="doc-section" id="pol-blocking">
-    <h3 class="sub-title">6.3 Blocking Flag — Hooks as Configurable Business Operations</h3>
+    <h3 class="sub-title">6.3 Hook Type (Gate / Effect) — Hooks as Configurable Business Operations</h3>
 
     <h4 class="mini-title">Why hooks exist: policy-driven work, not just side effects</h4>
     <p>At any state transition a workflow may need to do several things: download a prior response, create a submission record, send a notification email, provision an account. The traditional approach is to hard-code all of these inside a single transition handler. The problem: if tomorrow you decide email is optional, you have to edit code and redeploy.</p>
     <p>Hooks solve this by making each unit of work a <strong>named route in the policy</strong>. You add, remove, or reorder them by changing the JSON — no code change, no rebuild. You can even add a generic cross-cutting route (<code>"AUDIT.LOG_TRANSITION"</code>) that any consumer can pick up automatically across every workflow type.</p>
     <div class="callout tip">
       <div class="callout-title">Key design intent</div>
-      Some of these operations are mandatory — the workflow must not advance until they succeed (<code>blocking: true</code>). Others are best-effort — failure should be noted but not halt the workflow (<code>blocking: false</code>).
+      Some operations are <code>type: "gate"</code> — the workflow must wait for them. Others are <code>type: "effect"</code> — best-effort side effects whose failure should be recorded but should not halt the business flow.
     </div>
 
-    <h4 class="mini-title">Three effects of the blocking flag</h4>
+    <h4 class="mini-title">Three effects of hook type</h4>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Effect</th><th><code>blocking: true</code></th><th><code>blocking: false</code></th></tr></thead>
+        <thead><tr><th>Effect</th><th><code>type: "gate"</code></th><th><code>type: "effect"</code></th></tr></thead>
         <tbody>
           <tr>
             <td><strong>Hook dispatch ordering</strong><br><small>(while running normally)</small></td>
-            <td>The next <code>order</code> stage is held back until this hook reaches <code>Processed</code>. All blocking hooks at the current order must complete before the engine advances to the next order.</td>
-            <td>Does not gate the next order. The engine skips over non-blocking hooks when checking if an order is "complete enough" to advance.</td>
+            <td>The next <code>order</code> stage is held back until this hook reaches <code>Processed</code>. All gate hooks at the current order must complete before the engine advances to the next order.</td>
+            <td>Does not gate the next order. The engine skips over effect hooks when checking if an order is complete enough to advance.</td>
           </tr>
           <tr>
-            <td><strong>State transition gate</strong><br><small>(blocking hook gate)</small></td>
-            <td>When <code>AckGateEnabled=true</code>: <code>TriggerAsync</code> is blocked if any dispatched blocking hook has unresolved ACKs, or if any blocking hook has not yet been dispatched. See <a href="#" onclick="gotoSection('flow-ackgate');return false;">ACK Gate</a> section.</td>
-            <td>Never gates state transitions. The instance can advance regardless of non-blocking hook status.</td>
+            <td><strong>State transition gate</strong><br><small>(ACK gate)</small></td>
+            <td>When <code>AckGateEnabled=true</code>, unresolved gate-hook ACKs prevent competing transitions from being accepted.</td>
+            <td>Effect-hook status never blocks a state transition.</td>
           </tr>
           <tr>
             <td><strong>Max-retry consequence</strong><br><small>(when consumer exhausts retries)</small></td>
-            <td>ACK marked <code>Failed</code> → instance <code>Suspended</code> → <code>ACK_SUSPEND</code> notice fired → engine stops all re-dispatch for this instance.</td>
-            <td>ACK marked <code>Failed</code> → <code>ACK_FAIL</code> warn notice fired → instance <strong>continues normally</strong>. Use for advisory operations (audit log, notifications).</td>
+            <td>ACK marked <code>Failed</code> → instance <code>Suspended</code> → <code>ACK_SUSPEND</code> notice fired → engine stops re-dispatch for this instance.</td>
+            <td>ACK marked <code>Failed</code> → <code>ACK_FAIL</code> warn notice fired → instance continues. Use this for audit, notification, and advisory work.</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <h4 class="mini-title">Pattern: hook-driven state advancement</h4>
-    <p>The standard pattern when a blocking hook must complete before the instance moves on:</p>
-    <ol style="margin:8px 0;padding-left:22px;line-height:1.9">
-      <li>State A has a blocking hook route <code>"PREPARE.DOWNLOAD_RESPONSE"</code></li>
-      <li>Do <strong>not</strong> trigger the next transition from outside — the blocking hook gate will reject it anyway</li>
-      <li>The <code>[HookHandler("PREPARE.DOWNLOAD_RESPONSE")]</code> in the consumer does the work, then calls <code>Engine.TriggerAsync(event="next_step")</code> directly — this is safe in a hook handler because hook ACKs don't participate in the <em>transition</em> ACK gate (Check 1), and by the time the hook handler runs its own hook is already Processed (so Check 2 also passes)</li>
-      <li>If the hook exhausts retries (<code>blocking: true</code>), the instance is suspended — an operator must unsuspend and retry</li>
-    </ol>
-    <p>For a group of hooks that all must complete before advancing, subscribe to the <code>HOOK_GROUP_COMPLETE</code> notice and call <code>TriggerAsync</code> from there (see Hook Groups section).</p>
+    <h4 class="mini-title">Pattern: transition dispatch modes</h4>
+    <p>Transition deliveries are now stamped with a <code>DispatchMode</code>. The engine and consumer cooperate differently depending on that mode:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mode</th><th>When engine uses it</th><th>What consumer does</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>NormalRun</code></td>
+            <td>No hooks were emitted for the transition.</td>
+            <td>Run the transition handler normally. If the handler calls <code>AutoTransitionAsync</code>, the manager stores the next event and fires it after ACK confirmation.</td>
+          </tr>
+          <tr>
+            <td><code>ValidationMode</code></td>
+            <td>The transition has hook work in progress for the entered state.</td>
+            <td>Run the transition handler, ACK the result, but suppress any queued next event. The engine hook pipeline now owns progression.</td>
+          </tr>
+          <tr>
+            <td><code>TransitionMode</code></td>
+            <td>The engine already resolved the hook pipeline and wants the consumer to advance without re-running business logic.</td>
+            <td>Skip transition business logic. The consumer only ACKs and then emits <code>ctx.OnSuccessEvent</code> after ACK confirmation.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip" style="margin-top:12px">
+      <div class="callout-title">Who advances the instance?</div>
+      <strong>NormalRun</strong> is consumer-driven via <code>AutoTransitionAsync</code>.<br>
+      <strong>ValidationMode</strong> is engine-driven while hooks are active.<br>
+      <strong>TransitionMode</strong> is engine-driven completion after hook sequencing has already resolved.
+    </div>
+    <p style="margin-top:12px">Hook handlers can still call <code>TriggerAsync</code> directly because the ACK gate only checks lifecycle ACK rows, not hook ACK rows. Use that only when the workflow contract explicitly says the hook itself owns advancement, or when a notice such as <code>HOOK_GROUP_COMPLETE</code> is your coordination point. Do not use direct hook triggers to bypass <code>ValidationMode</code> or <code>TransitionMode</code>.</p>
+    <p>For grouped gates that all must finish before advancing, <code>HOOK_GROUP_COMPLETE</code> remains the coordination notice. If a gate hook exhausts retries, the instance can be suspended and must be unsuspended by an operator.</p>
 
     <h4 class="mini-title">Practical example — preparation state</h4>
     <p>A <em>Preparation</em> state needs four operations. Two are mandatory (download + create submission). Two are best-effort (email + provision):</p>
-    <pre><code><span class="cm">// Policy emit for the "preparation" state</span>
+    <pre><code><span class="cm">// Policy emit for the "Preparation" state</span>
 <span class="jk">"emit"</span>: [
-  { <span class="jk">"event"</span>: <span class="jv">"PREP.DOWNLOAD_PRIOR_RESPONSE"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">1</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"PREP.CREATE_SUBMISSION"</span>,       <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">2</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"PREP.SEND_NOTIFICATION_EMAIL"</span>,  <span class="jk">"blocking"</span>: <span class="nb">false</span>, <span class="jk">"order"</span>: <span class="jn">2</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"PREP.CREATE_PROVISION"</span>,         <span class="jk">"blocking"</span>: <span class="nb">false</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
+  { <span class="jk">"route"</span>: <span class="jv">"PREP.DOWNLOAD_PRIOR_RESPONSE"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>,   <span class="jk">"order"</span>: <span class="jn">1</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"PREP.CREATE_SUBMISSION"</span>,       <span class="jk">"type"</span>: <span class="jv">"gate"</span>,   <span class="jk">"order"</span>: <span class="jn">2</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"PREP.SEND_NOTIFICATION_EMAIL"</span>,  <span class="jk">"type"</span>: <span class="jv">"effect"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"PREP.CREATE_PROVISION"</span>,         <span class="jk">"type"</span>: <span class="jv">"effect"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
 ]</code><span class="lang-label">JSON</span></pre>
     <div class="table-wrap" style="margin-top:12px">
       <table>
-        <thead><tr><th>Hook</th><th>blocking</th><th>order</th><th>Effect</th></tr></thead>
+        <thead><tr><th>Hook</th><th>type</th><th>order</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>DOWNLOAD_PRIOR_RESPONSE</code></td><td>true</td><td>1</td><td>Must complete before order 2 dispatches. If it exhausts retries → instance suspended.</td></tr>
-          <tr><td><code>CREATE_SUBMISSION</code></td><td>true</td><td>2</td><td>Dispatched only after order 1 completes. Must succeed; failure suspends instance.</td></tr>
-          <tr><td><code>SEND_NOTIFICATION_EMAIL</code></td><td>false</td><td>2</td><td>Dispatched at the same time as order 2 blocking hook. Failure only fires a warn notice.</td></tr>
-          <tr><td><code>CREATE_PROVISION</code></td><td>false</td><td>2</td><td>Same — fire-and-forget at order 2. Can be removed from policy tomorrow without code changes.</td></tr>
+          <tr><td><code>DOWNLOAD_PRIOR_RESPONSE</code></td><td>gate</td><td>1</td><td>Must complete before order 2 dispatches. If it exhausts retries → instance suspended.</td></tr>
+          <tr><td><code>CREATE_SUBMISSION</code></td><td>gate</td><td>2</td><td>Dispatched only after order 1 completes. Must succeed; failure suspends instance.</td></tr>
+          <tr><td><code>SEND_NOTIFICATION_EMAIL</code></td><td>effect</td><td>2</td><td>Dispatched at the same time as the order 2 gate hook. Failure only fires a warn notice.</td></tr>
+          <tr><td><code>CREATE_PROVISION</code></td><td>effect</td><td>2</td><td>Same — fire-and-forget at order 2. Can be removed from policy tomorrow without code changes.</td></tr>
         </tbody>
       </table>
     </div>
     <div class="callout tip">
       <div class="callout-title">Flexibility at runtime</div>
-      Tomorrow you decide email and provision can be deferred. Remove them from the policy JSON and redeploy the policy — no handler code changes required. You could also add a generic <code>"AUDIT.LOG_TRANSITION"</code> route at <code>blocking: false, order: 2</code> and have any subscribing consumer log it automatically, completely decoupled from the preparation logic.
+      Tomorrow you decide email and provision can be deferred. Remove them from the policy JSON and re-import the policy — no handler code changes required. You could also add a generic <code>"AUDIT.LOG_TRANSITION"</code> route as <code>type: "effect"</code> and have any subscribing consumer log it automatically.
     </div>
 
     <h4 class="mini-title">Inheritance chain</h4>
-    <pre><code><span class="cm">// emit-level wins if present; falls back to rule-level; then defaults true</span>
-<span class="kw">var</span> isBlocking = emit.blocking ?? rule.blocking ?? <span class="nb">true</span>;</code><span class="lang-label">C# (conceptual)</span></pre>
+    <pre><code><span class="cm">// emit-level wins if present; falls back to rule-level; then defaults to gate</span>
+<span class="kw">var</span> hookType = emit.type ?? rule.type ?? <span class="st">"gate"</span>;</code><span class="lang-label">C# (conceptual)</span></pre>
   </section>
 
   <section class="doc-section" id="pol-groups">
@@ -1393,9 +1426,9 @@ SELECT COUNT(*) FROM hook h
 
     <h4 class="mini-title">Example — parallel review hooks</h4>
     <pre><code><span class="jk">"emit"</span>: [
-  { <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.NOTIFY_REVIEWER"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.RUN_CREDIT_CHECK"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"APP.REVIEW.AUDIT_LOG"</span>,       <span class="jk">"blocking"</span>: <span class="nb">false</span> } <span class="cm">// not in group</span>
+  { <span class="jk">"route"</span>: <span class="jv">"APP.REVIEW.NOTIFY_REVIEWER"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"APP.REVIEW.RUN_CREDIT_CHECK"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"APP.REVIEW.AUDIT_LOG"</span>, <span class="jk">"type"</span>: <span class="jv">"effect"</span> } <span class="cm">// not in group</span>
 ]</code><span class="lang-label">JSON</span></pre>
 
     <h4 class="mini-title">Handling the group complete notice</h4>
@@ -1419,8 +1452,8 @@ SELECT COUNT(*) FROM hook h
     <ol style="margin:10px 0 14px;padding-left:22px;line-height:1.9">
       <li>On trigger, only the <strong>lowest-order</strong> hooks are dispatched (their hook rows get ACK rows and events fired).</li>
       <li>Higher-order hooks are written to the <code>hook</code> table with <code>dispatched=0</code> — invisible to the monitor until promoted.</li>
-      <li>When <strong>all blocking hooks at the current order reach Processed</strong>, the engine atomically creates ACK rows for the next order, marks those hooks dispatched, and fires their events.</li>
-      <li>If the next order contains <em>only</em> non-blocking hooks, the engine immediately advances through it without waiting for ACKs, continuing until a blocking stage or the end.</li>
+      <li>When <strong>all gate hooks at the current order reach Processed</strong>, the engine atomically creates ACK rows for the next order, marks those hooks dispatched, and fires their events.</li>
+      <li>If the next order contains <em>only</em> effect hooks, the engine immediately advances through it without waiting for ACKs, continuing until a gate stage or the end.</li>
     </ol>
     <div class="callout tip" id="ack-required-design">
       <div class="callout-title">ACK is mandatory</div>
@@ -1431,8 +1464,8 @@ SELECT COUNT(*) FROM hook h
           <thead><tr><th>Scenario</th><th>Right tool</th></tr></thead>
           <tbody>
             <tr><td>Timeout / system auto-transition that must bypass the gate once</td><td><code>SkipAckGate=true</code></td></tr>
-            <tr><td>Hook should fire but failure should not suspend instance</td><td><code>emit.blocking = false</code></td></tr>
-            <tr><td>Hook should notify external system, don't wait for it</td><td><code>emit.blocking = false</code></td></tr>
+            <tr><td>Hook should fire but failure should not suspend instance</td><td><code>emit.type = "effect"</code></td></tr>
+            <tr><td>Hook should notify external system, don't wait for it</td><td><code>emit.type = "effect"</code></td></tr>
             <tr><td>Normal business trigger with consumer processing</td><td>Normal trigger flow (ACK-backed by default)</td></tr>
           </tbody>
         </table>
@@ -1440,15 +1473,15 @@ SELECT COUNT(*) FROM hook h
     </div>
     <h4 class="mini-title">Example — sequential eligibility checks</h4>
     <pre><code><span class="jk">"emit"</span>: [
-  { <span class="jk">"event"</span>: <span class="jv">"CHECK.ELIGIBILITY"</span>,   <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">1</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"CHECK.CREDIT"</span>,        <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"NOTIFY.SUMMARY_EMAIL"</span>, <span class="jk">"blocking"</span>: <span class="nb">false</span>, <span class="jk">"order"</span>: <span class="jn">2</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"DECISION.MAKE"</span>,       <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">3</span> }
+  { <span class="jk">"route"</span>: <span class="jv">"CHECK.ELIGIBILITY"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">1</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"CHECK.CREDIT"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"NOTIFY.SUMMARY_EMAIL"</span>, <span class="jk">"type"</span>: <span class="jv">"effect"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"DECISION.MAKE"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">3</span> }
 ]</code><span class="lang-label">JSON</span></pre>
     <p style="margin-top:10px">Dispatch sequence for this example:</p>
     <ol style="margin:8px 0;padding-left:22px;line-height:1.9">
       <li><strong>Trigger fires</strong> → order=1 hooks dispatched (<code>CHECK.ELIGIBILITY</code> + <code>CHECK.CREDIT</code>)</li>
-      <li><strong>Both order=1 blocking hooks reach Processed</strong> → engine advances: order=2 dispatched (<code>NOTIFY.SUMMARY_EMAIL</code>). Since order=2 has no blocking hooks, engine immediately continues → order=3 dispatched (<code>DECISION.MAKE</code>). Notice <code>HOOK_ORDER_ADVANCED</code> fires twice.</li>
+      <li><strong>Both order=1 gate hooks reach Processed</strong> → engine advances: order=2 dispatched (<code>NOTIFY.SUMMARY_EMAIL</code>). Since order=2 has no gate hooks, engine immediately continues → order=3 dispatched (<code>DECISION.MAKE</code>). Notice <code>HOOK_ORDER_ADVANCED</code> fires twice.</li>
       <li><strong>DECISION.MAKE reaches Processed</strong> → all hooks done.</li>
     </ol>
     <h4 class="mini-title">Handling the order-advanced notice</h4>
@@ -1464,7 +1497,7 @@ SELECT COUNT(*) FROM hook h
 
   <section class="doc-section" id="pol-ackmode">
     <h3 class="sub-title">6.6 ACK Mode: All vs Any</h3>
-    <p><code>ack_mode</code> answers the question: <em>"How many consumers must ACK <code>Processed</code> for this hook to count as done?"</em> It works in tandem with <code>blocking</code> — <code>ack_mode</code> defines "what is done", <code>blocking</code> defines "what happens next when done".</p>
+    <p><code>ack_mode</code> answers the question: <em>"How many consumers must ACK <code>Processed</code> for this hook to count as done?"</em> It works in tandem with <code>type</code> — <code>ack_mode</code> defines "what is done", <code>type</code> defines how completion affects ordering and failure handling.</p>
 
     <div class="card-grid">
       <div class="card">
@@ -1472,7 +1505,7 @@ SELECT COUNT(*) FROM hook h
         <ul>
           <li>Every registered <code>ack_consumer</code> row must independently reach <code>Processed</code></li>
           <li>Use when every downstream service genuinely must complete (e.g. both an audit logger and a notification service)</li>
-          <li>If blocking=true: next hook order waits until all consumers are done</li>
+          <li>If <code>type = "gate"</code>: next hook order waits until all consumers are done</li>
         </ul>
       </div>
       <div class="card">
@@ -1482,20 +1515,20 @@ SELECT COUNT(*) FROM hook h
           <li>Engine immediately marks all other <code>ack_consumer</code> sibling rows as <code>Processed</code></li>
           <li>Monitor stops retrying the others automatically</li>
           <li>Use for competing-consumer patterns (fan out to multiple providers, accept the fastest response)</li>
-          <li>If blocking=true: next hook order advances as soon as one consumer succeeds</li>
+          <li>If <code>type = "gate"</code>: next hook order advances as soon as one consumer succeeds</li>
         </ul>
       </div>
     </div>
 
-    <h4 class="mini-title">How ack_mode interacts with blocking and order</h4>
+    <h4 class="mini-title">How ack_mode interacts with hook type and order</h4>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>blocking</th><th>ack_mode</th><th>Behaviour</th></tr></thead>
+        <thead><tr><th>type</th><th>ack_mode</th><th>Behaviour</th></tr></thead>
         <tbody>
-          <tr><td>true</td><td>all</td><td>Next order waits. Every consumer must ACK. Strictest — use for mandatory multi-system operations.</td></tr>
-          <tr><td>true</td><td>any</td><td>Next order waits. One consumer ACKing satisfies the gate. Use for competing-consumer patterns.</td></tr>
-          <tr><td>false</td><td>all</td><td>Next order does not wait on this hook. All consumers should still ACK but failure only fires a warn.</td></tr>
-          <tr><td>false</td><td>any</td><td>Fire-and-forget, fastest consumer wins. Failure is not fatal. Use for advisory fan-out.</td></tr>
+          <tr><td>gate</td><td>all</td><td>Next order waits. Every consumer must ACK. Strictest — use for mandatory multi-system operations.</td></tr>
+          <tr><td>gate</td><td>any</td><td>Next order waits. One consumer ACKing satisfies the gate. Use for competing-consumer patterns.</td></tr>
+          <tr><td>effect</td><td>all</td><td>Next order does not wait on this hook. All consumers should still ACK but failure only fires a warn.</td></tr>
+          <tr><td>effect</td><td>any</td><td>Fire-and-forget, fastest consumer wins. Failure is not fatal. Use for advisory fan-out.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1508,10 +1541,10 @@ SELECT COUNT(*) FROM hook h
     <h4 class="mini-title">Example — fastest credit bureau wins, then audit</h4>
     <pre><code><span class="jk">"emit"</span>: [
   <span class="cm">// order 1: fan out to two bureaus — first one to respond wins</span>
-  { <span class="jk">"event"</span>: <span class="jv">"CREDIT.CHECK_BUREAU_A"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"bureau_check"</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"CREDIT.CHECK_BUREAU_B"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"bureau_check"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"CREDIT.CHECK_BUREAU_A"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"bureau_check"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"CREDIT.CHECK_BUREAU_B"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"bureau_check"</span> },
   <span class="cm">// order 2: once bureau done, mandatory audit record</span>
-  { <span class="jk">"event"</span>: <span class="jv">"AUDIT.RECORD_CREDIT_DECISION"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
+  { <span class="jk">"route"</span>: <span class="jv">"AUDIT.RECORD_CREDIT_DECISION"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
 ]</code><span class="lang-label">JSON</span></pre>
     <p style="margin-top:8px">Sequence: bureau A or B responds first → sibling auto-marked Processed → <code>HOOK_GROUP_COMPLETE</code> fires for <code>bureau_check</code> → order 2 dispatches → audit consumer ACKs → all hooks done. The consumer's <code>[HookHandler("CREDIT.CHECK_BUREAU_A")]</code> (or B) calls <code>Engine.TriggerAsync</code> to advance the state machine after completing the check — the engine does not auto-advance.</p>
   </section>
@@ -1537,9 +1570,9 @@ SELECT COUNT(*) FROM hook h
     <p><strong>Case A — <code>timeout_event</code> is set:</strong> the monitor auto-triggers the event after the duration elapses. The instance moves without human intervention. An <code>lc_timeout</code> marker is written <em>before</em> the trigger for idempotency. The new lifecycle entry shows as a normal transition on the timeline.</p>
     <p><strong>Case B — no <code>timeout_event</code>:</strong> the monitor raises <code>STATE_TIMEOUT_EXCEEDED</code> notices on a schedule. It does not auto-move the instance. The <code>lc_timeout</code> table tracks <code>trigger_count</code>, <code>last_trigger</code>, and <code>next_due</code> (same field pattern as <code>ack_consumer</code>) so re-noticing survives monitor restarts. The repeat cadence uses <code>DefaultStateStaleDuration</code> — not the policy <code>timeout</code> duration, which is only the initial grace period. Notices stop naturally when the instance transitions out of the state.</p>
 
-    <h4 class="mini-title">Case A — blocking hook cancellation before transition</h4>
-    <p>When a Case A timeout fires, the state being timed out may have blocking hooks that are still in progress (consumer is slow, consumer is down, or hooks are waiting in a dispatch queue). Without intervention these hooks would remain as open <code>ack_consumer</code> rows even after the instance has moved on — creating dangling state.</p>
-    <p>The monitor handles this automatically: <strong>before calling <code>TriggerAsync</code></strong> it bulk-cancels all non-terminal <code>ack_consumer</code> rows for blocking hooks in the current lifecycle entry:</p>
+    <h4 class="mini-title">Case A — gate hook cancellation before transition</h4>
+    <p>When a Case A timeout fires, the state being timed out may have gate hooks that are still in progress (consumer is slow, consumer is down, or hooks are waiting in a dispatch queue). Without intervention these hooks would remain as open <code>ack_consumer</code> rows even after the instance has moved on — creating dangling state.</p>
+    <p>The monitor handles this automatically: <strong>before calling <code>TriggerAsync</code></strong> it bulk-cancels all non-terminal <code>ack_consumer</code> rows for gate hooks in the current lifecycle entry:</p>
     <pre><code><span class="cm">-- Executed by the monitor for each Case A timeout, before TriggerAsync</span>
 UPDATE ack_consumer ac
   JOIN ack a ON a.id = ac.ack_id
@@ -1547,14 +1580,14 @@ UPDATE ack_consumer ac
   JOIN hook_lc hl ON hl.id = ha.hook_id AND hl.lc_id = &lt;current_lc_id&gt;
   JOIN hook h ON h.id = hl.hook_id AND h.instance_id = &lt;instance_id&gt;
   SET ac.status = 5, ac.next_due = NULL  <span class="cm">-- 5 = Cancelled</span>
-  WHERE h.blocking = 1
+  WHERE h.type = b'1'
     AND ac.status NOT IN (3, 4, 5);</code><span class="lang-label">SQL</span></pre>
     <div class="table-wrap" style="margin-top:10px">
       <table>
         <thead><tr><th>Step</th><th>Action</th><th>Notice fired</th></tr></thead>
         <tbody>
           <tr><td>1</td><td>Write idempotency marker to <code>lc_timeout</code></td><td>—</td></tr>
-          <tr><td>2</td><td>Cancel all non-terminal blocking hook <code>ack_consumer</code> rows (status → 5)</td><td><code>HOOK_ACK_CANCELLED</code> (Info)</td></tr>
+          <tr><td>2</td><td>Cancel all non-terminal gate-hook <code>ack_consumer</code> rows (status → 5)</td><td><code>HOOK_ACK_CANCELLED</code> (Info)</td></tr>
           <tr><td>3</td><td>Call <code>TriggerAsync</code> with <code>SkipAckGate=true</code> — bypasses all three gate checks</td><td><code>TIMEOUT_FIRED</code> (Info)</td></tr>
         </tbody>
       </table>
@@ -1576,7 +1609,7 @@ UPDATE ack_consumer ac
       <li>New <code>hook_lc</code> rows are inserted, linking the hook definitions to the <strong>new</strong> lifecycle entry</li>
       <li>New <code>hook_ack</code> + <code>ack_consumer</code> rows are created — <strong>fresh ACKs for everything</strong></li>
       <li>The old cancelled/failed <code>hook_lc</code> rows from the timed-out entry remain untouched — they are a permanent audit trail</li>
-      <li>The blocking hook gate now checks the <em>latest</em> lc entry — the consumer starts from a clean slate</li>
+      <li>The gate-hook gate now checks the <em>latest</em> lc entry — the consumer starts from a clean slate</li>
     </ol>
     <div class="callout tip">
       <div class="callout-title">Same-state transitions are not allowed</div>
@@ -1639,7 +1672,7 @@ UPDATE ack_consumer ac
         <tbody>
           <tr><td><code>hook_route</code> </td><td>Global normalized lookup for route names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(240) UNIQUE</code></td></tr>
           <tr><td><code>hook_group</code> </td><td>Global normalized lookup for group names</td><td><code>id BIGINT AUTO_INCREMENT</code>, <code>name VARCHAR(140) UNIQUE</code></td></tr>
-          <tr><td><code>hook</code></td><td>Definition row — one per emission slot per instance. Never has a <code>dispatched</code> column.</td><td><code>id</code>, <code>instance_id</code>, <code>state_id</code>, <code>via_event</code>, <code>on_entry</code>, <code>route_id FK→hook_route</code>, <code>blocking</code>, <code>group_id FK→hook_group</code>, <code>order_seq</code>, <code>ack_mode</code></td></tr>
+          <tr><td><code>hook</code></td><td>Definition row — one per emission slot per instance. Never has a <code>dispatched</code> column.</td><td><code>id</code>, <code>instance_id</code>, <code>state_id</code>, <code>via_event</code>, <code>on_entry</code>, <code>route_id FK→hook_route</code>, <code>type</code>, <code>group_id FK→hook_group</code>, <code>order_seq</code>, <code>ack_mode</code></td></tr>
           <tr><td><code>hook_lc</code></td><td>Per-lifecycle-entry dispatch record — one row per hook per lifecycle entry. Tracks whether this run has been dispatched to consumers.</td><td><code>id</code>, <code>hook_id FK→hook</code>, <code>lc_id FK→lifecycle</code>, <code>dispatched BIT DEFAULT 0</code>, <code>UNIQUE(hook_id, lc_id)</code></td></tr>
         </tbody>
       </table>
@@ -2088,7 +2121,7 @@ services.<span class="fn">AddWorkFlowEngineService</span>(
           <tr><td><code>adapter_key</code></td><td>string</td><td><em>required</em></td><td>Storage adapter identifier (e.g. <code>"maria"</code> for MariaDB). Must match a registered adapter gateway.</td></tr>
           <tr><td><code>AckGateEnabled</code></td><td>bool</td><td><code>false</code></td><td>When <code>true</code>, new transitions are blocked while the prior lifecycle entry still has pending consumer ACKs.</td></tr>
           <tr><td><code>MonitorInterval</code></td><td>TimeSpan</td><td>15 seconds</td><td>How often the background monitor runs its stale scan, ACK retry pass, and timeout checks.</td></tr>
-          <tr><td><code>MaxRetryCount</code></td><td>int</td><td>5</td><td>Maximum delivery attempts for a hook or transition before the consumer row is marked failed (or instance suspended if blocking).</td></tr>
+          <tr><td><code>MaxRetryCount</code></td><td>int</td><td>5</td><td>Maximum delivery attempts for a hook or transition before the consumer row is marked failed (or the instance is suspended for a gate hook).</td></tr>
           <tr><td><code>DefaultStateStaleDuration</code></td><td>TimeSpan</td><td>24 hours</td><td>Duration an instance may remain in a non-terminal state before a <code>STATE_STALE</code> notice fires. Set to zero to disable.</td></tr>
           <tr><td><code>ConsumerTtlSeconds</code></td><td>int</td><td>120</td><td>Freshness window for consumer heartbeats. If a consumer's last beat is older than this, the engine treats it as down and skips dispatch to it.</td></tr>
         </tbody>
@@ -2280,16 +2313,16 @@ GET /api/workflow/timeline/html
           <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop tick</td><td><code>exception</code></td></tr>
           <tr><td><code>EVENT_HANDLER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception thrown by a consumer's <code>EventRaised</code> handler</td><td><code>exception</code></td></tr>
           <tr><td><code>ACK_RETRY</code></td><td><span class="badge warn">Warn</span></td><td>Monitor re-dispatching a due event (pending or delivered too long)</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
-          <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Instance suspended — max retries exceeded on a blocking hook</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
-          <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on a <strong>non-blocking</strong> hook; instance continues</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>hookCode</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>ACK_SUSPEND</code></td><td><span class="badge warn">Warn</span></td><td>Instance suspended — max retries exceeded on a gate hook</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>ACK_FAIL</code></td><td><span class="badge warn">Warn</span></td><td>Max retries exceeded on an <strong>effect</strong> hook; instance continues</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>hookCode</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>STALE_ACK_RECEIVED</code></td><td><span class="badge warn">Warn</span></td><td>A consumer sent an ACK for an already-terminal row (Processed, Failed, or Cancelled). The ACK was rejected. Typically a late consumer arriving after a timeout cancelled the hook.</td><td><code>ackGuid</code>, <code>consumerId</code>, <code>currentStatus</code>, <code>attemptedOutcome</code></td></tr>
-          <tr><td><code>HOOK_ACK_CANCELLED</code></td><td><span class="badge info">Info</span></td><td>Monitor cancelled open blocking hook ACKs before firing a Case A timeout transition. The count of cancelled rows is included.</td><td><code>instanceGuid</code>, <code>lcId</code>, <code>cancelled</code></td></tr>
+          <tr><td><code>HOOK_ACK_CANCELLED</code></td><td><span class="badge info">Info</span></td><td>Monitor cancelled open gate-hook ACKs before firing a Case A timeout transition. The count of cancelled rows is included.</td><td><code>instanceGuid</code>, <code>lcId</code>, <code>cancelled</code></td></tr>
           <tr><td><code>HOOK_GROUP_COMPLETE</code></td><td><span class="badge info">Info</span></td><td> All hooks in a named group are Processed for this instance+state</td><td><code>groupName</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
-          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks were dispatched after all blocking hooks at the prior order completed</td><td><code>orderSeq</code>, <code>instanceGuid</code></td></tr>
+          <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks were dispatched after all gate hooks at the prior order completed</td><td><code>orderSeq</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; the originating ACK was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance overdue in current state (no open ACKs, no policy timeout configured). Fires only for states <em>without</em> a timeout rule.</td><td><code>consumerId</code>, <code>instanceId</code>, <code>instanceGuid</code>, <code>stateName</code>, <code>staleSeconds</code></td></tr>
-          <tr><td><code>TIMEOUT_FIRED</code></td><td><span class="badge info">Info</span></td><td>Monitor auto-triggered a timeout event (Case A — <code>timeout_event</code> set). Instance has been moved automatically. Any blocking hook ACKs were cancelled first.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>eventCode</code>, <code>lcId</code></td></tr>
+          <tr><td><code>TIMEOUT_FIRED</code></td><td><span class="badge info">Info</span></td><td>Monitor auto-triggered a timeout event (Case A — <code>timeout_event</code> set). Instance has been moved automatically. Any gate-hook ACKs were cancelled first.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>eventCode</code>, <code>lcId</code></td></tr>
           <tr><td><code>STATE_TIMEOUT_EXCEEDED</code></td><td><span class="badge overdue">OverDue</span></td><td><em>(Pending)</em> Instance exceeded its policy-defined state deadline (Case B — no <code>timeout_event</code>). Fires repeatedly per schedule until instance transitions. <code>triggerCount</code> increments each time.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>triggerCount</code>, <code>staleSeconds</code></td></tr>
           <tr><td><code>STATE_TIMEOUT_FAILED</code></td><td><span class="badge warn">Warn</span></td><td><em>(Pending)</em> Case B retry limit (<code>max_retry</code> on timeout rule, or engine <code>MaxRetryCount</code> if not set) reached — instance has been marked Failed by the engine.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>triggerCount</code></td></tr>
         </tbody>
@@ -2326,41 +2359,35 @@ GET /api/workflow/timeline/html
 
     <h4 class="mini-title">Definition JSON</h4>
     <pre><code>{
-  <span class="jk">"defName"</span>: <span class="jv">"loan-approval"</span>,
-  <span class="jk">"displayName"</span>: <span class="jv">"Loan Approval"</span>,
+  <span class="jk">"name"</span>: <span class="jv">"LoanApproval"</span>,
+  <span class="jk">"version"</span>: <span class="jn">1</span>,
   <span class="jk">"states"</span>: [
-    { <span class="jk">"name"</span>: <span class="jv">"Draft"</span>,       <span class="jk">"flags"</span>: <span class="jn">1</span> },
-    { <span class="jk">"name"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"flags"</span>: <span class="jn">0</span> },
-    { <span class="jk">"name"</span>: <span class="jv">"Approved"</span>,    <span class="jk">"flags"</span>: <span class="jn">2</span> },
-    { <span class="jk">"name"</span>: <span class="jv">"Rejected"</span>,    <span class="jk">"flags"</span>: <span class="jn">2</span> }
-  ],
-  <span class="jk">"events"</span>: [
-    { <span class="jk">"name"</span>: <span class="jv">"submit"</span>,   <span class="jk">"code"</span>: <span class="jn">100</span> },
-    { <span class="jk">"name"</span>: <span class="jv">"approve"</span>,  <span class="jk">"code"</span>: <span class="jn">200</span> },
-    { <span class="jk">"name"</span>: <span class="jv">"reject"</span>,   <span class="jk">"code"</span>: <span class="jn">300</span> },
-    { <span class="jk">"name"</span>: <span class="jv">"expire"</span>,   <span class="jk">"code"</span>: <span class="jn">900</span> }
+    { <span class="jk">"name"</span>: <span class="jv">"Draft"</span>, <span class="jk">"is_initial"</span>: <span class="nb">true</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"UnderReview"</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"Approved"</span>, <span class="jk">"is_final"</span>: <span class="nb">true</span> },
+    { <span class="jk">"name"</span>: <span class="jv">"Rejected"</span>, <span class="jk">"is_final"</span>: <span class="nb">true</span> }
   ],
   <span class="jk">"transitions"</span>: [
-    { <span class="jk">"from"</span>: <span class="jv">"Draft"</span>,       <span class="jk">"event"</span>: <span class="jv">"submit"</span>,  <span class="jk">"to"</span>: <span class="jv">"UnderReview"</span> },
-    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"approve"</span>, <span class="jk">"to"</span>: <span class="jv">"Approved"</span>    },
-    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"reject"</span>,  <span class="jk">"to"</span>: <span class="jv">"Rejected"</span>    },
-    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"expire"</span>,  <span class="jk">"to"</span>: <span class="jv">"Rejected"</span>    }
+    { <span class="jk">"from"</span>: <span class="jv">"Draft"</span>, <span class="jk">"event"</span>: <span class="jn">100</span>, <span class="jk">"eventName"</span>: <span class="jv">"submit"</span>, <span class="jk">"to"</span>: <span class="jv">"UnderReview"</span> },
+    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jn">200</span>, <span class="jk">"eventName"</span>: <span class="jv">"approve"</span>, <span class="jk">"to"</span>: <span class="jv">"Approved"</span> },
+    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jn">300</span>, <span class="jk">"eventName"</span>: <span class="jv">"reject"</span>, <span class="jk">"to"</span>: <span class="jv">"Rejected"</span> },
+    { <span class="jk">"from"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jn">900</span>, <span class="jk">"eventName"</span>: <span class="jv">"expire"</span>, <span class="jk">"to"</span>: <span class="jv">"Rejected"</span> }
   ]
 }</code><span class="lang-label">JSON</span></pre>
 
     <h4 class="mini-title">Policy JSON</h4>
     <pre><code>{
   <span class="jk">"policy_name"</span>: <span class="jv">"loan-approval.policy"</span>,
-  <span class="jk">"for"</span>: { <span class="jk">"definition"</span>: <span class="jv">"loan-approval"</span> },
+  <span class="jk">"defName"</span>: <span class="jv">"LoanApproval"</span>,
   <span class="jk">"rules"</span>: [
     {
       <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>,
       <span class="jk">"via"</span>: <span class="jn">100</span>,
       <span class="jk">"complete"</span>: { <span class="jk">"success"</span>: <span class="jn">200</span>, <span class="jk">"failure"</span>: <span class="jn">300</span> },
       <span class="jk">"emit"</span>: [
-        { <span class="jk">"event"</span>: <span class="jv">"app.loan.notify_reviewer"</span>,  <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
-        { <span class="jk">"event"</span>: <span class="jv">"app.loan.run_credit_check"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
-        { <span class="jk">"event"</span>: <span class="jv">"app.loan.audit_log"</span>,        <span class="jk">"blocking"</span>: <span class="nb">false</span> }
+        { <span class="jk">"route"</span>: <span class="jv">"APP.LOAN.NOTIFY_REVIEWER"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span>, <span class="jk">"order"</span>: <span class="jn">1</span> },
+        { <span class="jk">"route"</span>: <span class="jv">"APP.LOAN.RUN_CREDIT_CHECK"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span>, <span class="jk">"order"</span>: <span class="jn">1</span> },
+        { <span class="jk">"route"</span>: <span class="jv">"APP.LOAN.AUDIT_LOG"</span>, <span class="jk">"type"</span>: <span class="jv">"effect"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
       ]
     }
   ],
@@ -2381,7 +2408,7 @@ engine.NoticeRaised += HandleNoticeAsync;
 <span class="cm">// 3. Trigger: applicant submits loan</span>
 <span class="kw">var</span> result = <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
     EnvCode     = envCode,
-    DefName     = <span class="st">"loan-approval"</span>,
+    DefName     = <span class="st">"LoanApproval"</span>,
     EntityId    = loanId.ToString(),
     Event       = <span class="st">"submit"</span>,
     Actor       = applicantId
@@ -2393,16 +2420,16 @@ engine.NoticeRaised += HandleNoticeAsync;
 <span class="kw">async</span> Task HandleEventAsync(<span class="ty">ILifeCycleEvent</span> e) {
     <span class="kw">if</span> (e <span class="kw">is</span> <span class="ty">ILifeCycleHookEvent</span> hook) {
         <span class="kw">switch</span> (hook.Route) {
-            <span class="kw">case</span> <span class="st">"app.loan.notify_reviewer"</span>:
+            <span class="kw">case</span> <span class="st">"APP.LOAN.NOTIFY_REVIEWER"</span>:
                 <span class="kw">await</span> _notifier.SendReviewRequestAsync(hook.EntityId);
                 <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, <span class="ty">AckOutcome</span>.Processed);
                 <span class="kw">break</span>;
-            <span class="kw">case</span> <span class="st">"app.loan.run_credit_check"</span>:
+            <span class="kw">case</span> <span class="st">"APP.LOAN.RUN_CREDIT_CHECK"</span>:
                 <span class="kw">var</span> ok = <span class="kw">await</span> _credit.CheckAsync(hook.EntityId);
                 <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid,
                     ok ? <span class="ty">AckOutcome</span>.Processed : <span class="ty">AckOutcome</span>.Retry);
                 <span class="kw">break</span>;
-            <span class="kw">case</span> <span class="st">"app.loan.audit_log"</span>:
+            <span class="kw">case</span> <span class="st">"APP.LOAN.AUDIT_LOG"</span>:
                 _logger.LogInformation(<span class="st">"Loan {id} entered review"</span>, hook.EntityId);
                 <span class="kw">await</span> engine.AckAsync(envCode, myGuid, hook.AckGuid, <span class="ty">AckOutcome</span>.Processed);
                 <span class="kw">break</span>;
@@ -2417,7 +2444,7 @@ engine.NoticeRaised += HandleNoticeAsync;
         <span class="kw">var</span> approved = <span class="kw">await</span> _reviewDb.IsApprovedAsync(instGuid);
         <span class="kw">await</span> engine.TriggerAsync(<span class="kw">new</span> <span class="ty">LifeCycleTriggerRequest</span> {
             EnvCode     = envCode,
-            DefName     = <span class="st">"loan-approval"</span>,
+            DefName     = <span class="st">"LoanApproval"</span>,
             EntityId    = instGuid,
             Event       = approved ? <span class="st">"approve"</span> : <span class="st">"reject"</span>
         });
@@ -2430,13 +2457,13 @@ engine.NoticeRaised += HandleNoticeAsync;
     <p>Any two emit entries sharing the same <code>"group"</code> value in one rule form a parallel gate. The engine fires <code>HOOK_GROUP_COMPLETE</code> only after <em>all</em> hooks in the group reach <code>Processed</code>.</p>
     <div class="callout tip">
       <div class="callout-title">Design pattern</div>
-      Put all blocking hooks that must finish together in one group. When the group completes, trigger the next macro event from the <code>HOOK_GROUP_COMPLETE</code> notice handler. Keep advisory/non-critical hooks ungrouped with <code>"blocking": false</code>.
+      Put all gate hooks that must finish together in one group. When the group completes, trigger the next macro event from the <code>HOOK_GROUP_COMPLETE</code> notice handler. Keep advisory/non-critical hooks ungrouped with <code>"type": "effect"</code>.
     </div>
     <pre><code><span class="cm">// Policy: two parallel hooks in "review_checks" group</span>
 <span class="jk">"emit"</span>: [
-  { <span class="jk">"event"</span>: <span class="jv">"app.loan.notify_reviewer"</span>,  <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"app.loan.run_credit_check"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
-  { <span class="jk">"event"</span>: <span class="jv">"app.loan.audit_log"</span>,        <span class="jk">"blocking"</span>: <span class="nb">false</span> }  <span class="cm">// not in group</span>
+  { <span class="jk">"route"</span>: <span class="jv">"APP.LOAN.NOTIFY_REVIEWER"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"APP.LOAN.RUN_CREDIT_CHECK"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"group"</span>: <span class="jv">"review_checks"</span> },
+  { <span class="jk">"route"</span>: <span class="jv">"APP.LOAN.AUDIT_LOG"</span>, <span class="jk">"type"</span>: <span class="jv">"effect"</span> }  <span class="cm">// not in group</span>
 ]</code><span class="lang-label">JSON</span></pre>
     <pre><code><span class="cm">// Sequence:</span>
 <span class="cm">// 1. Engine emits notify_reviewer + run_credit_check (both Pending)</span>
@@ -2657,19 +2684,19 @@ engine.EventRaised += <span class="kw">async</span> (e) => {
 
   <section class="doc-section" id="ex-orderedhooks">
     <h3 class="sub-title">Example 6 — Ordered Hooks &amp; Any ACK </h3>
-    <p>A loan application requires two parallel credit-bureau checks (first response wins), followed by a decision step and a non-blocking summary email.</p>
+    <p>A loan application requires two parallel credit-bureau checks (first response wins), followed by a decision step and an effect summary email.</p>
 
     <h4 class="mini-title">Policy JSON</h4>
     <pre><code>{
   <span class="jk">"rules"</span>: [{
-    <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"event"</span>: <span class="jv">"submit"</span>,
+    <span class="jk">"state"</span>: <span class="jv">"UnderReview"</span>, <span class="jk">"via"</span>: <span class="jn">100</span>,
     <span class="jk">"emit"</span>: [
       <span class="cm">// Stage 1 — both bureaus queried in parallel; first ACK wins</span>
-      { <span class="jk">"event"</span>: <span class="jv">"CREDIT.BUREAU_A"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"credit_check"</span> },
-      { <span class="jk">"event"</span>: <span class="jv">"CREDIT.BUREAU_B"</span>, <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"credit_check"</span> },
-      <span class="cm">// Stage 2 — decision after credit check completes (non-blocking email runs immediately)</span>
-      { <span class="jk">"event"</span>: <span class="jv">"NOTIFY.SUMMARY_EMAIL"</span>, <span class="jk">"blocking"</span>: <span class="nb">false</span>, <span class="jk">"order"</span>: <span class="jn">2</span> },
-      { <span class="jk">"event"</span>: <span class="jv">"DECISION.MAKE"</span>,       <span class="jk">"blocking"</span>: <span class="nb">true</span>,  <span class="jk">"order"</span>: <span class="jn">2</span> }
+      { <span class="jk">"route"</span>: <span class="jv">"CREDIT.BUREAU_A"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"credit_check"</span> },
+      { <span class="jk">"route"</span>: <span class="jv">"CREDIT.BUREAU_B"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">1</span>, <span class="jk">"ack_mode"</span>: <span class="jv">"any"</span>, <span class="jk">"group"</span>: <span class="jv">"credit_check"</span> },
+      <span class="cm">// Stage 2 — decision after credit check completes (effect email runs immediately)</span>
+      { <span class="jk">"route"</span>: <span class="jv">"NOTIFY.SUMMARY_EMAIL"</span>, <span class="jk">"type"</span>: <span class="jv">"effect"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> },
+      { <span class="jk">"route"</span>: <span class="jv">"DECISION.MAKE"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
     ]
   }]
 }</code><span class="lang-label">JSON</span></pre>
@@ -2704,14 +2731,14 @@ consumer.EventRaised += <span class="kw">async</span> (e) => {
             <span class="kw">break</span>;
 
         <span class="kw">case</span> <span class="st">"DECISION.MAKE"</span>:
-            <span class="cm">// Only reaches here after order=1 blocking hooks are all Processed</span>
+            <span class="cm">// Only reaches here after order=1 gate hooks are all Processed</span>
             <span class="kw">var</span> approved = <span class="kw">await</span> _underwriter.DecideAsync(hook.EntityId);
             <span class="kw">await</span> consumer.AckAsync(hook.AckGuid, <span class="ty">AckOutcome</span>.Processed);
             <span class="cm">// then fire engine transition based on decision...</span>
             <span class="kw">break</span>;
 
         <span class="kw">case</span> <span class="st">"NOTIFY.SUMMARY_EMAIL"</span>:
-            <span class="cm">// blocking=false — dispatched alongside DECISION.MAKE at order=2</span>
+            <span class="cm">// type=effect — dispatched alongside DECISION.MAKE at order=2</span>
             <span class="kw">await</span> _mailer.SendAsync(hook.EntityId);
             <span class="kw">await</span> consumer.AckAsync(hook.AckGuid, <span class="ty">AckOutcome</span>.Processed);
             <span class="kw">break</span>;
@@ -2725,8 +2752,8 @@ consumer.EventRaised += <span class="kw">async</span> (e) => {
         <tbody>
           <tr><td>1. Trigger fires</td><td>Order=1 hooks dispatched: <code>CREDIT.BUREAU_A</code> + <code>CREDIT.BUREAU_B</code> (parallel)</td></tr>
           <tr><td>2. Bureau A responds first</td><td>Consumer ACKs Processed → engine fan-out marks Bureau B's <code>ack_consumer</code> Processed (<code>ack_mode=any</code>)</td></tr>
-          <tr><td>3. All order=1 blocking done</td><td>Engine advances: order=2 dispatched atomically. <code>NOTIFY.SUMMARY_EMAIL</code> + <code>DECISION.MAKE</code> both fire. Notice <code>HOOK_ORDER_ADVANCED</code> raised.</td></tr>
-          <tr><td>4. Decision ACKed Processed</td><td>All hooks complete. Email was non-blocking so its failure (if any) fires <code>ACK_FAIL</code> only.</td></tr>
+          <tr><td>3. All order=1 gate hooks done</td><td>Engine advances: order=2 dispatched atomically. <code>NOTIFY.SUMMARY_EMAIL</code> + <code>DECISION.MAKE</code> both fire. Notice <code>HOOK_ORDER_ADVANCED</code> raised.</td></tr>
+          <tr><td>4. Decision ACKed Processed</td><td>All hooks complete. Email was an effect hook, so its failure (if any) fires <code>ACK_FAIL</code> only.</td></tr>
         </tbody>
       </table>
     </div>
@@ -2981,3 +3008,6 @@ services.<span class="fn">AddWorkFlowConsumerService</span>(configuration);</cod
 </script>
 </body>
 </html>
+
+
+

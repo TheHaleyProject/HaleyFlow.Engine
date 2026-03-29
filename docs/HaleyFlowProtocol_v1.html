@@ -394,7 +394,7 @@
   <h3>Hook</h3>
   <p>
     A side effect that fires upon arrival at a state. Hooks are identified by a <code>route</code> string —
-    a stable identifier that a handler can subscribe to. Hooks may be blocking or non-blocking, and may carry
+    a stable identifier that a handler can subscribe to. Hooks may be gate or effect, and may carry
     parameters from the policy.
   </p>
 
@@ -593,8 +593,8 @@
   <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>,
   <span class="k">"via"</span>:   <span class="n">2009</span>,
   <span class="k">"emit"</span>: [
-    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER"</span>,       <span class="k">"blocking"</span>: <span class="b">false</span> },
-    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER.EMAIL"</span>, <span class="k">"blocking"</span>: <span class="b">false</span> }
+    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER"</span>,       <span class="k">"type"</span>: <span class="s">"effect"</span> },
+    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER.EMAIL"</span>, <span class="k">"type"</span>: <span class="s">"effect"</span> }
   ]
 },
 <span class="c">// Rule 2 (general fallback): fires for arrivals NOT claimed by a via-specific rule (e.g. via 2005)</span>
@@ -602,7 +602,7 @@
   <span class="k">"state"</span>:  <span class="s">"ManagerApproval"</span>,
   <span class="k">"params"</span>: [ <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span> ],
   <span class="k">"emit"</span>: [
-    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DECISION"</span>, <span class="k">"blocking"</span>: <span class="b">true</span>, <span class="k">"order"</span>: <span class="n">1</span>,
+    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DECISION"</span>, <span class="k">"type"</span>: <span class="s">"gate"</span>, <span class="k">"order"</span>: <span class="n">1</span>,
       <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> } }
   ]
 }</code></pre>
@@ -636,7 +636,7 @@
 <pre><code>{
   <span class="k">"route"</span>:    <span class="s">"APP.LOAN.KYC.CHECK"</span>,
   <span class="k">"label"</span>:    <span class="s">"KYC Check"</span>,
-  <span class="k">"blocking"</span>: <span class="b">true</span>,
+  <span class="k">"type"</span>: <span class="s">"gate"</span>,
   <span class="k">"group"</span>:    <span class="s">"kyc_decision"</span>,
   <span class="k">"order"</span>:    <span class="n">1</span>,
   <span class="k">"params"</span>:   [ <span class="s">"PARAMS.LOAN.KYC.OVERRIDE"</span> ],
@@ -647,30 +647,30 @@
     <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
     <tr><td><code>route</code></td><td>string</td><td><span class="badge required">required</span></td><td>Unique stable identifier. Handlers subscribe to this route. Use dot-notation by convention.</td></tr>
     <tr><td><code>label</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Human-readable name. For display and logging only.</td></tr>
-    <tr><td><code>blocking</code></td><td>boolean</td><td><span class="badge optional">optional</span></td><td>Default: <code>true</code>. See below.</td></tr>
+    <tr><td><code>type</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Allowed values: <code>"gate"</code> or <code>"effect"</code>. Default: <code>"gate"</code>.</td></tr>
     <tr><td><code>order</code></td><td>integer</td><td><span class="badge optional">optional</span></td><td>Execution sequence within this rule. Lower numbers run first. Hooks without an order run last.</td></tr>
     <tr><td><code>group</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Logical grouping label. Informational — used by some interpreters for ACK group tracking.</td></tr>
     <tr><td><code>params</code></td><td>string[]</td><td><span class="badge optional">optional</span></td><td>Hook-own param codes. If absent, inherits parent rule's params.</td></tr>
-    <tr><td><code>complete</code></td><td>object</td><td><span class="badge optional">optional</span></td><td>Auto-advance codes. <strong>Only respected on blocking hooks.</strong> Ignored on non-blocking hooks.</td></tr>
+    <tr><td><code>complete</code></td><td>object</td><td><span class="badge optional">optional</span></td><td>Auto-advance codes. <strong>Only respected on gate hooks.</strong> Ignored on effect hooks.</td></tr>
   </table>
 
-  <h3>Blocking vs Non-Blocking</h3>
+  <h3>Gate vs Effect</h3>
 
   <p>
-    <strong>Blocking hooks</strong> (<code>"blocking": true</code>) participate in the execution chain.
+    <strong>Gate hooks</strong> (<code>"type": "gate"</code>) participate in the execution chain.
     Their result can stop the chain, trigger a failure event, or capture a success event.
-    Complete codes on blocking hooks are respected.
+    Complete codes on gate hooks are respected.
   </p>
 
   <p>
-    <strong>Non-blocking hooks</strong> (<code>"blocking": false</code>) are fire-and-forget.
+    <strong>Effect hooks</strong> (<code>"type": "effect"</code>) are fire-and-forget.
     Their result is <em>completely ignored</em> by the interpreter. They cannot carry complete codes —
-    any <code>complete</code> block on a non-blocking hook is silently discarded.
+    any <code>complete</code> block on an effect hook is silently discarded.
   </p>
 
   <div class="callout warning">
     <strong>Important</strong>
-    If a non-blocking hook defines <code>complete</code> codes, a compliant interpreter must ignore them.
+    If an effect hook defines <code>complete</code> codes, a compliant interpreter must ignore them.
     A validator should warn the author that these codes will have no effect.
   </div>
 
@@ -691,7 +691,7 @@
   <h2 id="pol-complete">Policy JSON — Complete Codes</h2>
 
   <p>
-    Complete codes appear in two places: on rules (transition-level) and on individual blocking hooks.
+    Complete codes appear in two places: on rules (transition-level) and on individual gate hooks.
     They tell the interpreter which event to fire automatically after a success or failure outcome.
   </p>
 
@@ -706,7 +706,7 @@
   <p>
     The transition handler always runs first. But a successful result does <strong>not</strong> fire the
     success complete code immediately — the interpreter must run all hooks first. Only after every hook
-    has completed is the transition's success code considered, and even then only if no blocking hook
+    has completed is the transition's success code considered, and even then only if no gate hook
     has already captured a success code of its own.
   </p>
 
@@ -728,10 +728,10 @@
     </tr>
   </table>
 
-  <h3>Any complete code on a blocking hook fires immediately</h3>
+  <h3>Any complete code on a gate hook fires immediately</h3>
 
   <p>
-    Whether a blocking hook succeeds with a success code, or fails with a failure code, the result is
+    Whether a gate hook succeeds with a success code, or fails with a failure code, the result is
     the same: <strong>fire immediately, skip remaining hooks</strong>. There is no deferral for hook
     complete codes. This is what allows escalation patterns — a hook with a success code can terminate
     the chain early without the remaining hooks running.
@@ -745,7 +745,7 @@
   <div class="callout warning">
     <strong>Complete codes always terminate immediately</strong>
     Any complete code — on a transition handler failure, or on any blocking hook — fires immediately
-    and ends the chain. The only thing that does <em>not</em> terminate is a blocking hook with no
+    and ends the chain. The only thing that does <em>not</em> terminate is a gate hook with no
     complete codes: on success it passes through, on failure it rolls back.
   </div>
 
@@ -848,28 +848,28 @@
     {
       <span class="k">"state"</span>: <span class="s">"KycCheck"</span>,
       <span class="k">"emit"</span>: [
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.CHECK"</span>,            <span class="k">"blocking"</span>: <span class="b">true</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.CHECK"</span>,            <span class="k">"type"</span>: <span class="s">"gate"</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
           <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2001</span>, <span class="k">"failure"</span>: <span class="n">2002</span> } },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.AUDIT.LOG"</span>,        <span class="k">"blocking"</span>: <span class="b">false</span> },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.NOTIFY.APPLICANT"</span>, <span class="k">"blocking"</span>: <span class="b">false</span>, <span class="k">"order"</span>: <span class="n">2</span> }
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.AUDIT.LOG"</span>,        <span class="k">"type"</span>: <span class="s">"effect"</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.NOTIFY.APPLICANT"</span>, <span class="k">"type"</span>: <span class="s">"effect"</span>, <span class="k">"order"</span>: <span class="n">2</span> }
       ]
     },
     {
       <span class="k">"state"</span>:  <span class="s">"ManagerApproval"</span>,
       <span class="k">"params"</span>: [ <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span> ],
       <span class="k">"emit"</span>: [
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DECISION"</span>,     <span class="k">"blocking"</span>: <span class="b">true</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DECISION"</span>,     <span class="k">"type"</span>: <span class="s">"gate"</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
           <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> } },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DOC.ARCHIVE"</span>,  <span class="k">"blocking"</span>: <span class="b">true</span>,  <span class="k">"order"</span>: <span class="n">2</span> },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.NOTIFY"</span>,       <span class="k">"blocking"</span>: <span class="b">false</span> }
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DOC.ARCHIVE"</span>,  <span class="k">"type"</span>: <span class="s">"gate"</span>,  <span class="k">"order"</span>: <span class="n">2</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.NOTIFY"</span>,       <span class="k">"type"</span>: <span class="s">"effect"</span> }
       ]
     },
     {
       <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>,
       <span class="k">"via"</span>:   <span class="n">2009</span>,
       <span class="k">"emit"</span>: [
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER"</span>,       <span class="k">"blocking"</span>: <span class="b">false</span> },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER.EMAIL"</span>, <span class="k">"blocking"</span>: <span class="b">false</span>, <span class="k">"order"</span>: <span class="n">2</span> }
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER"</span>,       <span class="k">"type"</span>: <span class="s">"effect"</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER.EMAIL"</span>, <span class="k">"type"</span>: <span class="s">"effect"</span>, <span class="k">"order"</span>: <span class="n">2</span> }
       ]
     }
   ],
@@ -960,19 +960,19 @@
 <span class="k">"emit"</span>: [
   {
     <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE1"</span>,
-    <span class="k">"blocking"</span>: <span class="b">true</span>,
+    <span class="k">"type"</span>: <span class="s">"gate"</span>,
     <span class="k">"order"</span>:    <span class="n">1</span>,
     <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← success terminates; stage 2 never runs if stage 1 approves</span>
   },
   {
     <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE2"</span>,
-    <span class="k">"blocking"</span>: <span class="b">true</span>,
+    <span class="k">"type"</span>: <span class="s">"gate"</span>,
     <span class="k">"order"</span>:    <span class="n">2</span>,
     <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← only reached if stage 1 had no success code or did not terminate</span>
   },
   {
     <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE3"</span>,
-    <span class="k">"blocking"</span>: <span class="b">true</span>,
+    <span class="k">"type"</span>: <span class="s">"gate"</span>,
     <span class="k">"order"</span>:    <span class="n">3</span>,
     <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span>, <span class="k">"failure"</span>: <span class="n">5002</span> }
   }
@@ -987,7 +987,7 @@
   <h3>A hook with no complete code is a pass-through</h3>
 
   <p>
-    A blocking hook with <em>no</em> <code>complete</code> block participates in the chain but never terminates it.
+    A gate hook with <em>no</em> <code>complete</code> block participates in the chain but never terminates it.
     On success it silently passes to the next hook. On failure it rolls back and returns blocked — the caller's
     Tier 2 or Tier 3 code must decide what happens next.
   </p>
@@ -995,7 +995,7 @@
 <pre><code><span class="c">// Archive hook — must succeed but does not drive auto-advance</span>
 {
   <span class="k">"route"</span>:    <span class="s">"APP.LOAN.MANAGER.DOC.ARCHIVE"</span>,
-  <span class="k">"blocking"</span>: <span class="b">true</span>,
+  <span class="k">"type"</span>: <span class="s">"gate"</span>,
   <span class="k">"order"</span>:    <span class="n">2</span>
   <span class="c">// no complete block — success passes through, failure rolls back + blocked</span>
 }</code></pre>
@@ -1003,7 +1003,7 @@
   <div class="callout info">
     <strong>Transition success code is the final fallback</strong>
     The transition handler's own success code only fires if <em>no</em> hook terminated the chain first.
-    If any blocking hook fires a success code, the transition's success code is discarded.
+    If any gate hook fires a success code, the transition's success code is discarded.
     If no hook terminates, the transition's code is the last resort after all hooks pass through.
   </div>
 
@@ -1071,7 +1071,7 @@
     <tr><th>Code</th><th>Severity</th><th>Condition</th></tr>
     <tr><td><code>POLICY_UNKNOWN_STATE</code></td><td><span class="val-warn">Warning</span></td><td>A policy rule targets a state that does not exist in the definition — the rule will never fire.</td></tr>
     <tr><td><code>AMBIGUOUS_ORDER</code></td><td><span class="val-error">Error</span></td><td>Multiple blocking hooks at the same <code>order</code> value define complete codes — execution order is undefined.</td></tr>
-    <tr><td><code>NON_BLOCKING_WITH_COMPLETE</code></td><td><span class="val-warn">Warning</span></td><td>A non-blocking hook defines <code>complete</code> codes — they will be ignored at runtime.</td></tr>
+    <tr><td><code>EFFECT_WITH_COMPLETE</code></td><td><span class="val-warn">Warning</span></td><td>A non-blocking hook defines <code>complete</code> codes — they will be ignored at runtime.</td></tr>
     <tr><td><code>UNREACHABLE_HOOK</code></td><td><span class="val-warn">Warning</span></td><td>A hook appears after a blocking hook that has both success and failure complete codes — it can never execute.</td></tr>
     <tr><td><code>NO_FAILURE_PATH</code></td><td><span class="val-warn">Warning</span></td><td>A blocking hook has no failure complete code and the transition has no failure complete code — on failure, the interpreter cannot auto-advance. The application must handle it explicitly.</td></tr>
   </table>
@@ -1150,7 +1150,7 @@
   </div>
   <div class="field">
     <span class="field-name">emit[].complete</span><span class="field-type">object · optional</span>
-    <div class="field-desc">Auto-advance codes for this blocking hook only. Fields: <code>success</code>, <code>failure</code>. Silently ignored on non-blocking hooks.</div>
+    <div class="field-desc">Auto-advance codes for this gate hook only. Fields: <code>success</code>, <code>failure</code>. Silently ignored on effect hooks.</div>
   </div>
   <div class="field">
     <span class="field-name">emit[].params</span><span class="field-type">string[] · optional</span>
@@ -1173,7 +1173,7 @@
     <tr><td><code>UNREACHABLE_STATE</code></td><td><code>HFD1101</code></td><td><span class="val-warn">Warning</span></td><td>Structural</td></tr>
     <tr><td><code>SELF_LOOP_WITH_EXIT</code></td><td><code>HFD1102</code></td><td><span class="val-warn">Warning</span></td><td>Structural</td></tr>
     <tr><td><code>POLICY_UNKNOWN_STATE</code></td><td><code>HFP2001</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
-    <tr><td><code>NON_BLOCKING_WITH_COMPLETE</code></td><td><code>HFP2101</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
+    <tr><td><code>EFFECT_WITH_COMPLETE</code></td><td><code>HFP2101</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
     <tr><td><code>UNREACHABLE_HOOK</code></td><td><code>HFP2102</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
     <tr><td><code>NO_FAILURE_PATH</code></td><td><code>HFP2103</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
   </table>
@@ -1275,7 +1275,7 @@
       <td>Multiple blocking hooks at the same <code>order</code> value define complete codes. Execution order within the same order value is undefined — the interpreter cannot guarantee which fires first.</td>
     </tr>
     <tr>
-      <td><code>HFP2101</code></td><td><code>NON_BLOCKING_WITH_COMPLETE</code></td>
+      <td><code>HFP2101</code></td><td><code>EFFECT_WITH_COMPLETE</code></td>
       <td><span class="val-warn">Warning</span></td>
       <td>A non-blocking hook defines <code>complete</code> codes. Non-blocking hooks cannot drive auto-advance — these codes are silently ignored at runtime.</td>
     </tr>
@@ -1318,7 +1318,7 @@
     </tr>
     <tr>
       <td><code>HFR3005</code></td><td>Blocking hook failed</td>
-      <td>A blocking hook returned <code>false</code> and no failure path (hook-own or transition-level) was available. <code>CurrentState</code> was rolled back to the <code>from</code> state.</td>
+      <td>A gate hook returned <code>false</code> and no failure path (hook-own or transition-level) was available. <code>CurrentState</code> was rolled back to the <code>from</code> state.</td>
     </tr>
   </table>
 
@@ -1403,3 +1403,4 @@
 </div>
 </body>
 </html>
+
