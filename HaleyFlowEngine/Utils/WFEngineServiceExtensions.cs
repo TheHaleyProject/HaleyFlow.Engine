@@ -18,21 +18,16 @@ namespace Haley.Utils {
             return new WorkFlowEngine(dal, input.Options);
         }
 
-        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, IConfiguration configuration, string sectionName = "WorkFlowEngine", bool autoStart = true, Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>>? resolveConsumerGuids = null) {
+        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineServiceOptions>? configure = null, string? configSectionName = "WorkFlowEngine", bool autoStart = true, Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>>? resolveConsumerGuids = null) {
             ArgumentNullException.ThrowIfNull(services);
-            ArgumentNullException.ThrowIfNull(configuration);
-            if (string.IsNullOrWhiteSpace(sectionName)) throw new ArgumentException("Section name is required.", nameof(sectionName));
 
-            services.Configure<EngineServiceOptions>(configuration.GetSection(sectionName)); //This includes the adapter key
-            ConfigureResolveConsumerGuids(services, resolveConsumerGuids);
-            return AddWorkFlowEngineServiceCore(services, autoStart);
-        }
+            services.AddOptions<EngineServiceOptions>()
+                .Configure<IConfiguration>((opts, config) => {
+                    if (!string.IsNullOrWhiteSpace(configSectionName))
+                        config.GetSection(configSectionName).Bind(opts);
+                });
 
-        public static IServiceCollection AddWorkFlowEngineService(this IServiceCollection services, Action<EngineServiceOptions> configureOptions, bool autoStart = true, Func<LifeCycleConsumerType, int, string?, CancellationToken, Task<IReadOnlyList<string>>>? resolveConsumerGuids = null) {
-            ArgumentNullException.ThrowIfNull(services);
-            ArgumentNullException.ThrowIfNull(configureOptions);
-
-            services.Configure(configureOptions);
+            if (configure != null) services.Configure(configure);
             ConfigureResolveConsumerGuids(services, resolveConsumerGuids);
             return AddWorkFlowEngineServiceCore(services, autoStart);
         }

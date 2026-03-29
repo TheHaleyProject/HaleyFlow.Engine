@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HaleyFlow Protocol v1.0</title>
+  <style>
+    :root {
+      --bg:         #e8eaf0;
+      --surface:    #dfe2ec;
+      --surface2:   #d3d7e5;
+      --border:     #b8c0d8;
+      --accent:     #3b5bdb;
+      --accent2:    #7048e8;
+      --success:    #0ca678;
+      --warning:    #e67700;
+      --error:      #c92a2a;
+      --text:       #1a1d2e;
+      --muted:      #5c6680;
+      --code-bg:    #1a1d27;
+      --tag-bg:     #1a1d27;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* ── Layout ── */
+    .layout { display: flex; min-height: 100vh; }
+
+    nav {
+      width: 270px;
+      min-width: 270px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 2rem 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    nav .logo {
+      padding: 0 1.5rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    nav .logo h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+
+    nav .logo p {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    nav ul { list-style: none; padding: 0 0.75rem; }
+
+    nav ul li a {
+      display: block;
+      padding: 0.4rem 0.75rem;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      transition: all 0.15s;
+    }
+
+    nav ul li a:hover { background: var(--surface2); color: var(--text); }
+
+    nav ul li.section {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 1rem 0.75rem 0.3rem;
+    }
+
+    main {
+      flex: 1;
+      padding: 3rem 4rem;
+      max-width: 920px;
+    }
+
+    /* ── Typography ── */
+    h1 { font-size: 2.2rem; font-weight: 800; color: var(--accent); margin-bottom: 0.5rem; }
+    h2 { font-size: 1.5rem; font-weight: 700; color: var(--text); margin: 3rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 1.1rem; font-weight: 600; color: var(--accent2); margin: 2rem 0 0.75rem; }
+    h4 { font-size: 0.95rem; font-weight: 600; color: var(--text); margin: 1.25rem 0 0.5rem; }
+    p  { margin-bottom: 1rem; color: var(--text); }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, #1a1d27 0%, #1a2040 100%);
+      border: 1px solid #2e3250;
+      border-radius: 12px;
+      padding: 2.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .hero h1 { color: #6c8eff; }
+
+    .hero .version {
+      display: inline-block;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+
+    .hero p { color: #8892b0; font-size: 1rem; margin-bottom: 0; }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      color: #79c0ff;  /* inside pre blocks — dark bg, light text fine */
+    }
+
+    p code, li code, td code, th code {
+      background: #1a1d2e;
+      color: #f2cc60;  /* golden yellow — readable on dark bg */
+      padding: 0.1em 0.4em;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+
+    /* JSON syntax highlighting */
+    .k { color: #79c0ff; }   /* key */
+    .s { color: #a5d6ff; }   /* string value */
+    .n { color: #f2cc60; }   /* number */
+    .b { color: #ff7b72; }   /* boolean */
+    .c { color: #8b949e; font-style: italic; } /* comment */
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.875rem; }
+    th { background: #1a1d2e; color: #a0aac8; font-weight: 600; text-align: left; padding: 0.6rem 1rem; border-bottom: 2px solid #2e3250; }
+    td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Callouts ── */
+    .callout {
+      border-left: 3px solid;
+      padding: 0.9rem 1.2rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1.25rem 0;
+      font-size: 0.9rem;
+    }
+
+    .callout.info    { border-color: var(--accent);  background: #dde4ff; }
+    .callout.warning { border-color: var(--warning); background: #fff3cd; }
+    .callout.error   { border-color: var(--error);   background: #ffe3e3; }
+    .callout.success { border-color: var(--success); background: #d3f9d8; }
+
+    .callout strong { display: block; margin-bottom: 0.25rem; font-size: 0.8rem; letter-spacing: 0.05em; text-transform: uppercase; }
+    .callout.info    strong { color: var(--accent); }
+    .callout.warning strong { color: var(--warning); }
+    .callout.error   strong { color: var(--error); }
+    .callout.success strong { color: var(--success); }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    .badge.required { background: #ffe3e3; color: var(--error); border: 1px solid #ffc9c9; }
+    .badge.optional { background: #d3f9d8; color: var(--success); border: 1px solid #b2f2bb; }
+    .badge.error    { background: #ffe3e3; color: var(--error); border: 1px solid #ffc9c9; }
+    .badge.warning  { background: #fff3cd; color: var(--warning); border: 1px solid #ffe08a; }
+
+    /* ── Field reference entries ── */
+    .field {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .field-name { font-family: monospace; color: #f2cc60; font-weight: 700; font-size: 0.95rem; background: #1a1d2e; padding: 0.15em 0.5em; border-radius: 4px; }
+    .field-type { color: var(--muted); font-size: 0.8rem; margin-left: 0.5rem; }
+    .field-desc { margin-top: 0.4rem; font-size: 0.875rem; color: var(--muted); }
+
+    /* ── Flow diagram ── */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 1.25rem 0;
+    }
+
+    .flow-box {
+      background: #1a1d2e;
+      border: 1px solid #2e3250;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.82rem;
+      font-family: monospace;
+      color: #c8d0e8;
+      white-space: nowrap;
+    }
+
+    .flow-box.state  { border-color: #6c8eff; color: #6c8eff; }
+    .flow-box.event  { border-color: #a78bfa; color: #a78bfa; background: #1e1a2e; font-size: 0.75rem; }
+    .flow-box.hook   { border-color: #34d399; color: #34d399; }
+    .flow-box.term   { border-color: #f87171; color: #f87171; }
+
+    .flow-arrow {
+      color: var(--muted);
+      font-size: 1.2rem;
+      padding: 0 0.4rem;
+    }
+
+    /* ── Validation table ── */
+    .val-error { color: var(--error); font-weight: 600; }
+    .val-warn  { color: var(--warning); font-weight: 600; }
+
+    /* ── Section anchor offset ── */
+    [id] { scroll-margin-top: 1.5rem; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── Navigation ── -->
+<nav>
+  <div class="logo">
+    <h1>HaleyFlow Protocol</h1>
+    <p>v1.0 Specification</p>
+  </div>
+  <ul>
+    <li class="section">Introduction</li>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#concepts">Core Concepts</a></li>
+    <li><a href="#anatomy">Document Anatomy</a></li>
+
+    <li class="section">Definition JSON</li>
+    <li><a href="#def-states">States</a></li>
+    <li><a href="#def-transitions">Transitions</a></li>
+    <li><a href="#def-example">Full Example</a></li>
+
+    <li class="section">Policy JSON</li>
+    <li><a href="#pol-params">Parameter Catalog</a></li>
+    <li><a href="#pol-rules">Rules</a></li>
+    <li><a href="#pol-via">The via Field</a></li>
+    <li><a href="#pol-emit">Hooks (emit)</a></li>
+    <li><a href="#pol-complete">Complete Codes</a></li>
+    <li><a href="#pol-params-inherit">Parameter Inheritance</a></li>
+    <li><a href="#pol-timeouts">Timeouts</a></li>
+    <li><a href="#pol-example">Full Example</a></li>
+
+    <li class="section">Execution Contract</li>
+    <li><a href="#exec-order">Execution Order</a></li>
+    <li><a href="#exec-transition">Transition Handler</a></li>
+    <li><a href="#exec-hooks">Hook Execution</a></li>
+    <li><a href="#exec-params">Parameter Resolution</a></li>
+    <li><a href="#exec-advance">Auto-Advance</a></li>
+
+    <li class="section">Validation</li>
+    <li><a href="#val-structural">Structural Rules</a></li>
+    <li><a href="#val-policy">Policy Rules</a></li>
+
+    <li class="section">Reference</li>
+    <li><a href="#ref-fields-def">Definition Fields</a></li>
+    <li><a href="#ref-fields-pol">Policy Fields</a></li>
+    <li><a href="#ref-codes">Validation Codes</a></li>
+
+    <li class="section">Error Codes</li>
+    <li><a href="#err-overview">Overview</a></li>
+    <li><a href="#err-hfd">HFD1xxx — Structural</a></li>
+    <li><a href="#err-hfp">HFP2xxx — Policy</a></li>
+    <li><a href="#err-hfr">HFR3xxx — Relay Runtime</a></li>
+    <li><a href="#err-hfb">HFB4xxx — Backfill</a></li>
+    <li><a href="#err-hff">HFF5xxx — FlowBus / Host</a></li>
+  </ul>
+</nav>
+
+<!-- ── Main content ── -->
+<main>
+
+  <!-- Hero -->
+  <div class="hero">
+    <span class="version">v1.0</span>
+    <h1>HaleyFlow Protocol</h1>
+    <p>
+      A language-agnostic specification for describing workflow state machines and their execution policies.
+      Any interpreter, engine, or runtime that implements this protocol will behave identically given the same
+      definition and policy JSON — regardless of language or platform.
+    </p>
+  </div>
+
+  <!-- ── Overview ── -->
+  <h2 id="overview">Overview</h2>
+
+  <p>
+    HaleyFlow Protocol defines two complementary JSON documents that together describe a complete workflow:
+  </p>
+
+  <table>
+    <tr>
+      <th>Document</th>
+      <th>Describes</th>
+      <th>Changes?</th>
+    </tr>
+    <tr>
+      <td><strong>Definition JSON</strong></td>
+      <td>The structural skeleton — states and the events that move between them.</td>
+      <td>Versioned. Immutable once an instance is created against it.</td>
+    </tr>
+    <tr>
+      <td><strong>Policy JSON</strong></td>
+      <td>The behavioural overlay — what hooks fire upon entering a state, in what order, with what parameters, and how completion is determined.</td>
+      <td>Versioned. Locked to an instance at creation time.</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    <strong>Protocol vs Implementation</strong>
+    This document describes the protocol — the contract between the JSON author and any compliant interpreter.
+    It does not describe any specific engine or runtime. Any implementation (in any language) that correctly
+    interprets these documents is a conforming HaleyFlow interpreter.
+  </div>
+
+  <!-- ── Core Concepts ── -->
+  <h2 id="concepts">Core Concepts</h2>
+
+  <h3>State</h3>
+  <p>
+    A named position in the lifecycle of an entity. An entity (e.g. a loan application, a change request)
+    is always in exactly one state at any point in time. States are stable — an entity remains in a state
+    until an event causes a transition.
+  </p>
+
+  <h3>Event</h3>
+  <p>
+    A numeric code that triggers a transition. Events are the only mechanism for moving between states.
+    The same event code may be used from different states — it routes to different transitions depending
+    on the current state of the entity.
+  </p>
+
+  <h3>Transition</h3>
+  <p>
+    A directed edge from one state to another, identified by a <code>from</code> state, a <code>to</code> state,
+    and an <code>event</code> code. When an event fires while an entity is in <code>from</code>, the entity
+    moves to <code>to</code>.
+  </p>
+
+  <h3>Hook</h3>
+  <p>
+    A side effect that fires upon arrival at a state. Hooks are identified by a <code>route</code> string —
+    a stable identifier that a handler can subscribe to. Hooks may be blocking or non-blocking, and may carry
+    parameters from the policy.
+  </p>
+
+  <h3>Policy</h3>
+  <p>
+    A behavioural overlay on top of a definition. The policy specifies what happens <em>when</em> a state is
+    entered — which hooks fire, in what order, with what parameters, and how completion is determined.
+    A definition is valid without a policy; a policy without a definition is meaningless.
+  </p>
+
+  <!-- ── Anatomy ── -->
+  <h2 id="anatomy">Document Anatomy</h2>
+
+  <div class="flow">
+    <div class="flow-box state">ApplicationReceived</div>
+    <div class="flow-arrow">──[event 1001]──▶</div>
+    <div class="flow-box state">KycCheck</div>
+    <div class="flow-arrow">──[event 2001]──▶</div>
+    <div class="flow-box state">CreditAssessment</div>
+    <div class="flow-arrow">──[event 2003]──▶</div>
+    <div class="flow-box state">...</div>
+    <div class="flow-arrow">──▶</div>
+    <div class="flow-box term">Approved / Rejected</div>
+  </div>
+
+  <p>
+    The <strong>definition JSON</strong> describes the boxes and arrows above — states and transitions.
+    The <strong>policy JSON</strong> describes what happens inside each box when an entity arrives — hooks,
+    params, completion paths.
+  </p>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- DEFINITION JSON                                       -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <h2 id="def-states">Definition JSON — States</h2>
+
+  <p>
+    States are declared in a top-level <code>states</code> array. Each state has a name and optional flags.
+  </p>
+
+<pre><code><span class="k">"states"</span>: [
+  { <span class="k">"name"</span>: <span class="s">"ApplicationReceived"</span>, <span class="k">"is_initial"</span>: <span class="b">true</span> },
+  { <span class="k">"name"</span>: <span class="s">"KycCheck"</span> },
+  { <span class="k">"name"</span>: <span class="s">"CreditAssessment"</span> },
+  { <span class="k">"name"</span>: <span class="s">"ManagerApproval"</span> },
+  { <span class="k">"name"</span>: <span class="s">"Approved"</span>,  <span class="k">"is_final"</span>: <span class="b">true</span> },
+  { <span class="k">"name"</span>: <span class="s">"Rejected"</span>,  <span class="k">"is_final"</span>: <span class="b">true</span> }
+]</code></pre>
+
+  <table>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+    <tr><td><code>name</code></td><td>string</td><td><span class="badge required">required</span></td><td>Unique name for this state. Case-insensitive matching is used by interpreters.</td></tr>
+    <tr><td><code>is_initial</code></td><td>boolean</td><td><span class="badge optional">optional</span></td><td>Marks the entry point. Exactly one state must be initial.</td></tr>
+    <tr><td><code>is_final</code></td><td>boolean</td><td><span class="badge optional">optional</span></td><td>Marks a terminal state. An entity in a terminal state cannot transition further. Multiple terminal states are allowed.</td></tr>
+    <tr><td><code>category</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Informational grouping label. Not used by the interpreter.</td></tr>
+  </table>
+
+  <div class="callout warning">
+    <strong>Rule</strong>
+    Exactly one state must have <code>is_initial: true</code>. Zero or more than one initial states is a
+    structural error — the interpreter cannot determine the starting point.
+  </div>
+
+  <h2 id="def-transitions">Definition JSON — Transitions</h2>
+
+  <p>
+    Transitions define valid movements between states. Each transition is identified by
+    the combination of <code>from</code> state and <code>event</code> code — this pair must be unique.
+  </p>
+
+<pre><code><span class="k">"transitions"</span>: [
+  { <span class="k">"event"</span>: <span class="n">1001</span>, <span class="k">"from"</span>: <span class="s">"ApplicationReceived"</span>, <span class="k">"to"</span>: <span class="s">"KycCheck"</span> },
+  { <span class="k">"event"</span>: <span class="n">2001</span>, <span class="k">"from"</span>: <span class="s">"KycCheck"</span>,            <span class="k">"to"</span>: <span class="s">"CreditAssessment"</span> },
+  { <span class="k">"event"</span>: <span class="n">2002</span>, <span class="k">"from"</span>: <span class="s">"KycCheck"</span>,            <span class="k">"to"</span>: <span class="s">"Rejected"</span> },
+  { <span class="k">"event"</span>: <span class="n">2007</span>, <span class="k">"from"</span>: <span class="s">"ManagerApproval"</span>,    <span class="k">"to"</span>: <span class="s">"Approved"</span> },
+  { <span class="k">"event"</span>: <span class="n">2008</span>, <span class="k">"from"</span>: <span class="s">"ManagerApproval"</span>,    <span class="k">"to"</span>: <span class="s">"Rejected"</span> },
+  { <span class="k">"event"</span>: <span class="n">2009</span>, <span class="k">"from"</span>: <span class="s">"ManagerApproval"</span>,    <span class="k">"to"</span>: <span class="s">"ManagerApproval"</span> }
+]</code></pre>
+
+  <table>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+    <tr><td><code>event</code></td><td>integer</td><td><span class="badge required">required</span></td><td>Numeric event code. Must be unique per <code>from</code> state.</td></tr>
+    <tr><td><code>from</code></td><td>string</td><td><span class="badge required">required</span></td><td>The state the entity must be in for this transition to fire.</td></tr>
+    <tr><td><code>to</code></td><td>string</td><td><span class="badge required">required</span></td><td>The state the entity moves to after the transition fires.</td></tr>
+    <tr><td><code>eventName</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Human-readable label. For display only — do not use in logic.</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>Self-loops</strong>
+    A transition where <code>from == to</code> is valid and intentional — commonly used for timeout pings
+    or reminder events that re-enter the same state to re-trigger hooks. However, a state with only
+    self-loop transitions and no exit is a structural error.
+  </div>
+
+  <h2 id="def-example">Definition JSON — Full Example</h2>
+
+<pre><code>{
+  <span class="k">"name"</span>: <span class="s">"LoanApproval"</span>,
+  <span class="k">"states"</span>: [
+    { <span class="k">"name"</span>: <span class="s">"ApplicationReceived"</span>, <span class="k">"is_initial"</span>: <span class="b">true</span> },
+    { <span class="k">"name"</span>: <span class="s">"KycCheck"</span> },
+    { <span class="k">"name"</span>: <span class="s">"CreditAssessment"</span> },
+    { <span class="k">"name"</span>: <span class="s">"RiskReview"</span> },
+    { <span class="k">"name"</span>: <span class="s">"ManagerApproval"</span> },
+    { <span class="k">"name"</span>: <span class="s">"Approved"</span>,  <span class="k">"is_final"</span>: <span class="b">true</span> },
+    { <span class="k">"name"</span>: <span class="s">"Rejected"</span>,  <span class="k">"is_final"</span>: <span class="b">true</span> }
+  ],
+  <span class="k">"transitions"</span>: [
+    { <span class="k">"event"</span>: <span class="n">1001</span>, <span class="k">"from"</span>: <span class="s">"ApplicationReceived"</span>, <span class="k">"to"</span>: <span class="s">"KycCheck"</span> },
+    { <span class="k">"event"</span>: <span class="n">2001</span>, <span class="k">"from"</span>: <span class="s">"KycCheck"</span>,            <span class="k">"to"</span>: <span class="s">"CreditAssessment"</span> },
+    { <span class="k">"event"</span>: <span class="n">2002</span>, <span class="k">"from"</span>: <span class="s">"KycCheck"</span>,            <span class="k">"to"</span>: <span class="s">"Rejected"</span> },
+    { <span class="k">"event"</span>: <span class="n">2003</span>, <span class="k">"from"</span>: <span class="s">"CreditAssessment"</span>,    <span class="k">"to"</span>: <span class="s">"RiskReview"</span> },
+    { <span class="k">"event"</span>: <span class="n">2004</span>, <span class="k">"from"</span>: <span class="s">"CreditAssessment"</span>,    <span class="k">"to"</span>: <span class="s">"Rejected"</span> },
+    { <span class="k">"event"</span>: <span class="n">2005</span>, <span class="k">"from"</span>: <span class="s">"RiskReview"</span>,          <span class="k">"to"</span>: <span class="s">"ManagerApproval"</span> },
+    { <span class="k">"event"</span>: <span class="n">2006</span>, <span class="k">"from"</span>: <span class="s">"RiskReview"</span>,          <span class="k">"to"</span>: <span class="s">"Rejected"</span> },
+    { <span class="k">"event"</span>: <span class="n">2007</span>, <span class="k">"from"</span>: <span class="s">"ManagerApproval"</span>,    <span class="k">"to"</span>: <span class="s">"Approved"</span> },
+    { <span class="k">"event"</span>: <span class="n">2008</span>, <span class="k">"from"</span>: <span class="s">"ManagerApproval"</span>,    <span class="k">"to"</span>: <span class="s">"Rejected"</span> },
+    { <span class="k">"event"</span>: <span class="n">2009</span>, <span class="k">"from"</span>: <span class="s">"ManagerApproval"</span>,    <span class="k">"to"</span>: <span class="s">"ManagerApproval"</span> }
+  ]
+}</code></pre>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- POLICY JSON                                          -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <h2 id="pol-params">Policy JSON — Parameter Catalog</h2>
+
+  <p>
+    The top-level <code>params</code> array defines a catalog of named parameter entries.
+    Each entry has a unique <code>code</code> and a free-form <code>data</code> object.
+    Rules and hooks reference these entries by code — the interpreter resolves the full data
+    and makes it available to handlers at runtime.
+  </p>
+
+<pre><code><span class="k">"params"</span>: [
+  {
+    <span class="k">"code"</span>: <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span>,
+    <span class="k">"data"</span>: {
+      <span class="k">"approval"</span>: {
+        <span class="k">"rule"</span>: <span class="s">"any"</span>,
+        <span class="k">"selector"</span>: {
+          <span class="k">"mode"</span>: <span class="s">"role"</span>,
+          <span class="k">"value"</span>: <span class="s">"loan_manager"</span>
+        }
+      }
+    }
+  }
+]</code></pre>
+
+  <p>
+    The <code>data</code> payload is intentionally free-form. Interpreters pass it to handlers unchanged.
+    Common uses: approval rules (any/all), role/user selectors, numeric thresholds, feature flags.
+  </p>
+
+  <h2 id="pol-rules">Policy JSON — Rules</h2>
+
+  <p>
+    The <code>rules</code> array defines what happens when an entity <strong>arrives at</strong> a state.
+    Each rule targets a state by name. When the interpreter moves an entity into that state, it evaluates
+    all matching rules and fires their hooks.
+  </p>
+
+<pre><code><span class="k">"rules"</span>: [
+  {
+    <span class="k">"state"</span>:  <span class="s">"ManagerApproval"</span>,
+    <span class="k">"params"</span>: [ <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span> ],
+    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> },
+    <span class="k">"emit"</span>: [ ... ]
+  }
+]</code></pre>
+
+  <table>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+    <tr><td><code>state</code></td><td>string</td><td><span class="badge required">required</span></td><td>The state being <strong>arrived at</strong> (ToState). The rule fires on entry to this state.</td></tr>
+    <tr><td><code>via</code></td><td>integer</td><td><span class="badge optional">optional</span></td><td>If present, the rule only applies when the state is entered via this specific event code. See <a href="#pol-via">The via Field</a>.</td></tr>
+    <tr><td><code>params</code></td><td>string[]</td><td><span class="badge optional">optional</span></td><td>List of param codes from the catalog. Inherited by all hooks in this rule unless a hook defines its own params.</td></tr>
+    <tr><td><code>complete</code></td><td>object</td><td><span class="badge optional">optional</span></td><td>Auto-advance event codes for the transition handler. <code>success</code> and <code>failure</code> are both optional integers.</td></tr>
+    <tr><td><code>emit</code></td><td>Hook[]</td><td><span class="badge optional">optional</span></td><td>Ordered list of hooks to fire upon arrival at this state.</td></tr>
+  </table>
+
+  <h2 id="pol-via">Policy JSON — The <code>via</code> Field</h2>
+
+  <p>
+    The same state can be reached through different events. The <code>via</code> field allows a rule to
+    target only a specific arrival path.
+  </p>
+
+  <p>
+    Consider <code>ManagerApproval</code> — it can be reached via event <code>2005</code> (a normal
+    RiskReview approval) or via event <code>2009</code> (a self-loop timeout ping that re-enters the same
+    state). These two arrivals need completely different hooks. The <code>via</code> field lets you write
+    a targeted rule for one specific path and a general fallback rule for all others:
+  </p>
+
+<pre><code><span class="c">// Rule 1 (via-specific): fires ONLY when ManagerApproval is entered via event 2009</span>
+{
+  <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>,
+  <span class="k">"via"</span>:   <span class="n">2009</span>,
+  <span class="k">"emit"</span>: [
+    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER"</span>,       <span class="k">"blocking"</span>: <span class="b">false</span> },
+    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER.EMAIL"</span>, <span class="k">"blocking"</span>: <span class="b">false</span> }
+  ]
+},
+<span class="c">// Rule 2 (general fallback): fires for arrivals NOT claimed by a via-specific rule (e.g. via 2005)</span>
+{
+  <span class="k">"state"</span>:  <span class="s">"ManagerApproval"</span>,
+  <span class="k">"params"</span>: [ <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span> ],
+  <span class="k">"emit"</span>: [
+    { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DECISION"</span>, <span class="k">"blocking"</span>: <span class="b">true</span>, <span class="k">"order"</span>: <span class="n">1</span>,
+      <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> } }
+  ]
+}</code></pre>
+
+  <div class="callout info">
+    <strong>Priority Rule — via-specific beats general</strong>
+    Each transition is governed by exactly one rule. The interpreter uses a two-pass strategy:<br/><br/>
+    <strong>Pass 1 — via-specific rules first.</strong> All rules that have a <code>via</code> field are evaluated.
+    If a rule's <code>state</code> and <code>via</code> both match the arriving transition, that transition is
+    <em>claimed</em> and no further rules are considered for it.<br/><br/>
+    <strong>Pass 2 — general rules as fallback.</strong> Rules with no <code>via</code> field are then evaluated,
+    but only for transitions not already claimed in Pass 1.<br/><br/>
+    In the example above: the transition arriving via <code>2009</code> is claimed by Rule 1 (the reminder rule).
+    The transition arriving via <code>2005</code> is not claimed, so it falls through to Rule 2 (the decision rule).
+  </div>
+
+  <div class="callout warning">
+    <strong>One rule per transition</strong>
+    A transition (identified by FromState + ToState + EventCode) will be governed by at most one rule.
+    Do not write two via-specific rules for the same (state, via) pair — the last one in the array wins
+    and the first is silently ignored.
+  </div>
+
+  <h2 id="pol-emit">Policy JSON — Hooks (<code>emit</code>)</h2>
+
+  <p>
+    The <code>emit</code> array defines the hooks that fire when a rule's state is entered.
+    Each hook is identified by a <code>route</code> — a stable string that an external handler subscribes to.
+  </p>
+
+<pre><code>{
+  <span class="k">"route"</span>:    <span class="s">"APP.LOAN.KYC.CHECK"</span>,
+  <span class="k">"label"</span>:    <span class="s">"KYC Check"</span>,
+  <span class="k">"blocking"</span>: <span class="b">true</span>,
+  <span class="k">"group"</span>:    <span class="s">"kyc_decision"</span>,
+  <span class="k">"order"</span>:    <span class="n">1</span>,
+  <span class="k">"params"</span>:   [ <span class="s">"PARAMS.LOAN.KYC.OVERRIDE"</span> ],
+  <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2001</span>, <span class="k">"failure"</span>: <span class="n">2002</span> }
+}</code></pre>
+
+  <table>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+    <tr><td><code>route</code></td><td>string</td><td><span class="badge required">required</span></td><td>Unique stable identifier. Handlers subscribe to this route. Use dot-notation by convention.</td></tr>
+    <tr><td><code>label</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Human-readable name. For display and logging only.</td></tr>
+    <tr><td><code>blocking</code></td><td>boolean</td><td><span class="badge optional">optional</span></td><td>Default: <code>true</code>. See below.</td></tr>
+    <tr><td><code>order</code></td><td>integer</td><td><span class="badge optional">optional</span></td><td>Execution sequence within this rule. Lower numbers run first. Hooks without an order run last.</td></tr>
+    <tr><td><code>group</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Logical grouping label. Informational — used by some interpreters for ACK group tracking.</td></tr>
+    <tr><td><code>params</code></td><td>string[]</td><td><span class="badge optional">optional</span></td><td>Hook-own param codes. If absent, inherits parent rule's params.</td></tr>
+    <tr><td><code>complete</code></td><td>object</td><td><span class="badge optional">optional</span></td><td>Auto-advance codes. <strong>Only respected on blocking hooks.</strong> Ignored on non-blocking hooks.</td></tr>
+  </table>
+
+  <h3>Blocking vs Non-Blocking</h3>
+
+  <p>
+    <strong>Blocking hooks</strong> (<code>"blocking": true</code>) participate in the execution chain.
+    Their result can stop the chain, trigger a failure event, or capture a success event.
+    Complete codes on blocking hooks are respected.
+  </p>
+
+  <p>
+    <strong>Non-blocking hooks</strong> (<code>"blocking": false</code>) are fire-and-forget.
+    Their result is <em>completely ignored</em> by the interpreter. They cannot carry complete codes —
+    any <code>complete</code> block on a non-blocking hook is silently discarded.
+  </p>
+
+  <div class="callout warning">
+    <strong>Important</strong>
+    If a non-blocking hook defines <code>complete</code> codes, a compliant interpreter must ignore them.
+    A validator should warn the author that these codes will have no effect.
+  </div>
+
+  <h3>Hook Ordering</h3>
+
+  <p>
+    Hooks within a rule execute in ascending <code>order</code> value. If two hooks share the same
+    <code>order</code> value, execution order between them is implementation-defined — avoid it
+    (a validator should warn or error if both carry complete codes).
+  </p>
+
+  <p>
+    Hooks without an explicit <code>order</code> are assigned the lowest priority —
+    they run <strong>after all explicitly ordered hooks</strong> complete. This means: the moment
+    you assign any <code>order</code> to any hook in a rule, all un-ordered hooks are pushed to the end.
+  </p>
+
+  <h2 id="pol-complete">Policy JSON — Complete Codes</h2>
+
+  <p>
+    Complete codes appear in two places: on rules (transition-level) and on individual blocking hooks.
+    They tell the interpreter which event to fire automatically after a success or failure outcome.
+  </p>
+
+<pre><code><span class="c">// On a rule (transition-level) — governs the transition handler outcome</span>
+<span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> }
+
+<span class="c">// On a hook — governs this specific blocking hook only</span>
+<span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2001</span>, <span class="k">"failure"</span>: <span class="n">2002</span> }</code></pre>
+
+  <h3>Transition handler — success waits, failure fires immediately</h3>
+
+  <p>
+    The transition handler always runs first. But a successful result does <strong>not</strong> fire the
+    success complete code immediately — the interpreter must run all hooks first. Only after every hook
+    has completed is the transition's success code considered, and even then only if no blocking hook
+    has already captured a success code of its own.
+  </p>
+
+  <p>
+    Failure is the opposite. If the transition handler fails, the failure complete code is fired
+    <strong>immediately</strong> and all hooks are skipped. There is no purpose in running hooks if
+    the transition itself did not succeed.
+  </p>
+
+  <table>
+    <tr><th>Transition handler outcome</th><th>Interpreter behaviour</th></tr>
+    <tr>
+      <td>Returns <strong>success</strong></td>
+      <td>Hold the success complete code. Run all hooks in order. Fire the success code only if no hook terminates the chain first — it is the final fallback after all hooks pass through silently.</td>
+    </tr>
+    <tr>
+      <td>Returns <strong>failure</strong></td>
+      <td>Fire the failure complete code immediately. Skip all hooks. If no failure code is defined, return blocked (<code>HFR3004</code>).</td>
+    </tr>
+  </table>
+
+  <h3>Any complete code on a blocking hook fires immediately</h3>
+
+  <p>
+    Whether a blocking hook succeeds with a success code, or fails with a failure code, the result is
+    the same: <strong>fire immediately, skip remaining hooks</strong>. There is no deferral for hook
+    complete codes. This is what allows escalation patterns — a hook with a success code can terminate
+    the chain early without the remaining hooks running.
+  </p>
+
+  <p>
+    The transition handler's success code is only a fallback. It fires after all hooks if none of them
+    terminated first. If any hook fires a complete code, the transition handler's success code is discarded.
+  </p>
+
+  <div class="callout warning">
+    <strong>Complete codes always terminate immediately</strong>
+    Any complete code — on a transition handler failure, or on any blocking hook — fires immediately
+    and ends the chain. The only thing that does <em>not</em> terminate is a blocking hook with no
+    complete codes: on success it passes through, on failure it rolls back.
+  </div>
+
+  <div class="callout info">
+    <strong>Complete codes do not cascade</strong>
+    Rule-level complete codes apply only to the transition handler. They are <strong>not</strong> inherited by hooks.
+    Each hook's complete codes come exclusively from its own <code>complete</code> block.
+    If a hook has no <code>complete</code> block, it has no auto-advance codes — period.
+  </div>
+
+  <h2 id="pol-params-inherit">Policy JSON — Parameter Inheritance</h2>
+
+  <p>
+    Parameters flow from the catalog to handlers via a two-level inheritance:
+  </p>
+
+  <table>
+    <tr><th>Context</th><th>Params used</th></tr>
+    <tr><td>Transition handler</td><td>Rule-level <code>params</code></td></tr>
+    <tr><td>Hook handler — hook has own <code>params</code></td><td>Hook's own <code>params</code></td></tr>
+    <tr><td>Hook handler — hook has no <code>params</code></td><td>Inherits parent rule's <code>params</code></td></tr>
+  </table>
+
+  <p>
+    This means a rule can define <code>"params": ["PARAMS.LOAN.MANAGER.APPROVAL"]</code> and all hooks
+    that don't specify their own params will automatically receive the manager approval parameter —
+    no repetition required.
+  </p>
+
+  <h2 id="pol-timeouts">Policy JSON — Timeouts</h2>
+
+  <p>
+    The optional <code>timeouts</code> array defines automatic event firing when an entity remains in
+    a state beyond a specified duration. Two forms of duration are supported — use whichever is more readable:
+  </p>
+
+<pre><code><span class="k">"timeouts"</span>: [
+  <span class="c">// ISO 8601 duration — fires once (default mode)</span>
+  { <span class="k">"state"</span>: <span class="s">"RevisionRequired"</span>, <span class="k">"timeout"</span>: <span class="s">"P14D"</span>, <span class="k">"timeout_event"</span>: <span class="n">3012</span> },
+
+  <span class="c">// ISO 8601 duration — repeat mode (fires again each period until state changes)</span>
+  { <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>, <span class="k">"timeout"</span>: <span class="s">"P1D"</span>, <span class="k">"timeout_event"</span>: <span class="n">2009</span>, <span class="k">"timeout_mode"</span>: <span class="s">"repeat"</span> },
+
+  <span class="c">// Minutes shorthand — repeat with a cap on retries</span>
+  { <span class="k">"state"</span>: <span class="s">"ReworkRequired"</span>, <span class="k">"timeout_minutes"</span>: <span class="n">2</span>, <span class="k">"timeout_event"</span>: <span class="n">4010</span>, <span class="k">"timeout_mode"</span>: <span class="s">"repeat"</span>, <span class="k">"max_retry"</span>: <span class="n">4</span> }
+]</code></pre>
+
+  <table>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+    <tr>
+      <td><code>state</code></td><td>string</td><td><span class="badge required">required</span></td>
+      <td>The state the entity must be dwelling in for this timeout to apply.</td>
+    </tr>
+    <tr>
+      <td><code>timeout</code></td><td>string</td><td>one of the two</td>
+      <td>Duration as an ISO 8601 period string. e.g. <code>"P1D"</code> (1 day), <code>"P2D"</code> (2 days), <code>"PT30M"</code> (30 minutes), <code>"P14D"</code> (14 days). Mutually exclusive with <code>timeout_minutes</code>.</td>
+    </tr>
+    <tr>
+      <td><code>timeout_minutes</code></td><td>integer</td><td>one of the two</td>
+      <td>Duration in minutes as a plain integer. Convenience alternative to <code>timeout</code> for short durations. e.g. <code>2</code> means 2 minutes. Mutually exclusive with <code>timeout</code>.</td>
+    </tr>
+    <tr>
+      <td><code>timeout_event</code></td><td>integer</td><td><span class="badge required">required</span></td>
+      <td>The event code fired when the timeout elapses. Must be a valid event code in the definition.</td>
+    </tr>
+    <tr>
+      <td><code>timeout_mode</code></td><td>string</td><td><span class="badge optional">optional</span></td>
+      <td>Default: <code>"once"</code>. <code>"once"</code> — fires the event exactly once, then stops. <code>"repeat"</code> — fires the event repeatedly, once per period, until the entity leaves the state or <code>max_retry</code> is reached.</td>
+    </tr>
+    <tr>
+      <td><code>max_retry</code></td><td>integer</td><td><span class="badge optional">optional</span></td>
+      <td>Maximum number of times the timeout event may fire. Only meaningful with <code>"repeat"</code> mode. If omitted, repeat mode fires indefinitely until state changes.</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    <strong>Timeouts and via rules work together</strong>
+    A timeout fires an event code — that event causes a transition, and the arriving state may have a
+    <code>via</code>-specific rule targeting exactly that event. This is the standard pattern for
+    reminder/escalation cycles: the timeout fires a self-loop event, the <code>via</code> rule on that
+    event triggers reminder hooks, and <code>repeat</code> mode keeps firing until the entity moves on.
+  </div>
+
+  <h2 id="pol-example">Policy JSON — Full Example</h2>
+
+<pre><code>{
+  <span class="k">"policy_name"</span>: <span class="s">"loanapproval.policy"</span>,
+  <span class="k">"defName"</span>:     <span class="s">"LoanApproval"</span>,
+
+  <span class="k">"params"</span>: [
+    {
+      <span class="k">"code"</span>: <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span>,
+      <span class="k">"data"</span>: {
+        <span class="k">"approval"</span>: { <span class="k">"rule"</span>: <span class="s">"any"</span>, <span class="k">"selector"</span>: { <span class="k">"mode"</span>: <span class="s">"role"</span>, <span class="k">"value"</span>: <span class="s">"loan_manager"</span> } }
+      }
+    }
+  ],
+
+  <span class="k">"rules"</span>: [
+    {
+      <span class="k">"state"</span>: <span class="s">"KycCheck"</span>,
+      <span class="k">"emit"</span>: [
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.CHECK"</span>,            <span class="k">"blocking"</span>: <span class="b">true</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
+          <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2001</span>, <span class="k">"failure"</span>: <span class="n">2002</span> } },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.AUDIT.LOG"</span>,        <span class="k">"blocking"</span>: <span class="b">false</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.NOTIFY.APPLICANT"</span>, <span class="k">"blocking"</span>: <span class="b">false</span>, <span class="k">"order"</span>: <span class="n">2</span> }
+      ]
+    },
+    {
+      <span class="k">"state"</span>:  <span class="s">"ManagerApproval"</span>,
+      <span class="k">"params"</span>: [ <span class="s">"PARAMS.LOAN.MANAGER.APPROVAL"</span> ],
+      <span class="k">"emit"</span>: [
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DECISION"</span>,     <span class="k">"blocking"</span>: <span class="b">true</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
+          <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2007</span>, <span class="k">"failure"</span>: <span class="n">2008</span> } },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.DOC.ARCHIVE"</span>,  <span class="k">"blocking"</span>: <span class="b">true</span>,  <span class="k">"order"</span>: <span class="n">2</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.NOTIFY"</span>,       <span class="k">"blocking"</span>: <span class="b">false</span> }
+      ]
+    },
+    {
+      <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>,
+      <span class="k">"via"</span>:   <span class="n">2009</span>,
+      <span class="k">"emit"</span>: [
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER"</span>,       <span class="k">"blocking"</span>: <span class="b">false</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.MANAGER.REMINDER.EMAIL"</span>, <span class="k">"blocking"</span>: <span class="b">false</span>, <span class="k">"order"</span>: <span class="n">2</span> }
+      ]
+    }
+  ],
+
+  <span class="k">"timeouts"</span>: [
+    { <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>, <span class="k">"timeout"</span>: <span class="s">"P1D"</span>, <span class="k">"timeout_event"</span>: <span class="n">2009</span>, <span class="k">"timeout_mode"</span>: <span class="s">"repeat"</span> }
+  ]
+}</code></pre>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- EXECUTION CONTRACT                                   -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <h2 id="exec-order">Execution Contract — Order</h2>
+
+  <p>
+    When an event fires, a compliant interpreter must execute the following steps in order:
+  </p>
+
+  <ol style="padding-left:1.5rem; margin-bottom:1rem;">
+    <li style="margin-bottom:0.5rem">Resolve the current state of the entity (or the initial state if first event).</li>
+    <li style="margin-bottom:0.5rem">Look up the transition: <code>from == currentState AND event == eventCode</code>.</li>
+    <li style="margin-bottom:0.5rem">If no transition found: reject the event.</li>
+    <li style="margin-bottom:0.5rem">Run the transition handler with the entity context.</li>
+    <li style="margin-bottom:0.5rem">Advance <code>currentState</code> to <code>toState</code>.</li>
+    <li style="margin-bottom:0.5rem">Find the one matching rule for <code>toState</code>: a <code>via</code>-specific rule takes priority; a general rule is the fallback if no via-specific rule matched.</li>
+    <li style="margin-bottom:0.5rem">Execute all hooks from matching rules in <code>order</code> sequence.</li>
+    <li style="margin-bottom:0.5rem">After all hooks complete: fire any pending success event.</li>
+  </ol>
+
+  <h2 id="exec-transition">Execution Contract — Transition Handler</h2>
+
+  <table>
+    <tr><th>Outcome</th><th>Action</th></tr>
+    <tr>
+      <td>Handler returns <strong>failure</strong></td>
+      <td>Skip ALL hooks. Fire <code>CompleteFailureCode</code> immediately if set. If not set, the execution stops — no auto-advance.</td>
+    </tr>
+    <tr>
+      <td>Handler returns <strong>success</strong></td>
+      <td>Hold <code>CompleteSuccessCode</code>. Run all hooks first. Fire success code only after all hooks complete.</td>
+    </tr>
+  </table>
+
+  <h2 id="exec-hooks">Execution Contract — Hook Execution</h2>
+
+  <table>
+    <tr><th>Outcome</th><th>Has success code</th><th>Has failure code</th><th>Action</th></tr>
+    <tr>
+      <td>Non-blocking — any result</td><td>—</td><td>—</td>
+      <td>Continue to next hook. Result and complete codes are <strong>ignored entirely</strong>.</td>
+    </tr>
+    <tr>
+      <td>Blocking hook <strong>succeeds</strong></td><td>yes</td><td>—</td>
+      <td><strong>Terminate immediately.</strong> Skip remaining hooks. Fire success code now.</td>
+    </tr>
+    <tr>
+      <td>Blocking hook <strong>succeeds</strong></td><td>no</td><td>—</td>
+      <td>Continue to next hook. No termination.</td>
+    </tr>
+    <tr>
+      <td>Blocking hook <strong>fails</strong></td><td>—</td><td>yes</td>
+      <td><strong>Terminate immediately.</strong> Skip remaining hooks. Fire failure code now.</td>
+    </tr>
+    <tr>
+      <td>Blocking hook <strong>fails</strong></td><td>—</td><td>no</td>
+      <td>Roll back <code>currentState</code> to <code>fromState</code>. Return blocked (<code>HFR3005</code>). No auto-advance.</td>
+    </tr>
+  </table>
+
+  <div class="callout warning">
+    <strong>Both success and failure now terminate immediately</strong>
+    A complete code on a blocking hook — whether success or failure — always fires immediately and
+    skips all remaining hooks. The distinction is: a success code terminates the chain on the happy
+    path; a failure code terminates it on the sad path. Only a hook with <em>no</em> complete code
+    passes through silently.
+  </div>
+
+  <h3>Why success also terminates — the escalation pattern</h3>
+
+  <p>
+    Consider a multi-stage approval where you want to try reviewers in sequence and stop as soon as
+    one approves. If success codes deferred execution (running all remaining hooks first), you could
+    never short-circuit the escalation chain. With immediate termination on success, the pattern works
+    naturally:
+  </p>
+
+<pre><code><span class="c">// Multi-stage approval — stop at first approver, escalate on failure</span>
+<span class="k">"emit"</span>: [
+  {
+    <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE1"</span>,
+    <span class="k">"blocking"</span>: <span class="b">true</span>,
+    <span class="k">"order"</span>:    <span class="n">1</span>,
+    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← success terminates; stage 2 never runs if stage 1 approves</span>
+  },
+  {
+    <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE2"</span>,
+    <span class="k">"blocking"</span>: <span class="b">true</span>,
+    <span class="k">"order"</span>:    <span class="n">2</span>,
+    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← only reached if stage 1 had no success code or did not terminate</span>
+  },
+  {
+    <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE3"</span>,
+    <span class="k">"blocking"</span>: <span class="b">true</span>,
+    <span class="k">"order"</span>:    <span class="n">3</span>,
+    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span>, <span class="k">"failure"</span>: <span class="n">5002</span> }
+  }
+]</code></pre>
+
+  <p>
+    Stage 1 runs. If it succeeds and has a success code → terminates immediately, fires event 5001, stages 2 and 3 never run.<br/>
+    If stage 1 has no success code (or succeeds without one) → stage 2 runs.<br/>
+    Stage 3 has both codes → it is a full terminator; anything after it would be unreachable.
+  </p>
+
+  <h3>A hook with no complete code is a pass-through</h3>
+
+  <p>
+    A blocking hook with <em>no</em> <code>complete</code> block participates in the chain but never terminates it.
+    On success it silently passes to the next hook. On failure it rolls back and returns blocked — the caller's
+    Tier 2 or Tier 3 code must decide what happens next.
+  </p>
+
+<pre><code><span class="c">// Archive hook — must succeed but does not drive auto-advance</span>
+{
+  <span class="k">"route"</span>:    <span class="s">"APP.LOAN.MANAGER.DOC.ARCHIVE"</span>,
+  <span class="k">"blocking"</span>: <span class="b">true</span>,
+  <span class="k">"order"</span>:    <span class="n">2</span>
+  <span class="c">// no complete block — success passes through, failure rolls back + blocked</span>
+}</code></pre>
+
+  <div class="callout info">
+    <strong>Transition success code is the final fallback</strong>
+    The transition handler's own success code only fires if <em>no</em> hook terminated the chain first.
+    If any blocking hook fires a success code, the transition's success code is discarded.
+    If no hook terminates, the transition's code is the last resort after all hooks pass through.
+  </div>
+
+  <h2 id="exec-params">Execution Contract — Parameter Resolution</h2>
+
+  <p>
+    Before calling any handler, the interpreter resolves the parameters available to it:
+  </p>
+
+  <table>
+    <tr><th>Handler type</th><th>Parameters provided</th></tr>
+    <tr><td>Transition handler</td><td>Full <code>SnapshotParameter</code> objects for each code in the rule's <code>params</code> list.</td></tr>
+    <tr><td>Hook handler (hook has own <code>params</code>)</td><td>Full objects for the hook's own param codes.</td></tr>
+    <tr><td>Hook handler (hook has no <code>params</code>)</td><td>Inherits — full objects for the parent rule's param codes.</td></tr>
+    <tr><td>Hook handler (neither hook nor rule has params)</td><td>Empty list.</td></tr>
+  </table>
+
+  <h2 id="exec-advance">Execution Contract — Auto-Advance</h2>
+
+  <p>
+    Auto-advance means the interpreter automatically fires the next event without the caller having to
+    provide it. This is entirely driven by complete codes in the policy JSON.
+  </p>
+
+  <p>
+    Auto-advance is recursive — if the fired event itself results in a complete code, the interpreter
+    continues advancing until no more complete codes are resolved or a terminal state is reached.
+  </p>
+
+  <div class="callout warning">
+    <strong>Cycle risk</strong>
+    If complete codes form a cycle (A → B → A → ...) with no terminal condition, the interpreter
+    will loop indefinitely. Authors must ensure complete codes always lead toward terminal states
+    or states with no further complete codes.
+  </div>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- VALIDATION                                           -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <h2 id="val-structural">Validation — Structural Rules</h2>
+
+  <p>
+    A compliant interpreter must validate the definition JSON before accepting it for execution.
+    <strong>Errors</strong> must cause registration to be rejected. <strong>Warnings</strong> are informational
+    and may be surfaced to the author without rejection.
+  </p>
+
+  <table>
+    <tr><th>Code</th><th>Severity</th><th>Condition</th></tr>
+    <tr><td><code>NO_INITIAL_STATE</code></td><td><span class="val-error">Error</span></td><td>No state is marked <code>is_initial</code>.</td></tr>
+    <tr><td><code>MULTIPLE_INITIAL_STATES</code></td><td><span class="val-error">Error</span></td><td>More than one state is marked <code>is_initial</code>.</td></tr>
+    <tr><td><code>UNKNOWN_FROM_STATE</code></td><td><span class="val-error">Error</span></td><td>A transition's <code>from</code> references a state not in the states list.</td></tr>
+    <tr><td><code>UNKNOWN_TO_STATE</code></td><td><span class="val-error">Error</span></td><td>A transition's <code>to</code> references a state not in the states list.</td></tr>
+    <tr><td><code>DUPLICATE_EVENT_CODE</code></td><td><span class="val-error">Error</span></td><td>The same event code appears more than once from the same state.</td></tr>
+    <tr><td><code>TERMINAL_HAS_TRANSITIONS</code></td><td><span class="val-error">Error</span></td><td>A state marked <code>is_final</code> has outgoing transitions.</td></tr>
+    <tr><td><code>STUCK_STATE</code></td><td><span class="val-error">Error</span></td><td>A non-terminal state has no outgoing transitions — entities will be permanently stuck.</td></tr>
+    <tr><td><code>CIRCULAR_ONLY</code></td><td><span class="val-error">Error</span></td><td>A state's only outgoing transition is a self-loop — guaranteed infinite loop with no exit.</td></tr>
+    <tr><td><code>UNREACHABLE_STATE</code></td><td><span class="val-warn">Warning</span></td><td>A state has no incoming transitions and is not the initial state — it can never be reached.</td></tr>
+    <tr><td><code>SELF_LOOP_WITH_EXIT</code></td><td><span class="val-warn">Warning</span></td><td>A state has a self-loop but also has exit transitions — likely intentional, verify it is not accidental.</td></tr>
+  </table>
+
+  <h2 id="val-policy">Validation — Policy Rules</h2>
+
+  <table>
+    <tr><th>Code</th><th>Severity</th><th>Condition</th></tr>
+    <tr><td><code>POLICY_UNKNOWN_STATE</code></td><td><span class="val-warn">Warning</span></td><td>A policy rule targets a state that does not exist in the definition — the rule will never fire.</td></tr>
+    <tr><td><code>AMBIGUOUS_ORDER</code></td><td><span class="val-error">Error</span></td><td>Multiple blocking hooks at the same <code>order</code> value define complete codes — execution order is undefined.</td></tr>
+    <tr><td><code>NON_BLOCKING_WITH_COMPLETE</code></td><td><span class="val-warn">Warning</span></td><td>A non-blocking hook defines <code>complete</code> codes — they will be ignored at runtime.</td></tr>
+    <tr><td><code>UNREACHABLE_HOOK</code></td><td><span class="val-warn">Warning</span></td><td>A hook appears after a blocking hook that has both success and failure complete codes — it can never execute.</td></tr>
+    <tr><td><code>NO_FAILURE_PATH</code></td><td><span class="val-warn">Warning</span></td><td>A blocking hook has no failure complete code and the transition has no failure complete code — on failure, the interpreter cannot auto-advance. The application must handle it explicitly.</td></tr>
+  </table>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- REFERENCE                                            -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <h2 id="ref-fields-def">Reference — Definition JSON Fields</h2>
+
+  <div class="field">
+    <span class="field-name">name</span><span class="field-type">string · top-level</span>
+    <div class="field-desc">Human-readable name for this workflow definition. Used for identification and display.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">states[].name</span><span class="field-type">string · required</span>
+    <div class="field-desc">Unique state name. Case-insensitive. Used as a key throughout the definition and policy.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">states[].is_initial</span><span class="field-type">boolean · optional</span>
+    <div class="field-desc">Marks the single entry point of the workflow. Exactly one state must have this set to true.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">states[].is_final</span><span class="field-type">boolean · optional</span>
+    <div class="field-desc">Marks a terminal state. Entities cannot leave this state. Multiple terminal states are allowed.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">transitions[].event</span><span class="field-type">integer · required</span>
+    <div class="field-desc">Numeric event code. Must be unique per from-state. Prefer stable non-sequential ranges per workflow area (e.g. 2000–2099 for loan decisions).</div>
+  </div>
+  <div class="field">
+    <span class="field-name">transitions[].from</span><span class="field-type">string · required</span>
+    <div class="field-desc">The state the entity must be in. Must match a state name exactly (case-insensitive).</div>
+  </div>
+  <div class="field">
+    <span class="field-name">transitions[].to</span><span class="field-type">string · required</span>
+    <div class="field-desc">The state the entity moves to. Must match a state name exactly (case-insensitive).</div>
+  </div>
+
+  <h2 id="ref-fields-pol">Reference — Policy JSON Fields</h2>
+
+  <div class="field">
+    <span class="field-name">params[].code</span><span class="field-type">string · required</span>
+    <div class="field-desc">Unique identifier for this parameter entry. By convention, use dot-notation uppercase (e.g. PARAMS.LOAN.MANAGER.APPROVAL).</div>
+  </div>
+  <div class="field">
+    <span class="field-name">params[].data</span><span class="field-type">object · optional</span>
+    <div class="field-desc">Free-form payload. The interpreter passes this to handlers unchanged. Common uses: approval rules, role selectors, numeric thresholds.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">rules[].state</span><span class="field-type">string · required</span>
+    <div class="field-desc">The state being arrived at (ToState). This rule fires when an entity enters this state.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">rules[].via</span><span class="field-type">integer · optional</span>
+    <div class="field-desc">If set, this rule only applies when the state is entered via this specific event code. Omit to apply to all arrivals.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">rules[].params</span><span class="field-type">string[] · optional</span>
+    <div class="field-desc">Param codes from the catalog. Applied to the transition handler and inherited by all hooks that do not define their own params.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">rules[].complete</span><span class="field-type">object · optional</span>
+    <div class="field-desc">Auto-advance event codes for the transition handler only. Fields: <code>success</code> (integer), <code>failure</code> (integer). Does not cascade to hooks.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">emit[].route</span><span class="field-type">string · required</span>
+    <div class="field-desc">Stable handler identifier. Use dot-notation by convention. Handlers subscribe to this route.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">emit[].blocking</span><span class="field-type">boolean · optional · default true</span>
+    <div class="field-desc">If true, hook result participates in the execution chain. If false, hook is fire-and-forget and its result and complete codes are fully ignored.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">emit[].order</span><span class="field-type">integer · optional</span>
+    <div class="field-desc">Execution sequence. Lower runs first. Hooks without order run after all explicitly ordered hooks.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">emit[].complete</span><span class="field-type">object · optional</span>
+    <div class="field-desc">Auto-advance codes for this blocking hook only. Fields: <code>success</code>, <code>failure</code>. Silently ignored on non-blocking hooks.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">emit[].params</span><span class="field-type">string[] · optional</span>
+    <div class="field-desc">Hook-own param codes. If absent, inherits parent rule's params. If present, fully overrides — rule params are not merged.</div>
+  </div>
+
+  <h2 id="ref-codes">Reference — Validation Codes</h2>
+
+  <table>
+    <tr><th>Code</th><th>Error ID</th><th>Severity</th><th>Category</th></tr>
+    <tr><td><code>NO_INITIAL_STATE</code></td><td><code>HFD1001</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>MULTIPLE_INITIAL_STATES</code></td><td><code>HFD1002</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>UNKNOWN_FROM_STATE</code></td><td><code>HFD1003</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>UNKNOWN_TO_STATE</code></td><td><code>HFD1004</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>DUPLICATE_EVENT_CODE</code></td><td><code>HFD1005</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>TERMINAL_HAS_TRANSITIONS</code></td><td><code>HFD1006</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>STUCK_STATE</code></td><td><code>HFD1007</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>CIRCULAR_ONLY</code></td><td><code>HFD1008</code></td><td><span class="val-error">Error</span></td><td>Structural</td></tr>
+    <tr><td><code>AMBIGUOUS_ORDER</code></td><td><code>HFP2002</code></td><td><span class="val-error">Error</span></td><td>Policy</td></tr>
+    <tr><td><code>UNREACHABLE_STATE</code></td><td><code>HFD1101</code></td><td><span class="val-warn">Warning</span></td><td>Structural</td></tr>
+    <tr><td><code>SELF_LOOP_WITH_EXIT</code></td><td><code>HFD1102</code></td><td><span class="val-warn">Warning</span></td><td>Structural</td></tr>
+    <tr><td><code>POLICY_UNKNOWN_STATE</code></td><td><code>HFP2001</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
+    <tr><td><code>NON_BLOCKING_WITH_COMPLETE</code></td><td><code>HFP2101</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
+    <tr><td><code>UNREACHABLE_HOOK</code></td><td><code>HFP2102</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
+    <tr><td><code>NO_FAILURE_PATH</code></td><td><code>HFP2103</code></td><td><span class="val-warn">Warning</span></td><td>Policy</td></tr>
+  </table>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- ERROR CODES                                          -->
+  <!-- ════════════════════════════════════════════════════ -->
+
+  <h2 id="err-overview">Error Codes</h2>
+
+  <p>
+    Every error, warning, and blocked condition in HaleyFlow is identified by a structured error code of the form
+    <code>HFXnnnn</code> where <code>X</code> is a letter denoting the subsystem and <code>nnnn</code> is a
+    four-digit number. Codes ending in <code>1xx</code> within a range are warnings; all others are errors
+    unless explicitly noted.
+  </p>
+
+  <table>
+    <tr><th>Range</th><th>Subsystem</th><th>When raised</th></tr>
+    <tr><td><code>HFD1xxx</code></td><td>Definition Structural</td><td>At definition registration / relay initialization — structural checks on states and transitions</td></tr>
+    <tr><td><code>HFP2xxx</code></td><td>Policy Hook / Rule</td><td>At definition registration / relay initialization — policy hook and rule checks</td></tr>
+    <tr><td><code>HFR3xxx</code></td><td>Relay Runtime</td><td>At runtime inside <code>NextAsync</code> — blocked conditions during relay execution</td></tr>
+    <tr><td><code>HFB4xxx</code></td><td>Backfill Validation</td><td>At backfill import time — validation of backfill objects against the definition</td></tr>
+    <tr><td><code>HFF5xxx</code></td><td>FlowBus / Relay Host</td><td>At initiation time — routing and registration errors in FlowBus and WorkflowRelayHost</td></tr>
+  </table>
+
+  <!-- HFD1xxx -->
+  <h3 id="err-hfd">HFD1xxx — Definition Structural</h3>
+  <p>Raised by the policy validator when parsing a definition. Errors in this range reject registration entirely.</p>
+
+  <table>
+    <tr><th>Code</th><th>Name</th><th>Severity</th><th>Description</th></tr>
+    <tr>
+      <td><code>HFD1001</code></td><td><code>NO_INITIAL_STATE</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>No state is marked <code>is_initial: true</code>. The interpreter cannot determine the entry point.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1002</code></td><td><code>MULTIPLE_INITIAL_STATES</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>More than one state is marked initial. Only exactly one is permitted.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1003</code></td><td><code>UNKNOWN_FROM_STATE</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>A transition references a <code>from</code> state that does not exist in the states list. Likely a spelling mistake.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1004</code></td><td><code>UNKNOWN_TO_STATE</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>A transition references a <code>to</code> state that does not exist in the states list. Likely a spelling mistake.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1005</code></td><td><code>DUPLICATE_EVENT_CODE</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>The same event code appears more than once from the same state. Routing is ambiguous — the interpreter cannot determine which transition to follow.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1006</code></td><td><code>TERMINAL_HAS_TRANSITIONS</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>A state marked <code>is_final: true</code> has outgoing transitions. A terminal state cannot be left.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1007</code></td><td><code>STUCK_STATE</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>A non-terminal state has no outgoing transitions. Any entity that reaches this state will be permanently stuck.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1008</code></td><td><code>CIRCULAR_ONLY</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>A state's only outgoing transition is a self-loop back to itself. An infinite loop is guaranteed with no exit path.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1101</code></td><td><code>UNREACHABLE_STATE</code></td>
+      <td><span class="val-warn">Warning</span></td>
+      <td>A state has no incoming transitions and is not the initial state. It can never be reached during execution.</td>
+    </tr>
+    <tr>
+      <td><code>HFD1102</code></td><td><code>SELF_LOOP_WITH_EXIT</code></td>
+      <td><span class="val-warn">Warning</span></td>
+      <td>A state has a self-loop transition but also has exit transitions. Likely intentional (e.g. reminder ping, timeout retry) — verify it is not accidental.</td>
+    </tr>
+  </table>
+
+  <!-- HFP2xxx -->
+  <h3 id="err-hfp">HFP2xxx — Policy Hook / Rule</h3>
+  <p>Raised by the policy validator when checking hook configuration. Errors reject registration; warnings are informational.</p>
+
+  <table>
+    <tr><th>Code</th><th>Name</th><th>Severity</th><th>Description</th></tr>
+    <tr>
+      <td><code>HFP2001</code></td><td><code>POLICY_UNKNOWN_STATE</code></td>
+      <td><span class="val-warn">Warning</span></td>
+      <td>A policy rule targets a state that does not exist in the definition. The rule is a dead letter — it will never fire.</td>
+    </tr>
+    <tr>
+      <td><code>HFP2002</code></td><td><code>AMBIGUOUS_ORDER</code></td>
+      <td><span class="val-error">Error</span></td>
+      <td>Multiple blocking hooks at the same <code>order</code> value define complete codes. Execution order within the same order value is undefined — the interpreter cannot guarantee which fires first.</td>
+    </tr>
+    <tr>
+      <td><code>HFP2101</code></td><td><code>NON_BLOCKING_WITH_COMPLETE</code></td>
+      <td><span class="val-warn">Warning</span></td>
+      <td>A non-blocking hook defines <code>complete</code> codes. Non-blocking hooks cannot drive auto-advance — these codes are silently ignored at runtime.</td>
+    </tr>
+    <tr>
+      <td><code>HFP2102</code></td><td><code>UNREACHABLE_HOOK</code></td>
+      <td><span class="val-warn">Warning</span></td>
+      <td>A hook appears after a "full terminator" — a prior blocking hook that defines both success and failure complete codes. Since all paths from that terminator lead away, this hook can never be reached.</td>
+    </tr>
+    <tr>
+      <td><code>HFP2103</code></td><td><code>NO_FAILURE_PATH</code></td>
+      <td><span class="val-warn">Warning</span></td>
+      <td>A blocking hook has no failure complete code, and the transition also has no failure complete code. If this hook fails, the interpreter cannot auto-advance — a code-side Tier 2 or Tier 3 handler must decide the next step.</td>
+    </tr>
+  </table>
+
+  <!-- HFR3xxx -->
+  <h3 id="err-hfr">HFR3xxx — Relay Runtime</h3>
+  <p>
+    Raised at runtime inside <code>NextAsync</code>. These are blocked conditions — execution stopped and the
+    current state was not advanced (or was rolled back).
+  </p>
+
+  <table>
+    <tr><th>Code</th><th>Condition</th><th>Description</th></tr>
+    <tr>
+      <td><code>HFR3001</code></td><td>No initial state at runtime</td>
+      <td><code>NextAsync</code> was called with an empty <code>CurrentState</code> but the definition has no state marked initial. Cannot resolve the starting point.</td>
+    </tr>
+    <tr>
+      <td><code>HFR3002</code></td><td>Invalid transition</td>
+      <td>No transition exists from the current state via the supplied event code. The event is not valid from where the entity currently is.</td>
+    </tr>
+    <tr>
+      <td><code>HFR3003</code></td><td>Blocked by monitor</td>
+      <td>The monitor callback returned <code>false</code>. Execution was blocked before the handler ran. No state change occurred.</td>
+    </tr>
+    <tr>
+      <td><code>HFR3004</code></td><td>Transition handler failed</td>
+      <td>The transition handler returned <code>false</code> and no failure complete code was available to auto-advance. All hooks were skipped.</td>
+    </tr>
+    <tr>
+      <td><code>HFR3005</code></td><td>Blocking hook failed</td>
+      <td>A blocking hook returned <code>false</code> and no failure path (hook-own or transition-level) was available. <code>CurrentState</code> was rolled back to the <code>from</code> state.</td>
+    </tr>
+  </table>
+
+  <!-- HFB4xxx -->
+  <h3 id="err-hfb">HFB4xxx — Backfill Validation</h3>
+  <p>Raised when validating a <code>WorkflowBackfillObject</code> before importing historical instance data.</p>
+
+  <table>
+    <tr><th>Code</th><th>Severity</th><th>Description</th></tr>
+    <tr>
+      <td><code>HFB4001</code></td><td><span class="val-error">Error</span></td>
+      <td><code>WorkflowName</code> is missing on the backfill object.</td>
+    </tr>
+    <tr>
+      <td><code>HFB4002</code></td><td><span class="val-error">Error</span></td>
+      <td><code>EntityRef</code> is missing on the backfill object.</td>
+    </tr>
+    <tr>
+      <td><code>HFB4003</code></td><td><span class="val-error">Error</span></td>
+      <td>The backfill object contains no transitions. At least one is required.</td>
+    </tr>
+    <tr>
+      <td><code>HFB4004</code></td><td><span class="val-error">Error</span></td>
+      <td>The workflow definition was not found in the engine for the given name and environment code.</td>
+    </tr>
+    <tr>
+      <td><code>HFB4005</code></td><td><span class="val-error">Error</span></td>
+      <td>A transition in the backfill object (<code>FromState → ToState via EventCode</code>) is not a valid transition in the definition.</td>
+    </tr>
+    <tr>
+      <td><code>HFB4101</code></td><td><span class="val-warn">Warning</span></td>
+      <td>A hook entry in the backfill object has an empty <code>Route</code> — it will be skipped during import.</td>
+    </tr>
+    <tr>
+      <td><code>HFB4102</code></td><td><span class="val-warn">Warning</span></td>
+      <td>A hook route in the backfill object is not defined in the policy for this transition. It will be recorded as-is (legacy data tolerance).</td>
+    </tr>
+  </table>
+
+  <!-- HFF5xxx -->
+  <h3 id="err-hff">HFF5xxx — FlowBus / Relay Host</h3>
+  <p>Raised at initiation time by the FlowBus router or the relay host when routing or registration problems are detected.</p>
+
+  <table>
+    <tr><th>Code</th><th>Description</th></tr>
+    <tr>
+      <td><code>HFF5001</code></td>
+      <td>No workflow executor is registered. Neither an engine consumer service nor a relay service is present in DI.</td>
+    </tr>
+    <tr>
+      <td><code>HFF5002</code></td>
+      <td>Engine mode was explicitly requested but the engine consumer service is not registered in DI.</td>
+    </tr>
+    <tr>
+      <td><code>HFF5003</code></td>
+      <td>Engine mode requires a <code>StartEvent</code> but none was provided in the initiation request.</td>
+    </tr>
+    <tr>
+      <td><code>HFF5004</code></td>
+      <td>The engine rejected the initiation request. See the engine's own reason for details.</td>
+    </tr>
+    <tr>
+      <td><code>HFF5005</code></td>
+      <td>Relay mode was explicitly requested but the relay service is not registered in DI.</td>
+    </tr>
+    <tr>
+      <td><code>HFF5006</code></td>
+      <td>No relay is registered for the requested workflow name. The relay host could not find a matching <code>WorkflowRelayBase</code> subclass.</td>
+    </tr>
+    <tr>
+      <td><code>HFF5007</code></td>
+      <td>The <code>StartEvent</code> value is not a valid integer event code. Relay mode requires a numeric event code, not an event name string.</td>
+    </tr>
+  </table>
+
+  <footer>
+    <p>HaleyFlow Protocol v1.0 &nbsp;·&nbsp; Language-agnostic workflow specification</p>
+    <p style="margin-top:0.3rem;">Any conforming interpreter that correctly implements this specification will behave identically given the same definition and policy JSON.</p>
+  </footer>
+
+</main>
+</div>
+</body>
+</html>

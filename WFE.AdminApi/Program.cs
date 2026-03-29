@@ -1,43 +1,40 @@
 using WFE.AdminApi.Configuration;
 using WFE.AdminApi.Services;
-using Haley.Models;
 using Haley.Utils;
+using Haley.Models;
 using Microsoft.Extensions.Options;
 using WFE.Test;
-using Haley.Enums;
 using WFE.Test.UseCases.ChangeRequest;
 using WFE.Test.UseCases.LoanApproval;
 using WFE.Test.UseCases.PaperlessReview;
 using WFE.Test.UseCases.VendorRegistration;
 
 var builder = WebApplication.CreateBuilder(args);
-var adminSection = builder.Configuration.GetSection("WorkflowAdmin");
+//var adminSection = builder.Configuration.GetSection("WorkflowAdmin");
 
-builder.Services.Configure<WorkflowAdminOptions>(adminSection);
-// Startup ownership stays with WorkflowTestBootstrapHostedService so engine import/consumer init
-// happen in a single ordered path during app boot.
-builder.Services.AddWorkFlowEngineService(builder.Configuration, autoStart: false, resolveConsumerGuids: async (ty,envCode,defName,cts) => {
-    //what ever is the value, at th moment, let us return the same guid for testing purpose.
-    return  new List<string> { "89c52807-5054-47fc-9dee-dbb8b42218cb" };
-});
-builder.Services.AddInProcessEngineProxy();
+// ── Engine + Consumer mode (comment out this block to run in relay-only mode) ────────────────
+//builder.Services.Configure<WorkflowAdminOptions>(adminSection);
+//builder.Services.AddWorkFlowEngineService(autoStart: false, resolveConsumerGuids: async (ty, envCode, defName, cts) => {
+//    return new List<string> { "89c52807-5054-47fc-9dee-dbb8b42218cb" };
+//});
+//builder.Services.AddInProcessEngineProxy();
+//builder.Services.AddWorkFlowConsumerService(autoStart: false);
+//builder.Services.AddSingleton(sp => BuildUseCaseRuntimeOptions(
+//    sp.GetRequiredService<IOptions<WorkflowAdminOptions>>().Value,
+//    sp.GetRequiredService<IOptions<ConsumerServiceOptions>>().Value));
+//builder.Services.AddTransient<ChangeRequestWrapper>();
+//builder.Services.AddTransient<LoanApprovalWrapper>();
+//builder.Services.AddTransient<VendorRegistrationWrapper>();
+//builder.Services.AddTransient<PaperlessReviewWrapper>();
+//builder.Services.AddHostedService<WorkflowTestBootstrapHostedService>();
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// If autoStart=true, consumer can start polling before the test definitions/policies import finishes.
-builder.Services.AddWorkFlowConsumerService(builder.Configuration, sectionName: "WorkFlowConsumer", autoStart: false);
-
-builder.Services.AddSingleton(sp => BuildUseCaseRuntimeOptions(
-    sp.GetRequiredService<IOptions<WorkflowAdminOptions>>().Value,
-    sp.GetRequiredService<IOptions<ConsumerServiceOptions>>().Value));
-
-// WFE.Lib wrapper types take UseCaseRuntimeOptions — register as transient so
-// WorkFlowConsumerManager can resolve them via _sp.GetService (not Activator.CreateInstance).
-builder.Services.AddTransient<ChangeRequestWrapper>();
-builder.Services.AddTransient<LoanApprovalWrapper>();
-builder.Services.AddTransient<VendorRegistrationWrapper>();
-builder.Services.AddTransient<PaperlessReviewWrapper>();
+// ── Relay mode ────────────────────────────────────────────────────────────────────────────────
+builder.Services.AddWorkflowRelayService((o) => { o.AssemblyPrefixes.Add("WFE"); });
+builder.Services.AddFlowBus();
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 
 builder.Services.AddSingleton<WorkflowTestBootstrap>();
-builder.Services.AddHostedService<WorkflowTestBootstrapHostedService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -55,9 +52,9 @@ app.MapGet("/", () => Results.Redirect("/swagger"));
 
 app.Run();
 
-static UseCaseRuntimeOptions BuildUseCaseRuntimeOptions(WorkflowAdminOptions admin, ConsumerServiceOptions consumer) {
-    return new UseCaseRuntimeOptions {
-        EnvCode = consumer.EnvCode,
-        ConfirmationTimeout = TimeSpan.FromSeconds(Math.Max(0, admin.ConfirmationTimeoutSeconds))
-    };
-}
+//static UseCaseRuntimeOptions BuildUseCaseRuntimeOptions(WorkflowAdminOptions admin, ConsumerServiceOptions consumer) {
+//    return new UseCaseRuntimeOptions {
+//        EnvCode = consumer.EnvCode,
+//        ConfirmationTimeout = TimeSpan.FromSeconds(Math.Max(0, admin.ConfirmationTimeoutSeconds))
+//    };
+//}
