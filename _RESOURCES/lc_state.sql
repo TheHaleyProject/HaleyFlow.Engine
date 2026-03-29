@@ -280,6 +280,18 @@ CREATE TABLE IF NOT EXISTS `instance` (
 
 -- Data exporting was unselected.
 
+-- Dumping structure for table lcstate.lcn_ack
+CREATE TABLE IF NOT EXISTS `lcn_ack` (
+  `ack_id` bigint(20) NOT NULL,
+  `lc_id` bigint(20) NOT NULL COMMENT 'same lc id is reused..',
+  PRIMARY KEY (`lc_id`),
+  KEY `fk_lcn_ack_ack` (`ack_id`),
+  CONSTRAINT `fk_lcn_ack_ack` FOREIGN KEY (`ack_id`) REFERENCES `ack` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_lcn_ack_lifecycle` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='acknowledgmeent for lc next.';
+
+-- Data exporting was unselected.
+
 -- Dumping structure for table lcstate.lc_ack
 CREATE TABLE IF NOT EXISTS `lc_ack` (
   `ack_id` bigint(20) NOT NULL COMMENT 'Acknowledgement identifier (FK to ack.id).',
@@ -300,6 +312,19 @@ CREATE TABLE IF NOT EXISTS `lc_data` (
   PRIMARY KEY (`lc_id`),
   CONSTRAINT `fk_transition_data_transition_log` FOREIGN KEY (`lc_id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Supplemental actor and payload details captured for lifecycle transitions.';
+
+-- Data exporting was unselected.
+
+-- Dumping structure for table lcstate.lc_next
+CREATE TABLE IF NOT EXISTS `lc_next` (
+  `id` bigint(20) NOT NULL,
+  `created` datetime NOT NULL DEFAULT current_timestamp(),
+  `next` int(11) NOT NULL DEFAULT 0 COMMENT 'suggested Code . If 0, then it means, we have completed the hooks, but noone of them have the complete codes.. even the transition itself doens'' thave the code.. so, we just need to inform the consumer to complete this.. and consumer should know what to transition next.. (its a case of hard coded transitions)',
+  `ack_id` bigint(20) DEFAULT NULL COMMENT 'acknolwedgement id associated which triggered this .. may be a hook triggered this.. or the transition itself triggered this.. sometimes. transsition triggered this, (created this) but the complete codes comes from hooks.. so, we just captured after which ack we created this? or it can even tbe null',
+  `dispatched` bit(1) NOT NULL DEFAULT b'0' COMMENT 'did we actually create a acknowledgemetn? our job is only to create the acknowledgmeent.. then the existing infrastructure takes care of this.. like monitor and events..',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_lc_next_lifecycle` FOREIGN KEY (`id`) REFERENCES `lifecycle` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
