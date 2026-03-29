@@ -9,7 +9,7 @@
       "state": "KycCheck",
       "emit": [
         { "route": "APP.LOAN.KYC.CHECK", "label": "KYC Check", "group": "kyc_decision", "order": 1, "complete": { "success": 2001, "failure": 2002 } },
-        { "route": "APP.LOAN.KYC.AUDIT.LOG", "label": "KYC Audit Log", "type": "effect" },
+        { "route": "APP.LOAN.KYC.AUDIT.LOG", "label": "KYC Audit Log", "type": "effect", "send": "always" },
         { "route": "APP.LOAN.KYC.NOTIFY.APPLICANT", "label": "KYC Result Notification", "order": 2, "type": "effect" }
       ]
     },
@@ -26,7 +26,7 @@
       "emit": [
         { "route": "APP.LOAN.RISK.CHECK", "label": "Risk Review", "group": "risk_decision", "order": 1, "complete": { "success": 2005, "failure": 2006 } },
         { "route": "APP.LOAN.RISK.AUDIT.LOG", "label": "Risk Audit Log", "type": "effect" },
-        { "route": "APP.LOAN.RISK.NOTIFY.ANALYST", "label": "Risk Analyst Notification", "order": 2, "type": "effect" }
+        { "route": "APP.LOAN.RISK.NOTIFY.ANALYST", "label": "Risk Analyst Notification", "order": 2, "type": "effect","send": "always" }
       ]
     },
     {
