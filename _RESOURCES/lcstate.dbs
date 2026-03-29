@@ -405,9 +405,11 @@
 			<column name="instance_id" type="BIGINT" mandatory="y" >
 				<comment><![CDATA[Workflow instance identifier (FK to instance.id).]]></comment>
 			</column>
-			<column name="blocking" type="BIT" mandatory="y" >
+			<column name="type" prior="blocking" type="BIT" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
-				<comment><![CDATA[Blocking flag: 1 requires successful hook completion before progression.]]></comment>
+				<comment><![CDATA[Decides if a hook is bloking or not
+1 - Gate : requires successful hook completion before progression.
+0 - Effect : if fails, nothing happens.]]></comment>
 			</column>
 			<column name="order_seq" type="SMALLINT" length="6" mandatory="y" >
 				<defo><![CDATA[1]]></defo>
@@ -980,7 +982,7 @@
 ]]></options>
 		</table>
 	</schema>
-	<diagram_group name="Default" id="9f80c073-cc7d-4a9d-8c64-bcc5b14045cb" >
+	<diagram_group name="Default" id="b6eedaf8-e462-4d5c-bce2-32c6bd2e10f4" >
 		<diagram name="Default Diagram" id="18212873-6564-437d-a8a1-bcd5f7f6492f" confirmed="y" joined_routing="y" show_relation="cascade" >
 			<entity schema="lcstate" name="ack" color="FF00FF" x="114" y="114" />
 			<entity schema="lcstate" name="ack_consumer" color="FF00FF" x="456" y="95" />
@@ -997,7 +999,7 @@
 			<entity schema="lcstate" name="hook_ack" color="FF00FF" x="57" y="247" />
 			<entity schema="lcstate" name="hook_group" color="FFFF00" x="57" y="969" />
 			<entity schema="lcstate" name="hook_lc" color="FFFF00" x="57" y="494" />
-			<entity schema="lcstate" name="hook_route" color="FFFF00" x="190" y="969" />
+			<entity schema="lcstate" name="hook_route" color="FFFF00" x="209" y="969" />
 			<entity schema="lcstate" name="instance" color="FFFF00" x="456" y="722" />
 			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="209" y="247" />
 			<entity schema="lcstate" name="lc_data" color="FFFF00" x="247" y="475" />
