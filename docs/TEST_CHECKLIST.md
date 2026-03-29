@@ -122,17 +122,17 @@
 
 **TC-G01** Gate hook at order=1 succeeds with `CompleteSuccessCode=301`
 - Input: Gate hook executes; handler returns true; `CompleteSuccessCode=301`
-- Expected: Success code stored; remaining undispatched gate hooks marked Skipped; effect hooks still fire; after effects drain, TransitionMode event dispatched with code 301
+- Expected: Success code stored in `lc_next`; remaining undispatched gate hooks marked Skipped; effect hooks still fire; after effects drain, `Complete` event dispatched with `NextEvent=301`
 
 **TC-G02** Gate succeeds with code; multiple effects at higher orders
 - Input: Gate at order=1 succeeds (code=301); effects at order=2, order=3
-- Expected: Effects dispatch in order; only after all effects processed does TransitionMode fire
+- Expected: Effects dispatch in order; only after all effects processed does `Complete` fire
 
 ### 4.2 Effect Drain After Gate Success
 
 **TC-G03** Gate succeeds; undispatched effect hooks exist at higher orders
 - Input: Gate at order=1 marks success; effects at order=2 and order=3 undispatched
-- Expected: `SkipUndispatchedGateHooks` marks remaining gates; effects at order=2 dispatched first; after ACKs, order=3 dispatched; TransitionMode queued only after order=3 completes
+- Expected: `SkipUndispatchedGateHooks` marks remaining gates; effects at order=2 dispatched first; after ACKs, order=3 dispatched; `Complete` queued only after order=3 completes
 
 ### 4.3 No Code on Gate Success
 
@@ -144,7 +144,7 @@
 
 **TC-G05** Gate hook fails with `CompleteFailureCode=302`
 - Input: Gate handler returns false; `CompleteFailureCode=302`
-- Expected: Failure code fired immediately; all remaining hooks skipped; state reverted; no TransitionMode dispatch
+- Expected: Failure code fired immediately; all remaining hooks skipped or cancelled; no `Complete` dispatch for the old lifecycle
 
 **TC-G06** Gate hook fails with no failure code
 - Input: Gate handler returns false; no failure code defined
@@ -172,7 +172,7 @@
 
 **TC-A04** Gate hook ACK Processed; order fully resolved
 - Input: All consumers for gate at order=1 ACK Processed; no incomplete records remain
-- Expected: `TrySkipRemainingGatesIfSuccessCodeAsync` called; `AdvanceAndCheckTransitionModeAsync` called; next order dispatched
+- Expected: `TrySkipRemainingGatesIfSuccessCodeAsync` called; completion/next-order logic runs; next order dispatched
 
 **TC-A05** Gate hook ACK Processed; order still has pending ACKs
 - Input: One of multiple consumers ACKs Processed; another still Pending
@@ -190,7 +190,7 @@
 
 **TC-A08** Effect hook all consumers ACK Processed
 - Input: All effect hook consumers at order=2 ACK Processed
-- Expected: `AdvanceAndCheckTransitionModeAsync` called; next undispatched order located and dispatched
+- Expected: completion/next-order logic runs; next undispatched order located and dispatched
 
 **TC-A09** Effect hook ACK timeout (abandoned by monitor)
 - Input: Effect hook pending > `EffectTimeoutSeconds`; monitor calls `AbandonEffectHookAsync`
@@ -224,17 +224,17 @@
 
 **TC-D04** Consumer receives ValidationMode event
 - Input: `DispatchMode=ValidationMode`; `DispatchTransitionAsync` called
-- Expected: Business logic runs; `AutoTransitionAsync` suppressed (`_nextEvent = null`); consumer waits for engine's TransitionMode event
+- Expected: Business logic runs; `AutoTransitionAsync` suppressed (`_nextEvent = null`); consumer waits for the engine's later `Complete` handoff
 
-### 6.3 TransitionMode (Engine-Driven Auto-Advance)
+### 6.3 Complete Event (Engine-Driven Completion Handoff)
 
-**TC-D05** All hooks completed; engine dispatches TransitionMode event
-- Input: `AckOutcomeOrchestrator.DispatchTransitionModeEventAsync` called with `onSuccessEvent` code
-- Expected: Consumer receives TransitionMode event; `DispatchTransitionAsync` skips business logic; sets `_nextEvent` to `onSuccessEvent`; returns Processed immediately
+**TC-D05** All hooks completed; engine dispatches Complete event
+- Input: `AckOutcomeOrchestrator.DispatchCompleteEventAsync` called with `resolvedNextEvent`
+- Expected: Consumer receives `Complete`; `OnTransitionCompleteAsync` runs; default path sets `_nextEvent` to `evt.NextEvent`; no transition business logic reruns
 
-**TC-D06** TransitionMode event ACKed
-- Input: Consumer ACKs TransitionMode event with Processed
-- Expected: Engine receives ACK; no further hook advancement (TransitionMode is a bare trigger); next event fires
+**TC-D06** Complete event ACKed
+- Input: Consumer ACKs `Complete` event with Processed
+- Expected: Engine receives ACK; no further hook advancement for that lifecycle; next event fires if wrapper accepted or resolved one
 
 ---
 
@@ -276,7 +276,7 @@
 
 **TC-M08** Effect hook ACK pending > `EffectTimeoutSeconds`
 - Input: Hook is Effect type; elapsed since last trigger >= `EffectTimeoutSeconds`
-- Expected: `AbandonEffectHookAsync` called; status set to Failed; `AdvanceAndCheckTransitionModeAsync` triggered; next order dispatched
+- Expected: `AbandonEffectHookAsync` called; status set to Failed; completion/next-order logic triggered; next order dispatched
 
 **TC-M09** Effect hook within timeout window
 - Input: Effect hook Pending < `EffectTimeoutSeconds`
@@ -576,9 +576,9 @@
 
 | Priority | Area | Key Scenario |
 |----------|------|--------------|
-| P0 | Gate success drain | Gate succeeds with code → effects drain → TransitionMode fires (not immediate) |
+| P0 | Gate success drain | Gate succeeds with code → effects drain → Complete fires with resolved next code (not immediate) |
 | P0 | Gate failure | Gate fails → everything skipped immediately → failure code fires |
-| P0 | TransitionMode | Consumer receives TransitionMode → skips business logic → fires next event |
+| P0 | Complete handoff | Consumer receives Complete → does not rerun transition logic → fires resolved next event |
 | P0 | ValidationMode | Consumer in ValidationMode → suppresses auto-transition → waits for engine |
 | P1 | Effect timeout | Effect pending > 60s → abandoned → ordering advances |
 | P1 | ACK gate | Gate hook max retries → instance suspended → HOOK_ACK_SUSPEND |

@@ -277,7 +277,7 @@
           </table>
         </div>
         <div class="callout tip">
-          <strong>Important:</strong> relay does not use consumer <code>DispatchMode</code>. <code>NormalRun</code>, <code>ValidationMode</code>, and <code>TransitionMode</code> are engine-to-consumer delivery concepts. Relay is a single in-process interpreter, so it runs the sequence directly inside <code>NextAsync</code>.
+          <strong>Important:</strong> relay does not use consumer delivery concepts such as <code>DispatchMode</code> or the engine's separate <code>Complete</code> handoff. Relay is a single in-process interpreter, so it runs the whole sequence directly inside <code>NextAsync</code>.
         </div>
       </section>
 

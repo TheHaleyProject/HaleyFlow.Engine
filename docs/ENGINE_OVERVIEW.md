@@ -11,7 +11,7 @@ A MariaDB-backed macro workflow/state-machine engine. It tracks **what state a b
 | **Definition** | The state machine schema (states + events + transitions). Versioned. |
 | **Policy** | Rules and hook emit config attached to a definition. Drives hook emission. |
 | **Blueprint** | In-memory compiled form of a def_version (states, events, transition map). |
-| **Instance** | A single running entity (e.g. one application, one request). Identified by `external_ref`. |
+| **Instance** | A single running entity (e.g. one application, one request). Identified by `entity_id`. |
 | **Lifecycle** | One immutable row per state transition. The audit log of the instance. |
 | **Event** | Named + coded signal that causes a transition (`approved`, `rejected`, `timeout`). |
 | **Hook** | A side-effect emit (e.g. `send_email`, `notify_reviewer`). Stored and ACK-tracked. |
@@ -115,7 +115,7 @@ Blueprints are cached per `def_version_id`. Call `InvalidateAsync()` after re-im
 
 ## 4. Instance
 
-Each business entity has one **instance** row, identified by `(def_version, external_ref)`.
+Each business entity has one **instance** row, identified by `(def_version, entity_id)`.
 
 **Instance flags:**
 - `Active = 1`
@@ -134,16 +134,16 @@ Each business entity has one **instance** row, identified by `(def_version, exte
 TriggerAsync(req)
   ├─ Load blueprint (cached)
   ├─ Resolve latest policy (for new instance creation)
-  ├─ EnsureInstance — create or load by (def_version, external_ref)
+  ├─ EnsureInstance — create or load by (def_version, entity_id)
   ├─ ACK gate check (if AckGateEnabled && !SkipAckGate)
   │    └─ Pending consumers on last lifecycle → Applied=false, Reason="BlockedByPendingAck"
   ├─ ApplyTransition — CAS state update, idempotent by RequestId
   │    └─ No valid transition → returns Applied=false, commits, returns early
   ├─ Resolve instance's locked policy
   ├─ Create lifecycle ACK row
-  ├─ EmitHooksAsync → upsert hook rows + create hook ACK rows
+  ├─ EmitHooksAsync → upsert hook + hook_lc rows only (hooks stay undispatched here)
   ├─ Commit transaction
-  └─ Dispatch events fire-and-forget (after commit)
+  └─ Dispatch transition events fire-and-forget (after commit)
 ```
 
 **Key guarantee:** DB state is fully committed before any event fires. If dispatch fails, the ACK rows remain pending and the monitor retries.
@@ -200,7 +200,7 @@ Hook upsert is idempotent — retrying the same transition does not duplicate ho
 
 **Hook execution contract:**
 
-| Gate succeeds + success code | Skip remaining gates → drain effects in order → dispatch `TransitionMode` event |
+| Gate succeeds + success code | Skip remaining gates → drain effects in order → dispatch `Complete` event with the resolved next code |
 |------------------------------|--------------------------------------------------------------------------------|
 | Gate succeeds + no code | Continue to next hook |
 | Gate fails + failure code | Fire failure code immediately, skip ALL remaining hooks |
@@ -211,18 +211,18 @@ Hook upsert is idempotent — retrying the same transition does not duplicate ho
 
 ## 8. TransitionDispatchMode — Consumer Contract
 
-Every `LifeCycleTransitionEvent` carries a `DispatchMode` that tells the consumer how to process it:
+Every `LifeCycleTransitionEvent` carries a `DispatchMode` that tells the consumer how to process the transition phase:
 
 | Mode | Value | Consumer behaviour |
 |------|-------|--------------------|
 | `NormalRun` | 0 | No hooks — run business handler + auto-transition as normal |
 | `ValidationMode` | 1 | Hooks are in progress — run handler + ACK result, but **suppress auto-transition** (engine drives via hook ACK pipeline) |
-| `TransitionMode` | 2 | Engine-driven advance after hooks complete — **skip handler entirely**, just fire `ctx.OnSuccessEvent` as next event |
 
 **Set by engine:**
 - `hookEmissions.Count == 0` → `NormalRun`
 - `hookEmissions.Count > 0` → `ValidationMode`
-- After gate-success effect drain completes → new event with `TransitionMode` carrying the gate's `OnSuccessEvent`
+
+After all ordered hooks resolve, the engine emits a separate `Complete` event carrying one resolved suggested next code (`NextEvent`). The consumer does not rerun transition business logic at that point; it handles the completion handoff and may either accept the engine's `NextEvent` or override it locally.
 
 **ACK gate as guardrail:** Even if a consumer ignores `ValidationMode` and calls `TriggerAsync`, the ACK gate (`BlockedByPendingBlockingHook`) prevents the transition from applying while gate hooks are unresolved.
 
@@ -364,7 +364,7 @@ Subscribe via `engine.NoticeRaised += async (n) => { ... }` to route these to yo
 | `HOOK_GROUP_CHECK_ERROR` | Warn | Group completion DB check failed (ACK itself was still accepted) |
 | `HOOK_ORDER_ADVANCED` | Info | Next ordered hook batch dispatched |
 | `EFFECT_HOOK_ABANDONED` | Warn | Effect hook timed out (60s), marked abandoned, progression continues |
-| `TRANSITION_MODE_DISPATCHED` | Info | Engine dispatched TransitionMode event after gate-success effect drain |
+| `COMPLETE_DISPATCHED` | Info | Engine dispatched a Complete event after hook resolution |
 | `HOOK_ORDER_ADVANCE_ERROR` | Warn | Hook order advancement failed |
 | `STATE_STALE` | OverDue | Instance overdue in current state past configured duration |
 | `TIMEOUT_FIRED` | Info | Policy Case A timeout auto-triggered |
@@ -479,7 +479,7 @@ public class MyEngineController : WorkFlowEngineControllerBase {
 |-------------|------|---------|-------------|
 | `envCode` | int? | — | Environment code (required when `instanceGuid` not provided) |
 | `defName` | string? | — | Definition name |
-| `entityId` | string? | — | External entity ref |
+| `entityId` | string? | — | Business entity key |
 | `instanceGuid` | string? | — | Direct instance GUID lookup (overrides env/def/entity) |
 | `name` | string? | — | Display name shown in the rendered page header |
 | `detail` | `TimelineDetail` | `Detailed` | Level of detail: `Summary`, `Detailed`, `Admin` |
@@ -553,7 +553,7 @@ await engine.StartMonitorAsync(cts.Token);
 var result = await engine.TriggerAsync(new LifeCycleTriggerRequest {
     EnvCode     = envCode,
     DefName     = "loan-approval",
-    ExternalRef = loanId.ToString(),
+    EntityId    = loanId.ToString(),
     Event       = "submit",
     RequestId   = requestId,     // stable for retries
     Actor       = userId,
@@ -603,7 +603,7 @@ public class LoanService {
         await eng.TriggerAsync(new LifeCycleTriggerRequest {
             EnvCode     = 1,
             DefName     = "loan-approval",
-            ExternalRef = loanId,
+            EntityId    = loanId,
             Event       = "submit",
             RequestId   = Guid.NewGuid().ToString(),
             Actor       = actor

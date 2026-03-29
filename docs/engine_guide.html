@@ -1349,7 +1349,7 @@ SELECT COUNT(*) FROM hook h
     </div>
 
     <h4 class="mini-title">Pattern: transition dispatch modes</h4>
-    <p>Transition deliveries are now stamped with a <code>DispatchMode</code>. The engine and consumer cooperate differently depending on that mode:</p>
+    <p>Transition deliveries are stamped with a <code>DispatchMode</code> only for the transition phase. Hook completion is now a separate <code>Complete</code> event, not a third transition mode.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Mode</th><th>When engine uses it</th><th>What consumer does</th></tr></thead>
@@ -1364,10 +1364,17 @@ SELECT COUNT(*) FROM hook h
             <td>The transition has hook work in progress for the entered state.</td>
             <td>Run the transition handler, ACK the result, but suppress any queued next event. The engine hook pipeline now owns progression.</td>
           </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th>Separate event</th><th>When engine emits it</th><th>What consumer does</th></tr></thead>
+        <tbody>
           <tr>
-            <td><code>TransitionMode</code></td>
-            <td>The engine already resolved the hook pipeline and wants the consumer to advance without re-running business logic.</td>
-            <td>Skip transition business logic. The consumer only ACKs and then emits <code>ctx.OnSuccessEvent</code> after ACK confirmation.</td>
+            <td><code>Complete</code></td>
+            <td>After ordered hooks resolve and the engine has already chosen one final suggested next code.</td>
+            <td>Do not rerun transition business logic. <code>OnTransitionCompleteAsync</code> receives <code>evt.NextEvent</code>; default behaviour accepts it, wrapper code may override when the engine sends <code>0</code>.</td>
           </tr>
         </tbody>
       </table>
@@ -1375,10 +1382,10 @@ SELECT COUNT(*) FROM hook h
     <div class="callout tip" style="margin-top:12px">
       <div class="callout-title">Who advances the instance?</div>
       <strong>NormalRun</strong> is consumer-driven via <code>AutoTransitionAsync</code>.<br>
-      <strong>ValidationMode</strong> is engine-driven while hooks are active.<br>
-      <strong>TransitionMode</strong> is engine-driven completion after hook sequencing has already resolved.
+      <strong>ValidationMode</strong> still runs transition business logic, but the consumer runtime suppresses post-ACK auto-trigger while hooks are active.<br>
+      <strong>Complete</strong> is the engine's confirmation handoff after hook sequencing has already resolved one suggested next step.
     </div>
-    <p style="margin-top:12px">Hook handlers can still call <code>TriggerAsync</code> directly because the ACK gate only checks lifecycle ACK rows, not hook ACK rows. Use that only when the workflow contract explicitly says the hook itself owns advancement, or when a notice such as <code>HOOK_GROUP_COMPLETE</code> is your coordination point. Do not use direct hook triggers to bypass <code>ValidationMode</code> or <code>TransitionMode</code>.</p>
+    <p style="margin-top:12px">Hook handlers can still call <code>TriggerAsync</code> directly because the ACK gate only checks lifecycle ACK rows, not hook ACK rows. Use that only when the workflow contract explicitly says the hook itself owns advancement, or when a notice such as <code>HOOK_GROUP_COMPLETE</code> is your coordination point. Do not use direct hook triggers to bypass <code>ValidationMode</code> or the engine's <code>Complete</code> handoff.</p>
     <p>For grouped gates that all must finish before advancing, <code>HOOK_GROUP_COMPLETE</code> remains the coordination notice. If a gate hook exhausts retries, the instance can be suspended and must be unsuspended by an operator.</p>
 
     <h4 class="mini-title">Practical example — preparation state</h4>
@@ -1546,7 +1553,7 @@ SELECT COUNT(*) FROM hook h
   <span class="cm">// order 2: once bureau done, mandatory audit record</span>
   { <span class="jk">"route"</span>: <span class="jv">"AUDIT.RECORD_CREDIT_DECISION"</span>, <span class="jk">"type"</span>: <span class="jv">"gate"</span>, <span class="jk">"order"</span>: <span class="jn">2</span> }
 ]</code><span class="lang-label">JSON</span></pre>
-    <p style="margin-top:8px">Sequence: bureau A or B responds first → sibling auto-marked Processed → <code>HOOK_GROUP_COMPLETE</code> fires for <code>bureau_check</code> → order 2 dispatches → audit consumer ACKs → all hooks done. The consumer's <code>[HookHandler("CREDIT.CHECK_BUREAU_A")]</code> (or B) calls <code>Engine.TriggerAsync</code> to advance the state machine after completing the check — the engine does not auto-advance.</p>
+    <p style="margin-top:8px">Sequence: bureau A or B responds first → sibling auto-marked Processed → <code>HOOK_GROUP_COMPLETE</code> fires for <code>bureau_check</code> → order 2 dispatches → audit consumer ACKs → all hooks done → engine emits a <code>Complete</code> event with the resolved next code. The consumer then accepts that <code>NextEvent</code> or overrides it in <code>OnTransitionCompleteAsync</code>.</p>
   </section>
 
   <section class="doc-section" id="pol-timeouts">
