@@ -1068,7 +1068,9 @@ internal static class ControlBoardTLR {
         var ackGuid = DS(notice, "ackGuid");
         var exceptionType = DS(notice, "exceptionType");
         var exceptionMessage = DS(notice, "exceptionMessage");
-        var dataText = DS(notice, "dataText");
+        var lifecycleId = NoticeDataValue(notice, "lifecycleId");
+        var currentLifecycleId = NoticeDataValue(notice, "currentLifecycleId");
+        var dataText = FilteredNoticeDataText(notice, "ackGuid", "ack_guid", "instanceGuid", "lifecycleId", "currentLifecycleId");
         var kindClass = kind.ToLowerInvariant() switch {
             "warning" => "warning",
             "error" => "error",
@@ -1087,6 +1089,7 @@ internal static class ControlBoardTLR {
               <div class="notice-message">{E(message)}</div>
               <div class="notice-meta">
                 {(!string.IsNullOrWhiteSpace(ackGuid) ? $"<div class=\"notice-meta-row\">ack_guid: {E(ackGuid)}</div>" : string.Empty)}
+                {(!string.IsNullOrWhiteSpace(lifecycleId) || !string.IsNullOrWhiteSpace(currentLifecycleId) ? $"<div class=\"notice-meta-row\">lifecycle: {E(string.IsNullOrWhiteSpace(lifecycleId) ? "—" : lifecycleId)} → {E(string.IsNullOrWhiteSpace(currentLifecycleId) ? "—" : currentLifecycleId)}</div>" : string.Empty)}
                 {(!string.IsNullOrWhiteSpace(exceptionType) ? $"<div class=\"notice-meta-row\">exception: {E(exceptionType)}</div>" : string.Empty)}
                 {(!string.IsNullOrWhiteSpace(exceptionMessage) ? $"<div class=\"notice-meta-row\">exception_message: {E(exceptionMessage)}</div>" : string.Empty)}
               </div>
@@ -1262,6 +1265,45 @@ internal static class ControlBoardTLR {
             DateTime dt => dt.ToString("O"),
             DateTimeOffset dto => dto.ToString("O"),
             _ => Convert.ToString(value) ?? string.Empty
+        };
+    }
+
+    private static string NoticeDataValue(Dictionary<string, object?> item, string key) {
+        if (!item.TryGetValue("data", out var raw) || raw is not IReadOnlyDictionary<string, object?> data) return string.Empty;
+        if (!data.TryGetValue(key, out var value) || value == null) return string.Empty;
+        return value switch {
+            string s => s,
+            DateTime dt => dt.ToString("O"),
+            DateTimeOffset dto => dto.ToString("O"),
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
+        };
+    }
+
+    private static string FilteredNoticeDataText(Dictionary<string, object?> item, params string[] excludeKeys) {
+        if (!item.TryGetValue("data", out var raw) || raw is not IReadOnlyDictionary<string, object?> data || data.Count == 0)
+            return string.Empty;
+
+        var excluded = new HashSet<string>(excludeKeys ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        var sb = new StringBuilder();
+        foreach (var kv in data) {
+            if (excluded.Contains(kv.Key)) continue;
+            if (sb.Length > 0) sb.AppendLine();
+            sb.Append(kv.Key);
+            sb.Append(": ");
+            sb.Append(FormatNoticeValue(kv.Value));
+        }
+        return sb.ToString();
+    }
+
+    private static string FormatNoticeValue(object? value) {
+        if (value == null) return string.Empty;
+        return value switch {
+            string s => s,
+            DateTime dt => dt.ToString("O"),
+            DateTimeOffset dto => dto.ToString("O"),
+            _ => value is ValueType
+                ? Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
+                : JsonSerializer.Serialize(value)
         };
     }
 

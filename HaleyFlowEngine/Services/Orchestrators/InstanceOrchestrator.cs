@@ -46,12 +46,27 @@ namespace Haley.Services.Orchestrators {
 
             // API boundary validation: fail fast with clear argument errors.
             if (req == null) throw new ArgumentNullException(nameof(req));
-            if (string.IsNullOrWhiteSpace(req.DefName)) throw new ArgumentNullException(nameof(req.DefName));
-            if (string.IsNullOrWhiteSpace(req.EntityId)) throw new ArgumentNullException(nameof(req.EntityId));
             if (string.IsNullOrWhiteSpace(req.Event)) throw new ArgumentNullException(nameof(req.Event));
 
-            // Start from latest blueprint; may be replaced below if instance is pinned to older version.
-            var bp = await _blueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct);
+            LifeCycleBlueprint bp;
+            if (!string.IsNullOrWhiteSpace(req.InstanceGuid)) {
+                var instanceLoad = new DbExecutionLoad(ct);
+                var existing = await _dal.Instance.GetByGuidAsync(req.InstanceGuid.Trim(), instanceLoad);
+                if (existing == null)
+                    throw new InvalidOperationException($"Instance not found: {req.InstanceGuid}");
+
+                req.EntityId = existing.GetString(KEY_ENTITY_ID) ?? string.Empty;
+                var pinnedDefVersionId = existing.GetLong(KEY_DEF_VERSION);
+                bp = await _blueprintManager.GetBlueprintByVersionIdAsync(pinnedDefVersionId, ct);
+                req.DefName = bp.DefName;
+                req.EnvCode = bp.EnvCode;
+            } else {
+                if (string.IsNullOrWhiteSpace(req.DefName)) throw new ArgumentNullException(nameof(req.DefName));
+                if (string.IsNullOrWhiteSpace(req.EntityId)) throw new ArgumentNullException(nameof(req.EntityId));
+
+                // Start from latest blueprint; may be replaced below if instance is pinned to older version.
+                bp = await _blueprintManager.GetBlueprintLatestAsync(req.EnvCode, req.DefName, ct);
+            }
 
             // Transition events are mandatory fan-out events. If nobody can receive them we stop early.
             var transitionConsumers = await _ackManager.GetTransitionConsumersAsync(bp.DefVersionId, ct);
@@ -116,44 +131,6 @@ namespace Haley.Services.Orchestrators {
                             LifecycleAckGuids = Array.Empty<string>(),
                             HookAckGuids = Array.Empty<string>()
                         };
-                    }
-
-                    // Blocking hook gate: a blocking hook marks the current state as having an
-                    // unfinished business checkpoint. The state machine must not advance until:
-                    //   (a) all dispatched blocking hooks for this lifecycle entry are fully ACKed, AND
-                    //   (b) no blocking hooks are still waiting to be dispatched (queued but not yet sent).
-                    // Note: hook_ack rows are invisible to the lc_ack gate above — this is a separate check.
-                    var lastLc = await _dal.LifeCycle.GetLastByInstanceAsync(gateInstanceId, load);
-                    if (lastLc != null) {
-                        var lastLcId = lastLc.GetLong(KEY_ID);
-
-                        var pendingBlockingHooks = await _dal.Hook.CountPendingBlockingHookAcksAsync(gateInstanceId, lastLcId, load);
-                        if (pendingBlockingHooks > 0) {
-                            transaction.Commit();
-                            committed = true;
-                            return new LifeCycleTriggerResult {
-                                Applied = false,
-                                InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
-                                InstanceId = gateInstanceId,
-                                Reason = "BlockedByPendingBlockingHook",
-                                LifecycleAckGuids = Array.Empty<string>(),
-                                HookAckGuids = Array.Empty<string>()
-                            };
-                        }
-
-                        var undispatchedBlockingHooks = await _dal.Hook.CountUndispatchedBlockingHooksAsync(gateInstanceId, lastLcId, load);
-                        if (undispatchedBlockingHooks > 0) {
-                            transaction.Commit();
-                            committed = true;
-                            return new LifeCycleTriggerResult {
-                                Applied = false,
-                                InstanceGuid = instance.GetString(KEY_GUID) ?? string.Empty,
-                                InstanceId = gateInstanceId,
-                                Reason = "BlockedByUndispatchedBlockingHook",
-                                LifecycleAckGuids = Array.Empty<string>(),
-                                HookAckGuids = Array.Empty<string>()
-                            };
-                        }
                     }
                 }
 

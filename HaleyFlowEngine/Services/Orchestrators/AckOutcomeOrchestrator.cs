@@ -98,9 +98,9 @@ namespace Haley.Services.Orchestrators {
             // Retry/Delivered keep the current plan alive. Failed may trigger a failure branch.
             if (outcome != AckOutcome.Processed) {
                 if (hookCtx != null) {
-                    if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(hookCtx, ackGuid, ct)) return;
-
                     var hookTypeForFailure = (HookType)hookCtx.GetInt(KEY_HOOK_TYPE);
+                    if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(hookCtx, ackGuid, ct, suppressNotice: hookTypeForFailure == HookType.Effect)) return;
+
                     if (hookTypeForFailure == HookType.Gate && outcome == AckOutcome.Failed) {
                         await HandleGateFailureAsync(hookCtx, ackGuid, ct);
                     } else if (hookTypeForFailure == HookType.Effect && outcome == AckOutcome.Failed) {
@@ -132,9 +132,10 @@ namespace Haley.Services.Orchestrators {
                 return;
             }
 
-            if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(hookCtx, ackGuid, ct)) return;
-
             // AckMode=Any: one consumer processing success completes the whole sibling set.
+            var hookType = (HookType)hookCtx.GetInt(KEY_HOOK_TYPE);
+            if (await TryIgnoreIfLifecycleNoLongerCurrentAsync(hookCtx, ackGuid, ct, suppressNotice: hookType == HookType.Effect)) return;
+
             if (hookCtx != null && hookCtx.GetInt(KEY_ACK_MODE) == 1) {
                 try {
                     await _dal.AckConsumer.MarkAllProcessedByAckIdAsync(hookCtx.GetLong(KEY_ACK_ID), load);
@@ -163,8 +164,6 @@ namespace Haley.Services.Orchestrators {
                 _fireNotice(LifeCycleNotice.Warn("HOOK_GROUP_CHECK_ERROR", "HOOK_GROUP_CHECK_ERROR",
                     $"Group completion check failed for ack={ackGuid}: {ex.Message}"));
             }
-
-            var hookType = (HookType)hookCtx.GetInt(KEY_HOOK_TYPE);
 
             // Gate hooks: check if the current order is fully resolved before advancing.
             if (hookType == HookType.Gate) {
@@ -203,21 +202,23 @@ namespace Haley.Services.Orchestrators {
             }
         }
 
-        private async Task<bool> TryIgnoreIfLifecycleNoLongerCurrentAsync(DbRow ctx, string ackGuid, CancellationToken ct) {
+        private async Task<bool> TryIgnoreIfLifecycleNoLongerCurrentAsync(DbRow ctx, string ackGuid, CancellationToken ct, bool suppressNotice = false) {
             var instanceId = ctx.GetLong(KEY_INSTANCE_ID);
             var lcId = ctx.GetLong(KEY_LC_ID);
             var lastLc = await _dal.LifeCycle.GetLastByInstanceAsync(instanceId, new DbExecutionLoad(ct));
             var lastLcId = lastLc?.GetLong(KEY_ID) ?? 0;
             if (lastLcId == lcId) return false;
 
-            _fireNotice(LifeCycleNotice.Warn("STALE_ACK_IGNORED", "STALE_ACK_IGNORED",
-                $"Ignoring ACK because lifecycle {lcId} is no longer current for instance={ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty}. ack={ackGuid} currentLc={lastLcId}",
-                new Dictionary<string, object?> {
-                    ["ackGuid"] = ackGuid,
-                    ["instanceGuid"] = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty,
-                    ["lifecycleId"] = lcId,
-                    ["currentLifecycleId"] = lastLcId
-                }));
+            if (!suppressNotice) {
+                _fireNotice(LifeCycleNotice.Warn("STALE_ACK_IGNORED", "STALE_ACK_IGNORED",
+                    $"Ignoring ACK because lifecycle {lcId} is no longer current for instance={ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty}. ack={ackGuid} currentLc={lastLcId}",
+                    new Dictionary<string, object?> {
+                        ["ackGuid"] = ackGuid,
+                        ["instanceGuid"] = ctx.GetString(KEY_INSTANCE_GUID) ?? string.Empty,
+                        ["lifecycleId"] = lcId,
+                        ["currentLifecycleId"] = lastLcId
+                    }));
+            }
             return true;
         }
 
