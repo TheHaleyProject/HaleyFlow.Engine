@@ -14,6 +14,7 @@ namespace Haley.Models {
         public long ToStateId { get; set; }
         public int EventCode { get; set; }
         public string EventName { get; set; }
+        public TransitionDispatchMode DispatchMode { get; set; }
         public IReadOnlyDictionary<string, object> PrevStateMeta { get; set; }
         public LifeCycleTransitionEvent() : base() { }
         public LifeCycleTransitionEvent(LifeCycleEvent evt) : base(evt) { }

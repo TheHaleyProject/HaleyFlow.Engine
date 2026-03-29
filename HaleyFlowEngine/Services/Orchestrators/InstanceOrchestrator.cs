@@ -238,6 +238,14 @@ namespace Haley.Services.Orchestrators {
 
                 // Emit hook rows via policy engine and fan out corresponding hook events.
                 var hookEmissions = await _policyEnforcer.EmitHooksAsync(bp, instance, transition, load, pr);
+
+                // Now that we know whether hooks exist, set DispatchMode on transition events.
+                // NormalRun = no hooks; ValidationMode = hooks present (consumer must not auto-transition).
+                var dispatchMode = hookEmissions.Count > 0 ? TransitionDispatchMode.ValidationMode : TransitionDispatchMode.NormalRun;
+                foreach (var te in toDispatch.OfType<LifeCycleTransitionEvent>()) {
+                    te.DispatchMode = dispatchMode;
+                }
+
                 for (var h = 0; h < hookEmissions.Count; h++) {
                     var he = hookEmissions[h];
                     if (hookConsumers.Count < 1) throw new ArgumentException("No Hook consumers found for this definition version. At least one hook consumer is required to proceed.", nameof(req));

@@ -131,5 +131,13 @@ namespace Haley.Internal {
         public Task<int> CancelPendingBlockingHookAckConsumersAsync(long instanceId, long lcId, DbExecutionLoad load = default)
             => Db.ExecAsync(QRY_HOOK.CANCEL_PENDING_BLOCKING_HOOK_ACK_CONSUMERS, load,
                 (INSTANCE_ID, instanceId), (LC_ID, lcId), (ACK_STATUS, (int)AckStatus.Cancelled));
+
+        public Task<int> SkipUndispatchedGateHooksAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default)
+            => Db.ExecAsync(QRY_HOOK.SKIP_UNDISPATCHED_GATE_HOOKS, load,
+                (INSTANCE_ID, instanceId), (STATE_ID, stateId), (EVENT_ID, viaEventId),
+                (ON_ENTRY, onEntry ? 1 : 0), (LC_ID, lcId));
+
+        public Task<DbRow?> GetFirstSkippedGateRouteAsync(long instanceId, long lcId, DbExecutionLoad load = default)
+            => Db.RowAsync(QRY_HOOK.GET_FIRST_SKIPPED_GATE_ROUTE, load, (INSTANCE_ID, instanceId), (LC_ID, lcId));
     }
 }

@@ -36,18 +36,21 @@ namespace Haley.Services.Orchestrators {
         private readonly Action<ILifeCycleEvent> _fireEvent;
         private readonly Action<LifeCycleNotice> _fireNotice;
         private readonly Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> _triggerAsync;
+        // Called when an effect hook exceeds EffectTimeoutSeconds — abandons it and advances ordering.
+        private readonly Func<long, long, string, string, string, CancellationToken, Task> _abandonEffectHookAsync;
 
         // In-memory throttle so stale-state notices do not flood every monitor tick.
         private readonly ConcurrentDictionary<string, DateTimeOffset> _overDueLastAt = new(StringComparer.Ordinal);
 
         // fireEvent and fireNotice delegate to WorkFlowEngine's subscriber pipeline.
-        public MonitorOrchestrator(IWorkFlowDAL dal, WorkFlowEngineOptions opt, IAckManager ackManager, Action<ILifeCycleEvent> fireEvent, Action<LifeCycleNotice> fireNotice, Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> triggerAsync) {
+        public MonitorOrchestrator(IWorkFlowDAL dal, WorkFlowEngineOptions opt, IAckManager ackManager, Action<ILifeCycleEvent> fireEvent, Action<LifeCycleNotice> fireNotice, Func<LifeCycleTriggerRequest, CancellationToken, Task<LifeCycleTriggerResult>> triggerAsync, Func<long, long, string, string, string, CancellationToken, Task> abandonEffectHookAsync) {
             _dal = dal ?? throw new ArgumentNullException(nameof(dal));
             _opt = opt ?? throw new ArgumentNullException(nameof(opt));
             _ackManager = ackManager ?? throw new ArgumentNullException(nameof(ackManager));
             _fireEvent = fireEvent ?? throw new ArgumentNullException(nameof(fireEvent));
             _fireNotice = fireNotice ?? throw new ArgumentNullException(nameof(fireNotice));
             _triggerAsync = triggerAsync ?? throw new ArgumentNullException(nameof(triggerAsync));
+            _abandonEffectHookAsync = abandonEffectHookAsync ?? throw new ArgumentNullException(nameof(abandonEffectHookAsync));
         }
 
         // Single-consumer resend pass. Handles both:
@@ -242,37 +245,55 @@ namespace Haley.Services.Orchestrators {
                 _fireEvent(item.Event);
             }
 
-            // Hook dispatch retries. Blocking and non-blocking failure handling differs.
+            // Hook dispatch retries. Gate and effect failure handling differs.
+            var effectTimeoutSec = _opt.EffectTimeoutSeconds > 0 ? _opt.EffectTimeoutSeconds : 60;
             var hk = await _ackManager.ListDueHookDispatchAsync(consumerId, ackStatus, ttlSeconds, 0, _opt.MonitorPageSize, load);
             for (var i = 0; i < hk.Count; i++) {
                 ct.ThrowIfCancellationRequested();
                 var item = hk[i];
 
-                if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
-                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, null, load);
+                var isGate = item.Event is ILifeCycleHookEvent hev && hev.HookType == HookType.Gate;
+                var hookRoute = item.Event is ILifeCycleHookEvent hr ? hr.Route : string.Empty;
 
-                    var isGate = item.Event is ILifeCycleHookEvent hev && hev.HookType == HookType.Gate;
-                    if (isGate) {
-                        // Blocking hook failure is terminal for workflow progression; suspend instance.
-                        var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
-                        if (instanceId > 0) {
-                            var msg = $"Suspended: ack max retries exceeded (max={item.MaxTrigger}) kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
-                            await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
-                            _fireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
-                        } else {
-                            _fireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Ack marked failed (max retries) but instance not found. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                // Effect hook timeout: single fixed window — no retries after EffectTimeoutSeconds.
+                if (!isGate) {
+                    var elapsedSec = (DateTime.UtcNow - item.LastTrigger).TotalSeconds;
+                    if (elapsedSec >= effectTimeoutSec) {
+                        // Time window expired — abandon and advance hook ordering.
+                        try {
+                            await _abandonEffectHookAsync(item.AckId, item.ConsumerId, item.AckGuid, item.Event.InstanceGuid, hookRoute, ct);
+                        } catch (OperationCanceledException) {
+                            throw;
+                        } catch (Exception ex) {
+                            _fireNotice(LifeCycleNotice.Warn("EFFECT_HOOK_ABANDON_ERROR", "EFFECT_HOOK_ABANDON_ERROR",
+                                $"Effect hook abandon failed. ack={item.AckGuid}: {ex.Message}"));
                         }
-                    } else {
-                        // Non-blocking hooks are observed but do not block lifecycle movement.
-                        var hookRoute = item.Event is ILifeCycleHookEvent h ? h.Route : string.Empty;
-                        _fireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Non-blocking hook failed after max retries. kind=hook ack={item.AckGuid} consumer={item.ConsumerId} route={hookRoute} instance={item.Event.InstanceGuid}"));
+                        continue;
                     }
-
+                    // Effect hook still within window — resend.
+                    await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, load);
+                    _fireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook(effect) status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                    _fireEvent(item.Event);
                     continue;
                 }
 
+                // Gate hook max-retry exhaustion: suspend instance.
+                if (item.MaxTrigger > 0 && item.TriggerCount >= item.MaxTrigger) {
+                    await _dal.AckConsumer.SetStatusAndDueAsync(item.AckId, item.ConsumerId, (int)AckStatus.Failed, null, null, load);
+                    var instanceId = await _dal.Instance.GetIdByGuidAsync(item.Event.InstanceGuid, load) ?? 0;
+                    if (instanceId > 0) {
+                        var msg = $"Suspended: gate hook max retries exceeded (max={item.MaxTrigger}) ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}";
+                        await _dal.Instance.SuspendWithMessageAsync(instanceId, (uint)LifeCycleInstanceFlag.Suspended, msg, load);
+                        _fireNotice(LifeCycleNotice.Warn("ACK_SUSPEND", "ACK_SUSPEND", msg));
+                    } else {
+                        _fireNotice(LifeCycleNotice.Warn("ACK_FAIL", "ACK_FAIL", $"Gate hook failed (max retries) but instance not found. ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                    }
+                    continue;
+                }
+
+                // Gate hook still retryable: bump trigger counter and re-dispatch.
                 await _dal.AckConsumer.MarkTriggerAsync(item.AckId, item.ConsumerId, nextDueUtc, load);
-                _fireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
+                _fireNotice(LifeCycleNotice.Warn("ACK_RETRY", "ACK_RETRY", $"kind=hook(gate) status={ackStatus} ack={item.AckGuid} consumer={item.ConsumerId} instance={item.Event.InstanceGuid}"));
                 _fireEvent(item.Event);
             }
         }

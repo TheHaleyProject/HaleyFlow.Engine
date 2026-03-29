@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS `hook_group` (
 CREATE TABLE IF NOT EXISTS `hook_lc` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Internal surrogate identifier.',
   `dispatched` bit(1) NOT NULL DEFAULT b'0' COMMENT 'Dispatch marker: 0=NotDispatched, 1=Dispatched.',
+  `status` tinyint NOT NULL DEFAULT 0 COMMENT '0=Pending, 1=Dispatched, 2=Skipped',
   `created` datetime NOT NULL DEFAULT current_timestamp() COMMENT 'UTC timestamp when the row was created.',
   `hook_id` bigint(20) NOT NULL COMMENT 'Hook identifier.',
   `lc_id` bigint(20) NOT NULL COMMENT 'Lifecycle identifier (FK to lifecycle.id).',

@@ -27,11 +27,13 @@ namespace Haley.Internal {
                       i.guid AS instance_guid, i.def_version AS def_version_id,
                       i.metadata AS metadata,
                       i.entity_id AS entity_id, i.policy_id,
-                      dv.parent AS definition_id
+                      dv.parent AS definition_id,
+                      hr.name AS route
                FROM ack a
                JOIN hook_ack ha ON ha.ack_id = a.id
                JOIN hook_lc hl ON hl.id = ha.hook_id
                JOIN hook h ON h.id = hl.hook_id
+               JOIN hook_route hr ON hr.id = h.route_id
                JOIN instance i ON i.id = h.instance_id
                JOIN def_version dv ON dv.id = i.def_version
                WHERE a.guid = lower(trim({GUID}))
@@ -136,6 +138,36 @@ namespace Haley.Internal {
                SET ac.status = {ACK_STATUS}, ac.next_due = NULL
                WHERE h.type = 1
                  AND ac.status NOT IN (3, 4, 5);";
+
+        // Gate-success drain: mark all undispatched gate hook_lc rows as Skipped (status=2, dispatched=1)
+        // so they never get dispatched. Called by AckOutcomeOrchestrator when a gate ACKs success with
+        // an OnSuccessEvent, before draining the remaining effect hooks.
+        public const string SKIP_UNDISPATCHED_GATE_HOOKS =
+            $@"UPDATE hook_lc hl
+               JOIN hook h ON h.id = hl.hook_id
+               SET hl.dispatched = 1, hl.status = 2
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.state_id    = {STATE_ID}
+                 AND h.via_event   = {EVENT_ID}
+                 AND h.on_entry    = {ON_ENTRY}
+                 AND hl.lc_id      = {LC_ID}
+                 AND h.type        = 1
+                 AND hl.dispatched = 0;";
+
+        // After effect drain completes, check if there is a skipped gate in scope (status=2).
+        // Returns (route, state_id, via_event, on_entry) so caller can re-resolve OnSuccessEvent from policy.
+        // The first skipped gate by order_seq is the one whose success code should be fired.
+        public const string GET_FIRST_SKIPPED_GATE_ROUTE =
+            $@"SELECT hr.name AS route, h.state_id, h.via_event, h.on_entry
+               FROM hook_lc hl
+               JOIN hook h ON h.id = hl.hook_id
+               JOIN hook_route hr ON hr.id = h.route_id
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND hl.lc_id      = {LC_ID}
+                 AND h.type        = 1
+                 AND hl.status     = 2
+               ORDER BY h.order_seq ASC
+               LIMIT 1;";
 
         public const string DELETE = $@"DELETE FROM hook WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM hook WHERE instance_id = {INSTANCE_ID};";

@@ -73,6 +73,20 @@ namespace Haley.Abstractions {
         /// so that open hook ACKs are properly closed before the state machine advances.
         /// </summary>
         Task<int> CancelPendingBlockingHookAckConsumersAsync(long instanceId, long lcId, DbExecutionLoad load = default);
+
+        /// <summary>
+        /// Marks all undispatched gate hook_lc rows (type=1, dispatched=0) for the given lifecycle scope
+        /// as Skipped (status=2, dispatched=1). Called when a gate ACKs success with OnSuccessEvent,
+        /// so remaining gates are bypassed and only effect hooks run before firing the success code.
+        /// </summary>
+        Task<int> SkipUndispatchedGateHooksAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default);
+
+        /// <summary>
+        /// Returns route, state_id, via_event, on_entry for the first (lowest order_seq) skipped gate
+        /// in the given lifecycle scope. Used after effect drain to re-resolve the gate's OnSuccessEvent.
+        /// Returns null if no skipped gate exists (normal flow, no gate-success drain in progress).
+        /// </summary>
+        Task<DbRow?> GetFirstSkippedGateRouteAsync(long instanceId, long lcId, DbExecutionLoad load = default);
     }
 
     internal interface IHookLcDAL {
