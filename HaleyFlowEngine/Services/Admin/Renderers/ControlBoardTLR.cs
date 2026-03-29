@@ -775,12 +775,12 @@ internal static class ControlBoardTLR {
 
     private static string FmtFull(string dt) =>
         TryParse(dt, out var d)
-            ? d.ToLocalTime().ToString("MMM d, yyyy h:mm tt", CultureInfo.InvariantCulture)
+            ? d.ToLocalTime().ToString("MMM d, yyyy h:mm:ss tt", CultureInfo.InvariantCulture)
             : dt;
 
     private static string Fmt(string dt) =>
         TryParse(dt, out var d)
-            ? d.ToLocalTime().ToString("MMM d, h:mm tt", CultureInfo.InvariantCulture)
+            ? d.ToLocalTime().ToString("MMM d, h:mm:ss tt", CultureInfo.InvariantCulture)
             : dt;
 
     private static string FmtDate(string dt) =>
@@ -790,7 +790,7 @@ internal static class ControlBoardTLR {
 
     private static string FmtTime(string dt) =>
         TryParse(dt, out var d)
-            ? d.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture)
+            ? d.ToLocalTime().ToString("h:mm:ss tt", CultureInfo.InvariantCulture)
             : dt;
 
     private static string Dur(string a, string b) {

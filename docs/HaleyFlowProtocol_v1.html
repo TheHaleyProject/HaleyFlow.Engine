@@ -688,6 +688,36 @@
     you assign any <code>order</code> to any hook in a rule, all un-ordered hooks are pushed to the end.
   </p>
 
+  <h3>Mixed gate + effect hooks at the same order value</h3>
+
+  <p>
+    A gate hook and an effect hook can share the same <code>order</code> value. Both are dispatched
+    together in the same batch. However, <strong>ACK completion is asymmetric</strong>:
+  </p>
+
+  <ul>
+    <li>The <strong>gate hook</strong> must ACK before the order is considered resolved. No advancement
+        happens until all gate hooks at this order reach a terminal ACK status.</li>
+    <li>The <strong>effect hook</strong> can ACK at any time — before or after the gate. An effect ACK
+        on its own does <em>not</em> advance the order. Advancement only happens when the effect ACK
+        arrives <em>and</em> there are no remaining unresolved gate hooks at the same order.</li>
+  </ul>
+
+  <p>
+    In practice this means: if you see an effect hook showing <em>ACKed</em> while a gate hook at the
+    same order is still <em>Dispatched</em>, that is correct behaviour. The order has not advanced.
+    The gate hook owns advancement for that order — when it ACKs, the engine checks both hooks are
+    resolved and then moves to the next order.
+  </p>
+
+  <div class="callout warning">
+    <strong>Do not mix gate + effect at the same order if the gate carries a complete code</strong>
+    The validator warns about this (<code>AMBIGUOUS_ORDER</code>). If the gate succeeds and skips
+    remaining gates, the effect at the same order has already been dispatched and will still run —
+    but the ordering semantics become harder to reason about. Keep gate-with-code hooks at a dedicated
+    order value.
+  </div>
+
   <h2 id="pol-complete">Policy JSON — Complete Codes</h2>
 
   <p>

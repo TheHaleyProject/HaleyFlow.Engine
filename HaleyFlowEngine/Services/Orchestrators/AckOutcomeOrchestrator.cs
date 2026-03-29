@@ -133,11 +133,16 @@ namespace Haley.Services.Orchestrators {
                 return;
             }
 
-            // Effect hooks also drive progression — when an effect batch is fully ACKed, advance to the next order.
-            // Effect hooks have no blocking constraint, so we advance immediately (no incomplete count check needed).
+            // Effect hooks drive progression only when all gate hooks at the same order are resolved.
+            // If a gate shares order_seq with this effect, it must ACK first — the gate path owns advancement.
             if (hookType == HookType.Effect) {
                 try {
-                    await AdvanceAndCheckTransitionModeAsync(hookCtx, ct);
+                    var incompleteGates = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
+                        hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
+                        hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
+                        hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
+                    if (incompleteGates == 0)
+                        await AdvanceAndCheckTransitionModeAsync(hookCtx, ct);
                 } catch (Exception ex) {
                     _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                         $"Effect order advancement failed for ack={ackGuid}: {ex.Message}"));

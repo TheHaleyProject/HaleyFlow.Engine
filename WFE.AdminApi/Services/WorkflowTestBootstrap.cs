@@ -1,4 +1,5 @@
 using Haley.Abstractions;
+using Haley.Enums;
 using Haley.Models;
 using WFE.Test.UseCases.ChangeRequest;
 using WFE.Test.UseCases.LoanApproval;
@@ -30,7 +31,7 @@ public sealed class WorkflowTestBootstrap {
         return Task.FromResult<IReadOnlyList<string>>(keys);
     }
 
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(string useCase, int count, CancellationToken ct) {
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> CreateTestEntitiesAsync(string useCase, int count,  CancellationToken ct,FlowBusMode? mode = null) {
         if (string.IsNullOrWhiteSpace(useCase)) throw new ArgumentException("useCase is required.", nameof(useCase));
         if (count < 1) return Array.Empty<Dictionary<string, object?>>();
         if (count > 1000) throw new ArgumentException("count is too high. max=1000", nameof(count));
@@ -52,6 +53,7 @@ public sealed class WorkflowTestBootstrap {
                     EntityId = entityGuid,
                     StartEvent = profile.StartEvent,
                     Actor = "wfe.adminapi.test",
+                    Mode = mode,
                     Payload = new Dictionary<string, object> {
                         ["source"] = "WFE.AdminApi",
                         ["useCase"] = profile.Key,

@@ -1,3 +1,4 @@
+using Haley.Enums;
 using Microsoft.AspNetCore.Mvc;
 using WFE.AdminApi.Services;
 
@@ -18,12 +19,12 @@ public sealed class WorkflowAdminController : ControllerBase {
     }
 
     [HttpPost("/api/admin/wf/test/entities")]
-    public async Task<IActionResult> CreateTestEntities([FromBody] CreateTestEntitiesRequest request, CancellationToken ct) {
+    public async Task<IActionResult> CreateTestEntities([FromBody] CreateTestEntitiesRequest request, CancellationToken ct, [FromQuery] FlowBusMode? mode = null) {
         if (request == null) return BadRequest("Request body is required.");
         if (string.IsNullOrWhiteSpace(request.UseCase)) return BadRequest("useCase is required.");
         if (request.Count < 1) return BadRequest("count must be greater than 0.");
 
-        var results = await _testBootstrap.CreateTestEntitiesAsync(request.UseCase, request.Count, ct);
+        var results = await _testBootstrap.CreateTestEntitiesAsync(request.UseCase, request.Count, ct,mode);
         return Ok(new {
             useCase   = request.UseCase,
             requested = request.Count,
