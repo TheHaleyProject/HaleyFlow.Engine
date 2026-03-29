@@ -325,10 +325,13 @@ internal static class ControlBoardTLR {
     .inst-msg { margin-top: 16px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(180,35,24,.22); background: rgba(247,218,218,.55); color: var(--red-text); font-size: 12px; font-family: Consolas,monospace; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
     .inst-msg-k { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 800; color: var(--red-text); margin-bottom: 5px; }
     .empty { color: var(--muted); font-size: 12px; font-style: italic; padding: 4px 0; }
-    .entries.compact .entry { cursor: pointer; }
     .entries.compact { gap: 12px; }
     .entries.compact .entry-wrap { grid-template-columns: 88px minmax(0, 1fr); }
     .entries.compact .entry-index { padding: 12px 8px 14px; gap: 5px; }
+    .entries.compact .entry-index,
+    .entries.compact .entry-top {
+      cursor: pointer;
+    }
     .entries.compact .entry-no { font-size: 18px; }
     .entries.compact .entry-date { font-size: 11px; }
     .entries.compact .entry-clock { font-size: 14px; }
@@ -405,9 +408,20 @@ internal static class ControlBoardTLR {
       btn.textContent = on ? 'Full view' : 'Compact';
     }
 
-    function toggleControlBoardEntry(idx) {
+    function toggleControlBoardEntry(idx, ev) {
       var area = document.getElementById('entries-area');
       if (!area || !area.classList.contains('compact')) return;
+
+      if (ev) {
+        var interactive = ev.target && ev.target.closest && ev.target.closest('a,button,input,textarea,select,label');
+        if (interactive) return;
+      }
+
+      var selected = '';
+      try {
+        selected = window.getSelection ? window.getSelection().toString() : '';
+      } catch {}
+      if (selected && selected.trim().length > 0) return;
 
       var entry = document.getElementById('entry-' + idx);
       if (entry) entry.classList.toggle('force-open');
@@ -773,18 +787,18 @@ internal static class ControlBoardTLR {
 
         sb.Append($"""
         <article class="entry" id="entry-{idx}" data-hooks="{(isValidation ? 1 : 0)}" data-validation="{(isValidation ? 1 : 0)}" data-complete="{(hasComplete ? 1 : 0)}" data-loop="{(isLoop ? 1 : 0)}" data-edge="{(edge ? 1 : 0)}">
-          <div class="entry-wrap" onclick="toggleControlBoardEntry({idx})">
-            <div class="entry-index">
+          <div class="entry-wrap">
+            <div class="entry-index" onclick="toggleControlBoardEntry({idx}, event)">
               <div class="entry-no">{idx + 1}</div>
               <div class="entry-time">
                 <div class="entry-date">{E(createdDate)}</div>
                 <div class="entry-clock">{E(createdTime)}</div>
               </div>
             </div>
-            <div class="entry-main">
-              <div class="entry-top">
-                <div>
-                  <div class="event-name">{E(eventName)}</div>
+              <div class="entry-main">
+               <div class="entry-top" onclick="toggleControlBoardEntry({idx}, event)">
+                  <div>
+                    <div class="event-name">{E(eventName)}</div>
                   <div class="event-sub full-sub">Lifecycle #{E(lcId)} | event {E(eventCode)}</div>
                   <div class="compact-sub">{E(fromState)} -> {E(toState)} | event {E(eventCode)} | {E(actorDisplay)}</div>
                 </div>
