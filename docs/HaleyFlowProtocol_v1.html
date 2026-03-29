@@ -648,7 +648,8 @@
     <tr><td><code>route</code></td><td>string</td><td><span class="badge required">required</span></td><td>Unique stable identifier. Handlers subscribe to this route. Use dot-notation by convention.</td></tr>
     <tr><td><code>label</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Human-readable name. For display and logging only.</td></tr>
     <tr><td><code>type</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Allowed values: <code>"gate"</code> or <code>"effect"</code>. Default: <code>"gate"</code>.</td></tr>
-    <tr><td><code>order</code></td><td>integer</td><td><span class="badge optional">optional</span></td><td>Execution sequence within this rule. Lower numbers run first. Hooks without an order run last.</td></tr>
+    <tr><td><code>send</code></td><td>string</td><td><span class="badge optional">optional</span></td><td><strong>Effect only.</strong> Allowed values: <code>"no"</code> or <code>"always"</code>. Default: <code>"no"</code>. Controls whether a later-order effect still runs on the success path after an earlier gate success short-circuits remaining gate orders. A gate hook must not define this field.</td></tr>
+    <tr><td><code>order</code></td><td>integer</td><td><span class="badge optional">optional</span></td><td>Execution sequence within this rule. Lower numbers run first. Each order runs in two phases: <strong>gate phase</strong> first, then <strong>effect phase</strong>. Hooks without an order run last.</td></tr>
     <tr><td><code>group</code></td><td>string</td><td><span class="badge optional">optional</span></td><td>Logical grouping label. Informational — used by some interpreters for ACK group tracking.</td></tr>
     <tr><td><code>params</code></td><td>string[]</td><td><span class="badge optional">optional</span></td><td>Hook-own param codes. If absent, inherits parent rule's params.</td></tr>
     <tr><td><code>complete</code></td><td>object</td><td><span class="badge optional">optional</span></td><td>Auto-advance codes. <strong>Only respected on gate hooks.</strong> Ignored on effect hooks.</td></tr>
@@ -663,8 +664,9 @@
   </p>
 
   <p>
-    <strong>Effect hooks</strong> (<code>"type": "effect"</code>) are fire-and-forget.
-    Their result is <em>completely ignored</em> by the interpreter. They cannot carry complete codes —
+    <strong>Effect hooks</strong> (<code>"type": "effect"</code>) are non-blocking side effects.
+    They run in the <strong>effect phase</strong> of an order, after that order's gate phase has finished.
+    Their ACK/result never decides the next event. They cannot carry complete codes —
     any <code>complete</code> block on an effect hook is silently discarded.
   </p>
 
@@ -677,9 +679,10 @@
   <h3>Hook Ordering</h3>
 
   <p>
-    Hooks within a rule execute in ascending <code>order</code> value. If two hooks share the same
-    <code>order</code> value, execution order between them is implementation-defined — avoid it
-    (a validator should warn or error if both carry complete codes).
+    Hooks within a rule execute in ascending <code>order</code> value. Each order is processed in
+    two phases: <strong>gate phase</strong> first, then <strong>effect phase</strong>. If two hooks
+    share the same <code>order</code> value, all gate hooks for that order belong to the same gate phase,
+    and all effect hooks for that order belong to the same effect phase.
   </p>
 
   <p>
@@ -691,31 +694,29 @@
   <h3>Mixed gate + effect hooks at the same order value</h3>
 
   <p>
-    A gate hook and an effect hook can share the same <code>order</code> value. Both are dispatched
-    together in the same batch. However, <strong>ACK completion is asymmetric</strong>:
+    A gate hook and an effect hook can share the same <code>order</code> value, but they do
+    <strong>not</strong> dispatch together. The interpreter processes that order in two phases:
   </p>
 
   <ul>
-    <li>The <strong>gate hook</strong> must ACK before the order is considered resolved. No advancement
-        happens until all gate hooks at this order reach a terminal ACK status.</li>
-    <li>The <strong>effect hook</strong> can ACK at any time — before or after the gate. An effect ACK
-        on its own does <em>not</em> advance the order. Advancement only happens when the effect ACK
-        arrives <em>and</em> there are no remaining unresolved gate hooks at the same order.</li>
+    <li>The <strong>gate phase</strong> dispatches all gate hooks for that order and waits until they
+        are terminal for that order.</li>
+    <li>Only after the gate phase resolves does the interpreter dispatch the order's
+        <strong>effect phase</strong>.</li>
+    <li>Effect ACKs never choose the next event. They are side-effect completion signals only.</li>
   </ul>
 
   <p>
-    In practice this means: if you see an effect hook showing <em>ACKed</em> while a gate hook at the
-    same order is still <em>Dispatched</em>, that is correct behaviour. The order has not advanced.
-    The gate hook owns advancement for that order — when it ACKs, the engine checks both hooks are
-    resolved and then moves to the next order.
+    In practice this means the same-order effects are guaranteed to run only after the order's gates
+    have finished. This keeps "decision" hooks and "side-effect" hooks in the same order readable:
+    decide first, then notify/log/archive for that order.
   </p>
 
-  <div class="callout warning">
-    <strong>Do not mix gate + effect at the same order if the gate carries a complete code</strong>
-    The validator warns about this (<code>AMBIGUOUS_ORDER</code>). If the gate succeeds and skips
-    remaining gates, the effect at the same order has already been dispatched and will still run —
-    but the ordering semantics become harder to reason about. Keep gate-with-code hooks at a dedicated
-    order value.
+  <div class="callout info">
+    <strong><code>send: "always"</code> applies only to later-order effects</strong>
+    Same-order effects run because that order was reached. The <code>send</code> flag matters only for
+    effect hooks in later orders that should still run when an earlier gate success short-circuits
+    the remaining gate orders.
   </div>
 
   <h2 id="pol-complete">Policy JSON — Complete Codes</h2>
@@ -758,19 +759,20 @@
     </tr>
   </table>
 
-  <h3>Gate hook success drains effects before firing</h3>
+  <h3>Gate hook completion resolves the next path</h3>
 
   <p>
-    When a gate hook succeeds with a success code, the interpreter does <strong>not</strong> fire that
-    code immediately. Instead it: skips all remaining undispatched gate hooks, runs all remaining
-    <strong>effect hooks</strong> in order, and only then fires the gate's success code. Effect hooks
-    are side-effects that must still execute regardless of the gate decision.
+    When a gate hook reaches a terminal outcome, the interpreter first completes the
+    <strong>current order</strong>, then decides what remains reachable:
   </p>
 
-  <p>
-    Gate hook <strong>failure</strong> is different — failure fires the failure code immediately and
-    skips everything (both remaining gate and effect hooks).
-  </p>
+  <ul>
+    <li>If the gate resolves with a <strong>success</strong> code, remaining gate orders may be skipped.</li>
+    <li>The current order's <strong>effect phase</strong> still runs after the current order's gates finish.</li>
+    <li>Later-order effect hooks run only when they are naturally reached, or when they are marked
+        <code>send: "always"</code> and the path is still a success path.</li>
+    <li>If the path becomes a <strong>failure</strong> path, later-order effects do not run.</li>
+  </ul>
 
   <p>
     The transition handler's success code is only a fallback. It fires after all hooks complete with no
@@ -778,10 +780,10 @@
   </p>
 
   <div class="callout warning">
-    <strong>Gate failure terminates immediately; gate success drains effects first</strong>
-    A gate failure complete code fires immediately and skips all remaining hooks. A gate success complete
-    code runs all remaining effect hooks first, then fires. The only pass-through case is a gate hook
-    with no complete codes: on success it continues to the next hook, on failure it rolls back state.
+    <strong>Same-order effects still run; later effects are conditional</strong>
+    A terminal gate does not erase the effect phase of the current order. It only decides whether later
+    orders remain reachable. On a success path, later-order effects marked <code>send: "always"</code>
+    may still run. On a failure path, later orders do not run.
   </div>
 
   <div class="callout info">
@@ -898,8 +900,8 @@
       <span class="k">"emit"</span>: [
         { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.CHECK"</span>,            <span class="k">"type"</span>: <span class="s">"gate"</span>,  <span class="k">"order"</span>: <span class="n">1</span>,
           <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">2001</span>, <span class="k">"failure"</span>: <span class="n">2002</span> } },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.AUDIT.LOG"</span>,        <span class="k">"type"</span>: <span class="s">"effect"</span> },
-        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.NOTIFY.APPLICANT"</span>, <span class="k">"type"</span>: <span class="s">"effect"</span>, <span class="k">"order"</span>: <span class="n">2</span> }
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.AUDIT.LOG"</span>,        <span class="k">"type"</span>: <span class="s">"effect"</span>, <span class="k">"order"</span>: <span class="n">1</span> },
+        { <span class="k">"route"</span>: <span class="s">"APP.LOAN.KYC.NOTIFY.APPLICANT"</span>, <span class="k">"type"</span>: <span class="s">"effect"</span>, <span class="k">"order"</span>: <span class="n">2</span>, <span class="k">"send"</span>: <span class="s">"always"</span> }
       ]
     },
     {
@@ -943,8 +945,9 @@
     <li style="margin-bottom:0.5rem">Run the transition handler with the entity context.</li>
     <li style="margin-bottom:0.5rem">Advance <code>currentState</code> to <code>toState</code>.</li>
     <li style="margin-bottom:0.5rem">Find the one matching rule for <code>toState</code>: a <code>via</code>-specific rule takes priority; a general rule is the fallback if no via-specific rule matched.</li>
-    <li style="margin-bottom:0.5rem">Execute all hooks from matching rules in <code>order</code> sequence.</li>
-    <li style="margin-bottom:0.5rem">After all hooks complete: fire any pending success event.</li>
+    <li style="margin-bottom:0.5rem">Execute hooks in <code>order</code> sequence. For each order: run the <strong>gate phase</strong> first, then the <strong>effect phase</strong> for that same order.</li>
+    <li style="margin-bottom:0.5rem">If a gate terminates successfully, later gate orders are skipped. Later-order effects run only if marked <code>send: "always"</code>. On a failure path, later orders do not run.</li>
+    <li style="margin-bottom:0.5rem">After all reachable orders complete: resolve the final pending success or failure event, if any.</li>
   </ol>
 
   <h2 id="exec-transition">Execution Contract — Transition Handler</h2>
@@ -967,40 +970,40 @@
     <tr><th>Outcome</th><th>Has success code</th><th>Has failure code</th><th>Action</th></tr>
     <tr>
       <td>Effect hook — any result</td><td>—</td><td>—</td>
-      <td>Continue to next hook. Result and complete codes are <strong>ignored entirely</strong>.</td>
+      <td>Never chooses the next event. Effect hooks run in the effect phase of an order after that order's gates are terminal.</td>
     </tr>
     <tr>
       <td>Gate hook <strong>succeeds</strong></td><td>yes</td><td>—</td>
-      <td>Skip remaining gate hooks. Run all remaining <strong>effect hooks</strong> in order. Fire success code after effects complete.</td>
+      <td>Finish the current order's gate phase, run the current order's effect phase, then skip later gate orders. Later-order effects run only when marked <code>send: "always"</code>. After all reachable effects are emitted, resolve the success code.</td>
     </tr>
     <tr>
       <td>Gate hook <strong>succeeds</strong></td><td>no</td><td>—</td>
-      <td>Continue to next hook. No termination.</td>
+      <td>Finish the current order's gate phase, run the current order's effect phase, then continue to the next order.</td>
     </tr>
     <tr>
       <td>Gate hook <strong>fails</strong></td><td>—</td><td>yes</td>
-      <td><strong>Terminate immediately.</strong> Skip ALL remaining hooks (gate and effect). Fire failure code now.</td>
+      <td>Finish the current order's gate phase, run the current order's effect phase, then terminate the chain. Later orders do not run. Resolve the failure code.</td>
     </tr>
     <tr>
       <td>Gate hook <strong>fails</strong></td><td>—</td><td>no</td>
-      <td>Roll back <code>currentState</code> to <code>fromState</code>. Return blocked (<code>HFR3005</code>). No auto-advance.</td>
+      <td>Finish the current order's gate phase, run the current order's effect phase, then roll back <code>currentState</code> to <code>fromState</code>. Return blocked (<code>HFR3005</code>). No auto-advance.</td>
     </tr>
   </table>
 
   <div class="callout warning">
-    <strong>Gate failure terminates immediately; gate success drains effects</strong>
-    A gate failure complete code fires immediately and skips all remaining hooks. A gate success complete
-    code skips remaining gates but still runs all effect hooks — only terminating after the effects complete.
-    Only a gate hook with <em>no</em> complete codes passes through silently.
+    <strong>Orders finish locally before the interpreter moves on</strong>
+    A terminal gate outcome does not cancel the effect phase of the same order. It only decides what
+    happens to later orders. Same-order effects still run. Later-order effects need either a naturally
+    reached order or <code>send: "always"</code> on a success path.
   </div>
 
   <h3>Why success also terminates — the escalation pattern</h3>
 
   <p>
     Consider a multi-stage approval where you want to try reviewers in sequence and stop as soon as
-    one approves. If success codes deferred execution (running all remaining hooks first), you could
-    never short-circuit the escalation chain. With immediate termination on success, the pattern works
-    naturally:
+    one approves. If success codes forced every later gate order to run, you could never short-circuit
+    the escalation chain. With order-local completion, the pattern still works naturally: finish the
+    current order, then stop the later gate orders once success is resolved.
   </p>
 
 <pre><code><span class="c">// Multi-stage approval — stop at first approver, escalate on failure</span>
@@ -1009,13 +1012,13 @@
     <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE1"</span>,
     <span class="k">"type"</span>: <span class="s">"gate"</span>,
     <span class="k">"order"</span>:    <span class="n">1</span>,
-    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← success terminates; stage 2 never runs if stage 1 approves</span>
+    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← success resolves after order 1 finishes; stage 2 never runs if stage 1 approves</span>
   },
   {
     <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE2"</span>,
     <span class="k">"type"</span>: <span class="s">"gate"</span>,
     <span class="k">"order"</span>:    <span class="n">2</span>,
-    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← only reached if stage 1 had no success code or did not terminate</span>
+    <span class="k">"complete"</span>: { <span class="k">"success"</span>: <span class="n">5001</span> }   <span class="c">// ← only reached if stage 1 had no success code or did not resolve success</span>
   },
   {
     <span class="k">"route"</span>:    <span class="s">"APP.APPROVAL.STAGE3"</span>,
@@ -1026,7 +1029,7 @@
 ]</code></pre>
 
   <p>
-    Stage 1 runs. If it succeeds and has a success code → terminates immediately, fires event 5001, stages 2 and 3 never run.<br/>
+    Stage 1 runs. If it succeeds and has a success code → stage 1's own effect phase still runs, then event 5001 is resolved and later gate orders are skipped.<br/>
     If stage 1 has no success code (or succeeds without one) → stage 2 runs.<br/>
     Stage 3 has both codes → it is a full terminator; anything after it would be unreachable.
   </p>
@@ -1119,7 +1122,7 @@
     <tr><td><code>POLICY_UNKNOWN_STATE</code></td><td><span class="val-warn">Warning</span></td><td>A policy rule targets a state that does not exist in the definition — the rule will never fire.</td></tr>
     <tr><td><code>AMBIGUOUS_ORDER</code></td><td><span class="val-error">Error</span></td><td>Multiple gate hooks at the same <code>order</code> value define complete codes — execution order is undefined.</td></tr>
     <tr><td><code>EFFECT_WITH_COMPLETE</code></td><td><span class="val-warn">Warning</span></td><td>An effect hook defines <code>complete</code> codes — they will be ignored at runtime.</td></tr>
-    <tr><td><code>UNREACHABLE_HOOK</code></td><td><span class="val-warn">Warning</span></td><td>A gate hook appears after another gate hook that has both success and failure complete codes — it can never execute. Effect hooks after such a gate terminator are still reachable (gate success drains effects first).</td></tr>
+    <tr><td><code>UNREACHABLE_HOOK</code></td><td><span class="val-warn">Warning</span></td><td>A gate hook appears after another gate hook that has both success and failure complete codes — it can never execute. Same-order effects remain reachable because the order's effect phase still runs after the gates finish. Later-order effects remain reachable only when marked <code>send: "always"</code> on a success path.</td></tr>
     <tr><td><code>NO_FAILURE_PATH</code></td><td><span class="val-warn">Warning</span></td><td>A gate hook has no failure complete code and the transition has no failure complete code — on failure, the interpreter cannot auto-advance. The application must handle it explicitly.</td></tr>
   </table>
 
@@ -1189,11 +1192,15 @@
   </div>
   <div class="field">
     <span class="field-name">emit[].type</span><span class="field-type">string · optional · default "gate"</span>
-    <div class="field-desc"><code>"gate"</code> — hook result participates in the execution chain; can block or advance the state machine. <code>"effect"</code> — fire-and-forget; result and complete codes are fully ignored. Backward compat: <code>blocking: true</code> maps to gate, <code>blocking: false</code> maps to effect.</div>
+    <div class="field-desc"><code>"gate"</code> — participates in the order's gate phase and may carry complete codes. <code>"effect"</code> — participates in the order's effect phase, never chooses the next event, and cannot carry complete codes.</div>
   </div>
   <div class="field">
     <span class="field-name">emit[].order</span><span class="field-type">integer · optional</span>
-    <div class="field-desc">Execution sequence. Lower runs first. Hooks without order run after all explicitly ordered hooks.</div>
+    <div class="field-desc">Execution sequence. Lower runs first. Each order has a gate phase followed by an effect phase. Hooks without order run after all explicitly ordered hooks.</div>
+  </div>
+  <div class="field">
+    <span class="field-name">emit[].send</span><span class="field-type">string · optional · default "no"</span>
+    <div class="field-desc"><strong>Effect only.</strong> Allowed values: <code>"no"</code> or <code>"always"</code>. Same-order effects always run once that order is reached. <code>"always"</code> matters only for later-order effects that should still run after an earlier gate success short-circuits the remaining gate orders. On a failure path, later-order effects do not run. Gate hooks must not define this field.</div>
   </div>
   <div class="field">
     <span class="field-name">emit[].complete</span><span class="field-type">object · optional</span>
@@ -1329,7 +1336,7 @@
     <tr>
       <td><code>HFP2102</code></td><td><code>UNREACHABLE_HOOK</code></td>
       <td><span class="val-warn">Warning</span></td>
-      <td>A gate hook appears after a "full terminator" — a prior gate hook that defines both success and failure complete codes. Since all paths from that gate terminator lead away, this gate hook can never be reached. Effect hooks after a gate terminator are still reachable because gate success drains effects before firing its code.</td>
+      <td>A gate hook appears after a "full terminator" — a prior gate hook that defines both success and failure complete codes. Since all paths from that gate terminator lead away, this gate hook can never be reached. Same-order effects remain reachable because the current order still enters its effect phase. Later-order effects remain reachable only when marked <code>send: "always"</code> on a success path.</td>
     </tr>
     <tr>
       <td><code>HFP2103</code></td><td><code>NO_FAILURE_PATH</code></td>
