@@ -88,6 +88,13 @@ namespace Haley.Internal {
         public const string KEY_INSTANCE_MESSAGE = "instance_message";
         public const string KEY_HOOKS_SUCCEEDED = "hooks_succeeded";
         public const string KEY_NEXT_EVENT = "next_event";
+        public const string KEY_COMPLETE_STATUS = "complete_status";
+        public const string KEY_COMPLETE_ACK_GUID = "complete_ack_guid";
+        public const string KEY_COMPLETE_DISPATCHED = "complete_dispatched";
+        public const string KEY_COMPLETE_TOTAL_ACKS = "complete_total_acks";
+        public const string KEY_COMPLETE_PROCESSED_ACKS = "complete_processed_acks";
+        public const string KEY_COMPLETE_FAILED_ACKS = "complete_failed_acks";
+        public const string KEY_COMPLETE_LAST_TRIGGER = "complete_last_trigger";
 
         // blueprint structure keys
         public const string KEY_DEFINITION = "definition";

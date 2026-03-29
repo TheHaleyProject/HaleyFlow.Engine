@@ -42,7 +42,7 @@ internal static class ControlBoardTLR {
             sb.Append("""
     <div class="side-scroll">
 """);
-            WriteSummary(sb, inst, count, activityCount, hookCount, loops, totalDur);
+            WriteSummary(sb, inst, items, count, activityCount, hookCount, loops, totalDur);
             WriteStatePath(sb, items, S(inst, "current_state"));
             sb.Append("""
     </div>
@@ -231,7 +231,8 @@ internal static class ControlBoardTLR {
     .rejected { background: var(--red-soft); color: var(--red-text); }
     .pending { background: var(--amber-soft); color: var(--amber-text); }
     .other { background: #edf4ef; color: var(--muted); }
-    .hook-card { border: 1px solid var(--brand-soft); background: var(--panel-soft); display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 10px 12px; }
+    .hook-card, .complete-card { border: 1px solid var(--brand-soft); background: var(--panel-soft); }
+    .hook-card { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 10px 12px; }
     .hook-seq-col { font-size: 13px; font-weight: 900; color: var(--brand-deep); font-family: Consolas, monospace; text-align: center; }
     .hook-main { min-width: 0; }
     .hook-route { font-size: 12px; font-weight: 800; color: var(--brand-deep); font-family: Consolas, monospace; line-height: 1.2; overflow-wrap: anywhere; }
@@ -243,6 +244,14 @@ internal static class ControlBoardTLR {
     .mini-badge.ok   { background: var(--brand-soft);  color: var(--brand-deep); border-color: rgba(36,181,77,.3); }
     .mini-badge.warn { background: var(--amber-soft);  color: var(--amber-text); border-color: rgba(150,100,0,.22); }
     .mini-badge.fail { background: var(--red-soft);    color: var(--red-text);   border-color: rgba(180,35,24,.25); }
+    .mini-badge.info { background: var(--blue-soft); color: var(--blue-text); border-color: rgba(36,84,181,.25); }
+    .complete-card { border-radius: 14px; padding: 12px 14px; display: grid; gap: 10px; border-color: rgba(36,84,181,.18); background: linear-gradient(180deg, rgba(223,234,255,.42), rgba(255,255,255,.92)); }
+    .complete-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .complete-title { font-size: 12px; font-weight: 900; color: var(--blue-text); text-transform: uppercase; letter-spacing: .08em; }
+    .complete-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .complete-stat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,.78); }
+    .complete-k { font-size: 10px; text-transform: uppercase; letter-spacing: .10em; color: var(--muted); font-weight: 800; }
+    .complete-v { margin-top: 5px; font-size: 13px; font-weight: 900; color: var(--text); overflow-wrap: anywhere; }
     .inst-msg { margin-top: 16px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(180,35,24,.22); background: rgba(247,218,218,.55); color: var(--red-text); font-size: 12px; font-family: Consolas,monospace; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
     .inst-msg-k { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 800; color: var(--red-text); margin-bottom: 5px; }
     .empty { color: var(--muted); font-size: 12px; font-style: italic; padding: 4px 0; }
@@ -297,6 +306,8 @@ internal static class ControlBoardTLR {
       document.querySelectorAll('.entry').forEach(function(entry) {
         var show = mode === 'all'
           || (mode === 'hooks' && entry.dataset.hooks === '1')
+          || (mode === 'validation' && entry.dataset.validation === '1')
+          || (mode === 'complete' && entry.dataset.complete === '1')
           || (mode === 'loop' && entry.dataset.loop === '1')
           || (mode === 'edge' && entry.dataset.edge === '1');
         entry.style.display = show ? '' : 'none';
@@ -399,6 +410,8 @@ internal static class ControlBoardTLR {
         <div class="toolbar-actions">
           <button class="btn filter-btn active" onclick="setControlBoardFilter('all', this)">All entries</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('hooks', this)">Has hooks</button>
+          <button class="btn filter-btn" onclick="setControlBoardFilter('validation', this)">Validation</button>
+          <button class="btn filter-btn" onclick="setControlBoardFilter('complete', this)">Complete</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('loop', this)">Loop / re-entry</button>
           <button class="btn filter-btn" onclick="setControlBoardFilter('edge', this)">Initial / terminal</button>
           <button class="btn" id="board-compact-btn" onclick="toggleControlBoardCompact()">Compact</button>
@@ -407,12 +420,16 @@ internal static class ControlBoardTLR {
     </div>
 """);
     }
-    private static void WriteSummary(StringBuilder sb, JsonElement inst, int transitions, int activities, int hooks, int loops, string totalDur) {
+    private static void WriteSummary(StringBuilder sb, JsonElement inst, List<JsonElement> items, int transitions, int activities, int hooks, int loops, string totalDur) {
+        var validationCount = CountValidation(items);
+        var completeCount = CountComplete(items);
         sb.Append($"""
       <section class="panel pad summary-panel">
         <div class="panel-title">Operational summary</div>
         <div class="summary-list">
           <div class="summary-row"><span class="summary-k">Transitions captured</span><span class="summary-v">{transitions}</span></div>
+          <div class="summary-row"><span class="summary-k">Validation-mode transitions</span><span class="summary-v">{validationCount}</span></div>
+          <div class="summary-row"><span class="summary-k">Complete handoffs</span><span class="summary-v">{completeCount}</span></div>
           <div class="summary-row"><span class="summary-k">Activities logged</span><span class="summary-v">{activities}</span></div>
           <div class="summary-row"><span class="summary-k">Hooks emitted</span><span class="summary-v">{hooks}</span></div>
           <div class="summary-row"><span class="summary-k">Loop / re-entry points</span><span class="summary-v">{loops}</span></div>
@@ -478,6 +495,11 @@ internal static class ControlBoardTLR {
         var createdTime = FmtTime(rawCreated);
         var isInitial  = B(item, "is_initial");
         var isTerminal = B(item, "is_terminal");
+        var dispatchMode = S(item, "dispatch_mode");
+        item.TryGetProperty("complete", out var complete);
+        var hasComplete = complete.ValueKind == JsonValueKind.Object;
+        var completeStatus = hasComplete ? S(complete, "complete_status") : string.Empty;
+        var isValidation = string.Equals(dispatchMode, "ValidationMode", StringComparison.OrdinalIgnoreCase);
 
         item.TryGetProperty("activities", out var acts);
         item.TryGetProperty("hooks", out var hooks);
@@ -485,16 +507,20 @@ internal static class ControlBoardTLR {
         var hookCount = hooks.ValueKind == JsonValueKind.Array ? hooks.GetArrayLength() : 0;
         var hasActs = actCount > 0;
         var hasHooks = hookCount > 0;
+        var showHookPanel = hasHooks || (detail < TimelineDetail.Admin && isValidation);
+        var hookDisplay = detail >= TimelineDetail.Admin ? hookCount.ToString() : isValidation ? "engine-managed" : "0";
         var edge      = isInitial || isTerminal;
 
         var tags = new StringBuilder();
         if (isInitial) tags.Append("<span class=\"entry-tag tag-initial\">Initial</span>");
         if (isTerminal) tags.Append("<span class=\"entry-tag tag-terminal\">Terminal</span>");
         if (isLoop) tags.Append("<span class=\"entry-tag tag-loop\">Loop</span>");
+        if (isValidation) tags.Append("<span class=\"entry-tag tag-hook\">Validation</span>");
+        if (hasComplete) tags.Append("<span class=\"entry-tag tag-terminal\">Complete</span>");
         if (hookCount > 0) tags.Append($"<span class=\"entry-tag tag-hook\">{hookCount} hook{(hookCount == 1 ? string.Empty : "s")}</span>");
 
         sb.Append($"""
-        <article class="entry" id="entry-{idx}" data-hooks="{(hookCount > 0 ? 1 : 0)}" data-loop="{(isLoop ? 1 : 0)}" data-edge="{(edge ? 1 : 0)}">
+        <article class="entry" id="entry-{idx}" data-hooks="{(isValidation ? 1 : 0)}" data-validation="{(isValidation ? 1 : 0)}" data-complete="{(hasComplete ? 1 : 0)}" data-loop="{(isLoop ? 1 : 0)}" data-edge="{(edge ? 1 : 0)}">
           <div class="entry-wrap" onclick="toggleControlBoardEntry({idx})">
             <div class="entry-index">
               <div class="entry-no">{idx + 1}</div>
@@ -521,12 +547,14 @@ internal static class ControlBoardTLR {
 
               <div class="meta-line">
                 <span>actor <strong>{E(actor)}</strong></span>
+                <span>mode <strong>{E(string.IsNullOrWhiteSpace(dispatchMode) ? "NormalRun" : dispatchMode)}</strong></span>
                 <span>activities <strong>{actCount}</strong></span>
-                <span>hooks <strong>{hookCount}</strong></span>
+                <span>hooks <strong>{E(hookDisplay)}</strong></span>
+                {(hasComplete ? $"<span>complete <strong>{E(completeStatus)}</strong></span>" : string.Empty)}
               </div>
 """);
 
-        if (hasActs || hasHooks) {
+        if (hasActs || showHookPanel || hasComplete) {
             sb.Append("""
               <div class="detail-stack">
 """);
@@ -544,19 +572,32 @@ internal static class ControlBoardTLR {
 """);
             }
 
-            if (hasHooks) {
+            if (showHookPanel) {
                 sb.Append("""
                 <section class="box">
                   <div class="box-h">Hook dispatch</div>
                   <div class="card-list">
 """);
 
-                if (detail >= TimelineDetail.Admin) {
+                if (detail >= TimelineDetail.Admin && hasHooks) {
                     WriteHookCards(sb, hooks);
                 } else {
-                    WriteHookDetailNote(sb, hookCount);
+                    WriteHookDetailNote(sb, hookCount, isValidation);
                 }
 
+                sb.Append("""
+                  </div>
+                </section>
+""");
+            }
+
+            if (hasComplete) {
+                sb.Append("""
+                <section class="box">
+                  <div class="box-h">Complete handoff</div>
+                  <div class="card-list">
+""");
+                WriteCompleteCard(sb, complete);
                 sb.Append("""
                   </div>
                 </section>
@@ -662,11 +703,65 @@ internal static class ControlBoardTLR {
         }
     }
 
-    private static void WriteHookDetailNote(StringBuilder sb, int hookCount) {
+    private static void WriteHookDetailNote(StringBuilder sb, int hookCount, bool isValidation) {
         var msg = hookCount > 0
             ? $"Hook details are available in Admin view. This transition has {hookCount} hook{(hookCount == 1 ? string.Empty : "s")}."
-            : "Hook details are available in Admin view when emits exist for this transition.";
+            : isValidation
+                ? "This transition is in ValidationMode. Hook sequencing is engine-managed; open Admin view to inspect the individual hook rows."
+                : "Hook details are available in Admin view when emits exist for this transition.";
         sb.Append($"                    <div class=\"empty\">{E(msg)}</div>\n");
+    }
+
+    private static void WriteCompleteCard(StringBuilder sb, JsonElement complete) {
+        var nextEvent = S(complete, "next_event");
+        var ackGuid = S(complete, "complete_ack_guid");
+        var status = S(complete, "complete_status");
+        var lastTrigger = Fmt(S(complete, "complete_last_trigger"));
+        var dispatched = B(complete, "complete_dispatched");
+        var totalAcks = S(complete, "complete_total_acks");
+        var processedAcks = S(complete, "complete_processed_acks");
+        var failedAcks = S(complete, "complete_failed_acks");
+        var tone = status.ToLowerInvariant() switch {
+            "processed" => "ok",
+            "failed" => "fail",
+            "partial" or "pending" or "ready" => "warn",
+            _ => "info"
+        };
+
+        sb.Append($"""
+                    <div class="complete-card">
+                      <div class="complete-head">
+                        <div class="complete-title">Engine completion handoff</div>
+                        <span class="mini-badge {tone}">{E(status)}</span>
+                      </div>
+                      <div class="complete-grid">
+                        <div class="complete-stat">
+                          <div class="complete-k">Resolved next</div>
+                          <div class="complete-v">{E(string.IsNullOrWhiteSpace(nextEvent) ? "—" : nextEvent)}</div>
+                        </div>
+                        <div class="complete-stat">
+                          <div class="complete-k">Dispatched</div>
+                          <div class="complete-v">{E(dispatched ? "Yes" : "No")}</div>
+                        </div>
+                        <div class="complete-stat">
+                          <div class="complete-k">ACK guid</div>
+                          <div class="complete-v">{E(string.IsNullOrWhiteSpace(ackGuid) ? "—" : ackGuid)}</div>
+                        </div>
+                        <div class="complete-stat">
+                          <div class="complete-k">ACK progress</div>
+                          <div class="complete-v">{E($"{processedAcks}/{totalAcks}")}</div>
+                        </div>
+                        <div class="complete-stat">
+                          <div class="complete-k">Failed ACKs</div>
+                          <div class="complete-v">{E(string.IsNullOrWhiteSpace(failedAcks) ? "0" : failedAcks)}</div>
+                        </div>
+                        <div class="complete-stat">
+                          <div class="complete-k">Last trigger</div>
+                          <div class="complete-v">{E(string.IsNullOrWhiteSpace(lastTrigger) ? "—" : lastTrigger)}</div>
+                        </div>
+                      </div>
+                    </div>
+""");
     }
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -696,6 +791,24 @@ internal static class ControlBoardTLR {
         for (var i = 0; i < items.Count; i++) {
             if (items[i].TryGetProperty("hooks", out var hooks) && hooks.ValueKind == JsonValueKind.Array)
                 total += hooks.GetArrayLength();
+        }
+        return total;
+    }
+
+    private static int CountValidation(List<JsonElement> items) {
+        var total = 0;
+        for (var i = 0; i < items.Count; i++) {
+            if (string.Equals(S(items[i], "dispatch_mode"), "ValidationMode", StringComparison.OrdinalIgnoreCase))
+                total++;
+        }
+        return total;
+    }
+
+    private static int CountComplete(List<JsonElement> items) {
+        var total = 0;
+        for (var i = 0; i < items.Count; i++) {
+            if (items[i].TryGetProperty("complete", out var complete) && complete.ValueKind == JsonValueKind.Object)
+                total++;
         }
         return total;
     }

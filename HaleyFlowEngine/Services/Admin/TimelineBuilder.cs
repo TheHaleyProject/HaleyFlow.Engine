@@ -106,15 +106,42 @@ internal static class TimelineBuilder {
         w.WriteNumber(KEY_ORDER_NO, orderNo);
         w.WriteNumber(KEY_LIFECYCLE_ID, lcId);
         WriteDt(w, KEY_CREATED, lc[KEY_CREATED]);
+        WriteDt(w, "occurred", lc["occurred"]);
         w.WriteString(KEY_FROM_STATE, lc.GetString(KEY_FROM_STATE));
         w.WriteString(KEY_TO_STATE, lc.GetString(KEY_TO_STATE));
         w.WriteString(KEY_EVENT, lc.GetString(KEY_EVENT));
         w.WriteNumber(KEY_EVENT_CODE, lc.GetInt(KEY_EVENT_CODE));
         w.WriteBoolean(KEY_IS_INITIAL, lc.GetInt(KEY_IS_INITIAL) != 0);
         w.WriteBoolean(KEY_IS_TERMINAL, lc.GetInt(KEY_IS_TERMINAL) != 0);
+        w.WriteString(KEY_DISPATCH_MODE, lc.GetString(KEY_DISPATCH_MODE));
         var actor = lc.GetString(KEY_ACTOR);
         if (actor != null) w.WriteString(KEY_ACTOR, actor);
         else w.WriteNull(KEY_ACTOR);
+
+        var hasComplete = lc.GetInt("has_complete") != 0;
+        if (hasComplete) {
+            w.WritePropertyName(KEY_COMPLETE);
+            w.WriteStartObject();
+            if (lc["next_event"] is DBNull || lc["next_event"] == null) w.WriteNull(KEY_NEXT_EVENT);
+            else w.WriteNumber(KEY_NEXT_EVENT, lc.GetInt(KEY_NEXT_EVENT));
+
+            var ackGuid = lc.GetString(KEY_COMPLETE_ACK_GUID);
+            if (!string.IsNullOrWhiteSpace(ackGuid)) w.WriteString(KEY_COMPLETE_ACK_GUID, ackGuid);
+            else w.WriteNull(KEY_COMPLETE_ACK_GUID);
+
+            var dispatched = lc.GetInt(KEY_COMPLETE_DISPATCHED) != 0;
+            var totalAcks = lc.GetLong(KEY_COMPLETE_TOTAL_ACKS);
+            var processedAcks = lc.GetLong(KEY_COMPLETE_PROCESSED_ACKS);
+            var failedAcks = lc.GetLong(KEY_COMPLETE_FAILED_ACKS);
+
+            w.WriteBoolean(KEY_COMPLETE_DISPATCHED, dispatched);
+            w.WriteNumber(KEY_COMPLETE_TOTAL_ACKS, totalAcks);
+            w.WriteNumber(KEY_COMPLETE_PROCESSED_ACKS, processedAcks);
+            w.WriteNumber(KEY_COMPLETE_FAILED_ACKS, failedAcks);
+            WriteDt(w, KEY_COMPLETE_LAST_TRIGGER, lc[KEY_COMPLETE_LAST_TRIGGER]);
+            w.WriteString(KEY_COMPLETE_STATUS, CompleteStatus(dispatched, totalAcks, processedAcks, failedAcks));
+            w.WriteEndObject();
+        }
 
         if (detail >= TimelineDetail.Detailed) {
             w.WritePropertyName(KEY_ACTIVITIES);
@@ -184,6 +211,15 @@ internal static class TimelineBuilder {
         if ((f & 2) != 0) return nameof(LifeCycleInstanceFlag.Suspended);
         if ((f & 1) != 0) return nameof(LifeCycleInstanceFlag.Active);
         return nameof(LifeCycleInstanceFlag.None);
+    }
+
+    private static string CompleteStatus(bool dispatched, long totalAcks, long processedAcks, long failedAcks) {
+        if (!dispatched) return "Ready";
+        if (failedAcks > 0) return "Failed";
+        if (totalAcks > 0 && processedAcks >= totalAcks) return "Processed";
+        if (processedAcks > 0) return "Partial";
+        if (totalAcks > 0) return "Pending";
+        return "Dispatched";
     }
 
     private static Dictionary<long, List<DbRow>>? GroupByLcId(DbRows? rows) {

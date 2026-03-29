@@ -22,17 +22,31 @@ namespace Haley.Internal {
 
         // Timeline fetch — lifecycle rows with joined state/event names. Ordered oldest-first for display.
         public const string LIST_FOR_TIMELINE =
-            $@"SELECT l.id AS lifecycle_id, COALESCE(l.occurred, l.created) AS created,
+            $@"SELECT l.id AS lifecycle_id, COALESCE(l.occurred, l.created) AS created, l.occurred,
                       sf.display_name AS from_state, IF((sf.flags & 1) <> 0, 1, 0) AS is_initial,
                       st.display_name AS to_state,  IF((st.flags & 2) <> 0, 1, 0) AS is_terminal,
                       ev.display_name AS event, ev.code AS event_code,
-                      ld.actor
+                      ld.actor,
+                      CASE WHEN EXISTS (SELECT 1 FROM hook_lc hl WHERE hl.lc_id = l.id) THEN 'ValidationMode' ELSE 'NormalRun' END AS dispatch_mode,
+                      ln.`next` AS next_event,
+                      IF(ln.id IS NULL, 0, 1) AS has_complete,
+                      IF(ln.dispatched = 1, 1, 0) AS complete_dispatched,
+                      a.guid AS complete_ack_guid,
+                      COUNT(ac.ack_id) AS complete_total_acks,
+                      COALESCE(SUM(IF(ac.status = 3, 1, 0)), 0) AS complete_processed_acks,
+                      COALESCE(SUM(IF(ac.status = 4, 1, 0)), 0) AS complete_failed_acks,
+                      MAX(ac.last_trigger) AS complete_last_trigger
                FROM lifecycle l
                JOIN state sf ON sf.id = l.from_state
                JOIN state st ON st.id = l.to_state
                JOIN events ev ON ev.id = l.event
                LEFT JOIN lc_data ld ON ld.lc_id = l.id
+               LEFT JOIN lc_next ln ON ln.id = l.id
+               LEFT JOIN lcn_ack lna ON lna.lc_id = l.id
+               LEFT JOIN ack a ON a.id = lna.ack_id
+               LEFT JOIN ack_consumer ac ON ac.ack_id = a.id
                WHERE l.instance_id = {INSTANCE_ID}
+               GROUP BY l.id, l.occurred, l.created, sf.display_name, sf.flags, st.display_name, st.flags, ev.display_name, ev.code, ld.actor, ln.id, ln.`next`, ln.dispatched, a.guid
                ORDER BY l.id ASC;";
 
         // occurred is NULL for normal flow; set only for replay/late-join scenarios
