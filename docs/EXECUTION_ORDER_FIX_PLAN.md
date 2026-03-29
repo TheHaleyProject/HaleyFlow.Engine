@@ -72,7 +72,7 @@ These mechanics are correct and must be preserved exactly:
 | Gate hooks block progression (all consumers at same order must ACK before next order dispatches) | `AckOutcomeOrchestrator.AdvanceNextHookOrderAsync` |
 | Effect hooks are fire-and-forget within `EffectTimeoutSeconds`; abandon does not block | `MonitorOrchestrator.ResendDispatchKindAsync` + `AbandonEffectHookAsync` |
 | Gate + effect at same `order_seq`: effect only advances when gate at same order is done | `AckOutcomeOrchestrator.AckAsync` — effect path checks `CountIncompleteBlockingInOrderAsync` |
-| Gate-success skip: if gate has terminal `complete.success`, skip all remaining undispatched gates, drain effects | `TrySkipRemainingGatesIfSuccessCodeAsync` + `AdvanceAndCheckTransitionModeAsync` |
+| Gate-success skip: if gate has terminal `complete.success`, skip later gate orders, still run same-order effects, and only keep later effects that are explicitly marked `send="always"` | Success-path hook advancement logic |
 | ACK gate: blocks new trigger while prior lifecycle ACKs unresolved | `InstanceOrchestrator.TriggerAsync` — `CountPendingForInstanceAsync` |
 | Blocking hook gate: blocks new trigger while blocking hooks unresolved | `InstanceOrchestrator.TriggerAsync` — `CountPendingBlockingHookAcksAsync` + `CountUndispatchedBlockingHooksAsync` |
 | Policy is locked at instance creation | `EnsureInstanceAsync` — `policy_id` written once |
@@ -94,10 +94,10 @@ Phase 1 — Transition (ValidationMode)
 
 Phase 2 — Hooks (ordered, gate/effect contract unchanged)
   Engine dispatches first hook order batch.
-  Gate fails + OnFailureEvent code → engine fires that code directly. No Complete. State blocked.
-  Gate fails + no code → fall back to OnFailureEvent from the transition rule. If that is also absent → state blocked. No Complete.
-  Gate succeeds → advance to next order (gate-skip logic unchanged).
-  Effect runs → result ignored, advance when gate at same order is done.
+  Gate fails + OnFailureEvent code → stop the current hook plan immediately, do NOT run same-order effects or later orders, fire that code directly. No Complete. State blocked.
+  Gate fails + no code → stop the current hook plan immediately, do NOT run same-order effects or later orders, fall back to OnFailureEvent from the transition rule. If that is also absent → state blocked. No Complete.
+  Gate succeeds → finish that order's effect phase, then advance to next order (gate-skip logic unchanged).
+  Effect runs → result ignored for routing, but the engine waits for the current dispatched effect batch to become terminal before advancing.
   All hooks resolve → continue to Phase 3.
 
 Phase 3 — Complete event
@@ -116,6 +116,8 @@ NormalRun (no hooks)
 **Complete event carries:** `HooksSucceeded` bool, `NextEvent` (single resolved suggested code, `0` = engine has no suggestion), `LifeCycleId`. Consumer receives this as the engine's resolved suggestion and may either accept it or override it in `OnTransitionCompleteAsync`.
 
 **Hook events carry:** route, params, hook type, order. They do not carry independent consumer-owned routing decisions. Terminal gate outcome codes remain engine-owned policy data.
+
+**Per-order rule:** each order has a gate phase and an effect phase. The effect phase exists only if the order's gates finish successfully. A gate failure cancels the current order immediately: same-order effects do not run, later orders do not run.
 
 ---
 
@@ -460,8 +462,8 @@ File: `E:\HaleyProject\HaleyFlow.Engine\HaleyFlowEngine\Services\Core\PolicyEnfo
 **`WorkflowRelay`**
 File: `E:\HaleyProject\HaleyAbstractions.Core\HaleyAbstractionsCore\WorkFlowEngine\Models\Relay\WorkflowRelay.cs`
 - Preserve terminal gate complete-code semantics so relay stays aligned with engine:
-  - gate success with terminal code → remember that code, skip remaining gates, drain effects, then continue
-  - gate failure with terminal code → use that code
+  - gate success with terminal code → remember that code, skip later gates, run same-order effects, keep later `send="always"` effects on the success path, then continue
+  - gate failure with terminal code → use that code immediately; do not run same-order effects or later orders
   - gate failure without code → blocked / fallback behavior remains explicit
 - After all hooks, relay still converges to a single resolved next step
 
@@ -480,7 +482,7 @@ File: `E:\HaleyProject\HaleyFlow.Engine\docs\HaleyFlowProtocol_v1.html`
 - Remove `TransitionMode` from dispatch-mode table
 - Add `Complete` event section: kind=3, what it carries, when dispatched, `OnTransitionCompleteAsync`
 - Update gate hook section: block or allow only; no outcome codes
-- Update ValidationMode description: "ACK immediately; no business logic; engine dispatches hooks next"
+- Update ValidationMode description: "run normal business logic; suppress post-ACK auto-trigger; engine dispatches hooks next"
 
 ---
 
@@ -507,10 +509,10 @@ File: `E:\HaleyProject\HaleyFlow.Engine\docs\HaleyFlowProtocol_v1.html`
 | NormalRun (no hooks) | Trigger → ValidationMode NOT set → consumer runs logic → `TriggerAsync` → next state. Unchanged. |
 | ValidationMode, Processed | Trigger → ValidationMode event → consumer runs the same transition handler → consumer ACKs Processed without auto-triggering → hooks dispatched in order → Complete event → consumer receives engine's resolved `NextEvent` as confirmation and either accepts it or overrides it → next state. |
 | ValidationMode, Failed | Consumer ACKs Failed → engine fires `OnFailureEvent` via `TriggerAsync` directly. No hooks. No Complete. |
-| Gate hook fails, no code | Hook ACK comes back non-Processed → fall back to transition rule's OnFailureEvent. If absent → state blocked. No Complete. |
-| Gate hook fails + OnFailureEvent | Engine fires failure code directly via `TriggerAsync`. No Complete. |
+| Gate hook fails, no code | Hook ACK comes back non-Processed → stop the current hook plan immediately. Same-order effects and later orders do not run. Fall back to transition rule's OnFailureEvent. If absent → state blocked. No Complete. |
+| Gate hook fails + OnFailureEvent | Engine fires failure code directly via `TriggerAsync`. Same-order effects and later orders do not run. No Complete. |
 | All hooks resolve | `AdvanceNextHookOrderAsync` returns `allDone=true` → engine resolves one final next code → `DispatchCompleteEventAsync` → `lc_next.next` written → Complete dispatched. |
 | Consumer crash after receiving Complete | `ack_consumer.status` stays Pending/Delivered → monitor's `ResendDispatchKindAsync` retries delivery. Same as all ACK retries — no special handling. |
-| Gate-success skip + effects drain | Skipped gate's terminal `complete.success` becomes the resolved `lc_next.next` suggestion passed through the Complete event after effects drain. |
+| Gate-success skip + effects drain | Skipped gate's terminal `complete.success` becomes the resolved `lc_next.next` suggestion passed through the Complete event after the reachable success-path effects finish (same-order effects, plus later `send="always"` effects only). |
 | Complete with next=0 | Engine still dispatches Complete. Default consumer complete handler does nothing, but custom wrapper logic may choose the next trigger. |
 | Relay parity | Relay: handler → hooks → resolve one final next step. Engine: ValidationMode handler → hooks → Complete → consumer fires resolved next step. Same contract. |
