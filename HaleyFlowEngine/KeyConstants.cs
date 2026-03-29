@@ -85,6 +85,8 @@ namespace Haley.Internal {
         public const string KEY_OTHER_ACTIVITIES = "other_activities";
         public const string KEY_INSTANCE_STATUS = "instance_status";
         public const string KEY_INSTANCE_MESSAGE = "instance_message";
+        public const string KEY_HOOKS_SUCCEEDED = "hooks_succeeded";
+        public const string KEY_NEXT_EVENT = "next_event";
 
         // blueprint structure keys
         public const string KEY_DEFINITION = "definition";
