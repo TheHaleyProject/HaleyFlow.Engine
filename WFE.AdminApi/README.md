@@ -18,6 +18,8 @@ Engine (`/api/admin/wf/engine/...`):
   - Query: `envCode`, `defName?`, `status?`, `skip?`, `take?`
 - `GET /api/admin/wf/engine/pending-acks`
   - Query: `envCode`, `skip?`, `take?`
+- `GET /api/admin/wf/engine/notices`
+  - Query: `code?`, `kind?`, `instanceGuid?`, `ackGuid?`, `skip?`, `take?`
 - `GET /api/admin/wf/engine/summary`
   - Query: `envCode`
 - `GET /api/admin/wf/engine/health`

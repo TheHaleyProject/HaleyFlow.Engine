@@ -11,6 +11,7 @@ public interface IWorkFlowEngineService : IWorkFlowEngineAccessor {
     Task<IReadOnlyList<Dictionary<string, object?>>> GetEngineEntitiesAsync(int envCode, string? defName, bool runningOnly, int skip, int take, CancellationToken ct);
     Task<IReadOnlyList<Dictionary<string, object?>>> GetEngineInstancesByStatusAsync(int envCode, string? defName, LifeCycleInstanceFlag statusFlags, int skip, int take, CancellationToken ct);
     Task<IReadOnlyList<Dictionary<string, object?>>> GetPendingAcksAsync(int envCode, int skip, int take, CancellationToken ct);
+    Task<IReadOnlyList<Dictionary<string, object?>>> GetRecentNoticesAsync(string? code, string? kind, string? instanceGuid, string? ackGuid, int skip, int take, CancellationToken ct);
     Task<Dictionary<string, object?>> GetSummaryAsync(int envCode, CancellationToken ct);
     Task<Dictionary<string, object?>> GetHealthAsync(CancellationToken ct);
     Task<Dictionary<string, object?>> EnsureHostInitializedAsync(CancellationToken ct);
@@ -24,5 +25,4 @@ public interface IWorkFlowEngineService : IWorkFlowEngineAccessor {
     Task<WorkflowDefinitionSnapshot?> GetDefinitionSnapshotAsync(int envCode, string definitionName, CancellationToken ct);
     Task<BackfillImportResult> ImportBackfillAsync(WorkflowBackfillObject obj, CancellationToken ct);
 }
-
 

@@ -3,6 +3,8 @@ using Haley.Enums;
 using Haley.Models;
 using Haley.Utils;
 using System.Diagnostics;
+using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace Haley.Services;
 
@@ -12,9 +14,14 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
     private readonly AdapterGateway _agw;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly SemaphoreSlim _runtimeInitLock = new(1, 1);
+    private readonly object _noticeLock = new();
+    private readonly List<EngineNoticeSnapshot> _recentNotices = new();
 
     private IWorkFlowEngine? _engine;
     private bool _runtimeStarted;
+    private bool _noticeSubscriptionAttached;
+
+    private const int MaxRecentNoticeCount = 500;
 
     public WorkFlowEngineService(EngineServiceOptions options, IAdapterGateway agw) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -70,6 +77,48 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
         var rows = await _engine!.ListPendingAcksAsync(envCode, normalizedSkip, normalizedTake, ct);
         return rows.ToDictionaries();
+    }
+
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> GetRecentNoticesAsync(string? code, string? kind, string? instanceGuid, string? ackGuid, int skip, int take, CancellationToken ct) {
+        await EnsureInitializedAsync(ct);
+        ct.ThrowIfCancellationRequested();
+
+        var normalizedCode = NormalizeFilter(code);
+        var normalizedKind = NormalizeFilter(kind);
+        var normalizedInstanceGuid = NormalizeFilter(instanceGuid);
+        var normalizedAckGuid = NormalizeFilter(ackGuid);
+        var (normalizedSkip, normalizedTake) = NormalizePaging(skip, take);
+
+        List<EngineNoticeSnapshot> snapshot;
+        lock (_noticeLock) {
+            snapshot = _recentNotices.ToList();
+        }
+
+        IEnumerable<EngineNoticeSnapshot> query = snapshot;
+        if (!string.IsNullOrWhiteSpace(normalizedCode)) {
+            query = query.Where(x => string.Equals(x.Code, normalizedCode, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedKind)) {
+            query = query.Where(x => string.Equals(x.Kind, normalizedKind, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedInstanceGuid)) {
+            query = query.Where(x => string.Equals(x.InstanceGuid, normalizedInstanceGuid, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedAckGuid)) {
+            query = query.Where(x => string.Equals(x.AckGuid, normalizedAckGuid, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var items = query
+            .OrderByDescending(x => x.OccurredAt)
+            .Skip(normalizedSkip)
+            .Take(normalizedTake)
+            .Select(ToDictionary)
+            .ToList();
+
+        return items;
     }
 
     public async Task<Dictionary<string, object?>> GetSummaryAsync(int envCode, CancellationToken ct) {
@@ -214,6 +263,7 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
                     var engineMaker = new WorkFlowEngineMaker().WithAdapterKey(_options.EngineAdapterKey);
                     engineMaker.Options = _options;
                     _engine = await engineMaker.Build(_agw);
+                    EnsureNoticeSubscription(_engine);
                 }
             } catch (Exception) {
                 throw; //Very important.. because without this, the engine might silently be failing and we will never know the issue..
@@ -313,6 +363,79 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         if (normalizedTake > maxTake) normalizedTake = maxTake;
         return (normalizedSkip, normalizedTake);
     }
+
+    private void EnsureNoticeSubscription(IWorkFlowEngine engine) {
+        if (_noticeSubscriptionAttached) return;
+        engine.NoticeRaised += OnEngineNoticeAsync;
+        _noticeSubscriptionAttached = true;
+    }
+
+    private Task OnEngineNoticeAsync(LifeCycleNotice notice) {
+        var data = notice.Data == null
+            ? null
+            : new Dictionary<string, object?>(notice.Data, StringComparer.OrdinalIgnoreCase);
+
+        var instanceGuid = TryGetString(data, "instanceGuid");
+        var ackGuid = TryGetString(data, "ackGuid");
+        var exceptionType = notice.Exception?.GetType().FullName;
+        var exceptionMessage = notice.Exception?.Message;
+
+        lock (_noticeLock) {
+            _recentNotices.Add(new EngineNoticeSnapshot(
+                notice.OccurredAt,
+                notice.Kind.ToString(),
+                notice.NoticeType,
+                notice.Code,
+                notice.Message,
+                exceptionType,
+                exceptionMessage,
+                instanceGuid,
+                ackGuid,
+                data == null ? null : new ReadOnlyDictionary<string, object?>(data)));
+
+            if (_recentNotices.Count > MaxRecentNoticeCount) {
+                _recentNotices.RemoveRange(0, _recentNotices.Count - MaxRecentNoticeCount);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static string? NormalizeFilter(string? value) {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static Dictionary<string, object?> ToDictionary(EngineNoticeSnapshot notice) {
+        return new Dictionary<string, object?> {
+            ["occurredAt"] = notice.OccurredAt,
+            ["kind"] = notice.Kind,
+            ["noticeType"] = notice.NoticeType,
+            ["code"] = notice.Code,
+            ["message"] = notice.Message,
+            ["instanceGuid"] = notice.InstanceGuid,
+            ["ackGuid"] = notice.AckGuid,
+            ["exceptionType"] = notice.ExceptionType,
+            ["exceptionMessage"] = notice.ExceptionMessage,
+            ["data"] = notice.Data
+        };
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?>? data, string key) {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null) return null;
+        return Convert.ToString(value)?.Trim();
+    }
+
+    private sealed record EngineNoticeSnapshot(
+        DateTimeOffset OccurredAt,
+        string Kind,
+        string NoticeType,
+        string Code,
+        string Message,
+        string? ExceptionType,
+        string? ExceptionMessage,
+        string? InstanceGuid,
+        string? AckGuid,
+        IReadOnlyDictionary<string, object?>? Data);
 }
 
 

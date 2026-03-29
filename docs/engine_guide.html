@@ -787,12 +787,23 @@ SELECT COUNT(*) FROM hook h
           <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks dispatched after all gate hooks at the prior order completed</td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; originating ACK was still accepted</td></tr>
+          <tr><td><code>COMPLETE_DISPATCHED</code></td><td><span class="badge info">Info</span></td><td>Engine emitted the final Complete handoff after hook sequencing resolved the next step</td></tr>
+          <tr><td><code>COMPLETE_DISPATCH_ERROR</code></td><td><span class="badge warn">Warn</span></td><td>Engine failed while creating or dispatching the Complete handoff</td></tr>
+          <tr><td><code>STALE_ACK_IGNORED</code></td><td><span class="badge warn">Warn</span></td><td>ACK arrived for an older lifecycle after the instance had already moved on; orchestration ignored it</td></tr>
+          <tr><td><code>VALIDATION_FAILED</code></td><td><span class="badge info">Info</span></td><td>ValidationMode lifecycle ACK failed and the engine triggered the transition failure branch</td></tr>
+          <tr><td><code>VALIDATION_FAILED_NO_ROUTE</code></td><td><span class="badge warn">Warn</span></td><td>ValidationMode lifecycle ACK failed but the transition rule had no failure route</td></tr>
+          <tr><td><code>GATE_FAILED</code></td><td><span class="badge info">Info</span></td><td>A gate hook ACK failed and the engine triggered the resolved failure branch</td></tr>
+          <tr><td><code>GATE_FAILED_NO_ROUTE</code></td><td><span class="badge warn">Warn</span></td><td>A gate hook ACK failed but neither the gate nor the transition defined a failure route</td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance stuck in state with no open ACKs and no policy timeout</td></tr>
           <tr><td><code>MONITOR_ERROR</code></td><td><span class="badge error">Error</span></td><td>Unhandled exception in monitor loop</td></tr>
           <tr><td><code>EVENT_HANDLER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception in an <code>EventRaised</code> handler</td></tr>
           <tr><td><code>TRIGGER_ERROR</code></td><td><span class="badge error">Error</span></td><td>Exception during <code>TriggerAsync</code></td></tr>
         </tbody>
       </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">Admin debugging</div>
+      The Admin API exposes the in-memory notice stream at <code>GET /api/admin/wf/engine/notices</code>. Filter by <code>code</code>, <code>kind</code>, <code>instanceGuid</code>, or <code>ackGuid</code> when you want to inspect the new Validation / Complete orchestration path without querying raw runtime tables.
     </div>
   </section>
 
@@ -2328,6 +2339,13 @@ GET /api/workflow/timeline/html
           <tr><td><code>HOOK_GROUP_CHECK_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Group completion DB check failed; ACK itself was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCED</code></td><td><span class="badge info">Info</span></td><td> Next-order hooks were dispatched after all gate hooks at the prior order completed</td><td><code>orderSeq</code>, <code>instanceGuid</code></td></tr>
           <tr><td><code>HOOK_ORDER_ADVANCE_ERROR</code></td><td><span class="badge warn">Warn</span></td><td> Exception during order advancement or ACK fan-out; the originating ACK was still accepted</td><td><code>ackGuid</code>, <code>error</code></td></tr>
+          <tr><td><code>COMPLETE_DISPATCHED</code></td><td><span class="badge info">Info</span></td><td>Final Complete handoff dispatched after hook sequencing resolved the engine-side next event suggestion</td><td><code>instanceGuid</code>, <code>nextEvent</code></td></tr>
+          <tr><td><code>COMPLETE_DISPATCH_ERROR</code></td><td><span class="badge warn">Warn</span></td><td>Engine failed while creating or dispatching the Complete handoff</td><td><code>instanceGuid</code>, <code>error</code></td></tr>
+          <tr><td><code>STALE_ACK_IGNORED</code></td><td><span class="badge warn">Warn</span></td><td>An ACK was accepted at the row level but ignored for orchestration because the lifecycle is no longer current</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>lifecycleId</code>, <code>currentLifecycleId</code></td></tr>
+          <tr><td><code>VALIDATION_FAILED</code></td><td><span class="badge info">Info</span></td><td>ValidationMode lifecycle ACK failed and the engine triggered the transition failure branch</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>nextEvent</code>, <code>applied</code>, <code>triggerReason</code></td></tr>
+          <tr><td><code>VALIDATION_FAILED_NO_ROUTE</code></td><td><span class="badge warn">Warn</span></td><td>ValidationMode lifecycle ACK failed but no transition failure route exists</td><td><code>instanceGuid</code>, <code>ackGuid</code></td></tr>
+          <tr><td><code>GATE_FAILED</code></td><td><span class="badge info">Info</span></td><td>A gate hook ACK failed and the engine triggered the resolved failure branch</td><td><code>ackGuid</code>, <code>instanceGuid</code>, <code>nextEvent</code>, <code>applied</code>, <code>triggerReason</code></td></tr>
+          <tr><td><code>GATE_FAILED_NO_ROUTE</code></td><td><span class="badge warn">Warn</span></td><td>A gate hook ACK failed but neither the hook nor the transition defined a failure route</td><td><code>instanceGuid</code>, <code>route</code>, <code>ackGuid</code></td></tr>
           <tr><td><code>STATE_STALE</code></td><td><span class="badge overdue">OverDue</span></td><td>Instance overdue in current state (no open ACKs, no policy timeout configured). Fires only for states <em>without</em> a timeout rule.</td><td><code>consumerId</code>, <code>instanceId</code>, <code>instanceGuid</code>, <code>stateName</code>, <code>staleSeconds</code></td></tr>
           <tr><td><code>TIMEOUT_FIRED</code></td><td><span class="badge info">Info</span></td><td>Monitor auto-triggered a timeout event (Case A — <code>timeout_event</code> set). Instance has been moved automatically. Any gate-hook ACKs were cancelled first.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>eventCode</code>, <code>lcId</code></td></tr>
           <tr><td><code>STATE_TIMEOUT_EXCEEDED</code></td><td><span class="badge overdue">OverDue</span></td><td><em>(Pending)</em> Instance exceeded its policy-defined state deadline (Case B — no <code>timeout_event</code>). Fires repeatedly per schedule until instance transitions. <code>triggerCount</code> increments each time.</td><td><code>instanceGuid</code>, <code>entityId</code>, <code>stateName</code>, <code>triggerCount</code>, <code>staleSeconds</code></td></tr>

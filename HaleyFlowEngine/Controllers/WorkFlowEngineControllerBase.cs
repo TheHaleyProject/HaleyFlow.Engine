@@ -62,6 +62,12 @@ public abstract class WorkFlowEngineControllerBase : ControllerBase {
         return Ok(rows);
     }
 
+    [HttpGet("notices")]
+    public async Task<IActionResult> GetRecentNotices([FromQuery] string? code, [FromQuery] string? kind, [FromQuery] string? instanceGuid, [FromQuery] string? ackGuid, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default) {
+        var rows = await _service.GetRecentNoticesAsync(code, kind, instanceGuid, ackGuid, skip, take, ct);
+        return Ok(rows);
+    }
+
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary([FromQuery] int envCode, CancellationToken ct) {
         var summary = await _service.GetSummaryAsync(envCode, ct);

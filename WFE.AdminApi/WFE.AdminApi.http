@@ -15,6 +15,11 @@ Accept: application/json
 
 ###
 
+GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/engine/notices?code=COMPLETE_DISPATCHED&take=20
+Accept: application/json
+
+###
+
 GET {{WFE.AdminApi_HostAddress}}/api/admin/wf/consumer/instances?defName=change-request&skip=0&take=20
 Accept: application/json
 
