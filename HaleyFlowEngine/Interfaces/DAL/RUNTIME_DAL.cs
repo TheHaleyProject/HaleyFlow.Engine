@@ -51,4 +51,10 @@ namespace Haley.Abstractions {
         // Due Case B entries: no event_code, either initial grace elapsed or next_due passed.
         Task<DbRows> ListDueCaseBPagedAsync(uint excludedInstanceFlagsMask, int skip, int take, DbExecutionLoad load = default);
     }
+
+    internal interface ILcNextDAL {
+        Task<int> InsertAsync(long lcId, int nextEvent, long? sourceAckId, DbExecutionLoad load = default);
+        Task<int> MarkDispatchedAsync(long lcId, long ackId, DbExecutionLoad load = default);
+        Task<DbRows> ListPendingAsync(int take, DbExecutionLoad load = default);
+    }
 }
