@@ -14,7 +14,7 @@ namespace Haley.Services;
 /// </summary>
 internal static class ControlBoardTLR {
 
-    public static string Render(string timelineJson, string? displayName = null, TimelineDetail detail = TimelineDetail.Detailed, string? color = null) {
+    public static string Render(string timelineJson, string? displayName = null, TimelineDetail detail = TimelineDetail.Detailed, string? color = null, IReadOnlyList<Dictionary<string, object?>>? recentNotices = null, TimeSpan? noticeRetention = null, int? noticeCap = null) {
         using var doc = JsonDocument.Parse(timelineJson);
         var root = doc.RootElement;
         var pageTitle = BuildPageTitle(root);
@@ -34,6 +34,9 @@ internal static class ControlBoardTLR {
             var activityCount = CountActivities(items);
             var hookCount = detail >= TimelineDetail.Admin ? CountHooks(items) : 0;
             var boardTitle = !string.IsNullOrWhiteSpace(displayName) ? displayName : S(inst, "entity_id");
+            var notices = recentNotices ?? Array.Empty<Dictionary<string, object?>>();
+            var noticeWindowLabel = FormatNoticeWindow(noticeRetention);
+            var noticeCapLabel = FormatNoticeCap(noticeCap);
 
             sb.Append("""
   <aside class="side">
@@ -53,7 +56,8 @@ internal static class ControlBoardTLR {
             WriteBoardHeader(sb, boardTitle);
             WriteFilterPanel(sb, count);
             sb.Append("""
-    <div class="entries" id="entries-area">
+    <div class="board-body">
+      <div class="entries" id="entries-area">
 """);
 
             var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -65,6 +69,10 @@ internal static class ControlBoardTLR {
                 if (!string.IsNullOrWhiteSpace(toState)) seenTargets.Add(toState);
             }
 
+            sb.Append("""
+      </div>
+""");
+            WriteNoticeRail(sb, notices, noticeWindowLabel, noticeCapLabel);
             sb.Append("""
     </div>
   </section>
@@ -182,12 +190,30 @@ internal static class ControlBoardTLR {
     .board-title { font-size: clamp(1.45rem, 2vw, 2.1rem); line-height: 1.08; font-weight: 900; overflow-wrap: anywhere; }
     .board-toolbar-stick { position: sticky; top: 16px; z-index: 8; }
     .board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .board-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
     .toolbar-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
     .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: #ffffff; color: var(--muted); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all .15s ease; }
     .btn:hover { border-color: var(--brand); color: var(--brand-deep); }
     .btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
     .entries { display: flex; flex-direction: column; gap: 18px; padding-bottom: 24px; }
+    .notice-rail { min-width: 0; }
+    .notice-panel { position: sticky; top: 90px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 106px); }
+    .notice-subtitle { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .notice-list { display: grid; gap: 10px; overflow-y: auto; padding-right: 4px; }
+    .notice-card { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); display: grid; gap: 8px; }
+    .notice-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .notice-code { font-size: 11px; font-weight: 900; color: var(--text); font-family: Consolas, monospace; overflow-wrap: anywhere; }
+    .notice-time { font-size: 10px; color: var(--muted); font-family: Consolas, monospace; white-space: nowrap; }
+    .notice-kind { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+    .notice-kind.info { background: var(--blue-soft); color: var(--blue-text); }
+    .notice-kind.warning { background: var(--amber-soft); color: var(--amber-text); }
+    .notice-kind.error { background: var(--red-soft); color: var(--red-text); }
+    .notice-message { font-size: 12px; line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 96px; overflow: auto; padding-right: 2px; }
+    .notice-meta { display: grid; gap: 4px; }
+    .notice-meta-row { font-size: 10px; color: var(--muted); font-family: Consolas, monospace; overflow-wrap: anywhere; }
+    .notice-data { border-top: 1px dashed var(--line); padding-top: 8px; font-size: 10px; color: var(--muted); font-family: Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
+    .notice-empty { color: var(--muted); font-size: 12px; font-style: italic; }
     .entry { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); box-shadow: var(--shadow); }
     .entry-wrap { display: grid; grid-template-columns: 120px minmax(0, 1fr); }
     .entry-index { background: linear-gradient(180deg, var(--brand-deep), #146530); color: #f5fff7; padding: 16px 10px 18px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; }
@@ -284,6 +310,9 @@ internal static class ControlBoardTLR {
       .side { position: static; max-height: none; }
       .side-scroll { max-height: none; overflow: visible; padding-right: 0; }
       .board-toolbar-stick { position: static; }
+      .board-body { grid-template-columns: 1fr; }
+      .notice-panel { position: static; max-height: none; }
+      .notice-list { overflow: visible; padding-right: 0; }
     }
     @media (max-width: 760px) {
       .shell { padding: 14px; }
@@ -477,6 +506,45 @@ internal static class ControlBoardTLR {
         sb.Append("""
         </div>
       </section>
+""");
+    }
+
+    private static void WriteNoticeRail(StringBuilder sb, IReadOnlyList<Dictionary<string, object?>> notices, string noticeWindowLabel, string noticeCapLabel) {
+        var warningCount = 0;
+        var errorCount = 0;
+        for (var i = 0; i < notices.Count; i++) {
+            var kind = DS(notices[i], "kind");
+            if (string.Equals(kind, "Warning", StringComparison.OrdinalIgnoreCase)) warningCount++;
+            else if (string.Equals(kind, "Error", StringComparison.OrdinalIgnoreCase)) errorCount++;
+        }
+
+        sb.Append($"""
+      <aside class="notice-rail">
+        <section class="panel pad notice-panel">
+          <div class="panel-title">Recent notices</div>
+          <div class="notice-subtitle">Filtered to this instance from the in-memory engine notice stream. Only the last {E(noticeWindowLabel)} are shown here, capped to the latest {E(noticeCapLabel)} notices. These notices are not persisted and are intended only for live debugging.</div>
+          <div class="head-meta">
+            <span class="head-pill">{notices.Count} recent</span>
+            <span class="head-pill">{warningCount} warning{(warningCount == 1 ? string.Empty : "s")}</span>
+            <span class="head-pill">{errorCount} error{(errorCount == 1 ? string.Empty : "s")}</span>
+          </div>
+          <div class="notice-list">
+""");
+
+        if (notices.Count == 0) {
+            sb.Append("""            
+            <div class="notice-empty">No recent notices were captured for this instance in the current engine host lifetime.</div>
+""");
+        } else {
+            for (var i = 0; i < notices.Count; i++) {
+                WriteNoticeCard(sb, notices[i]);
+            }
+        }
+
+        sb.Append("""
+          </div>
+        </section>
+      </aside>
 """);
     }
 
@@ -763,6 +831,41 @@ internal static class ControlBoardTLR {
                     </div>
 """);
     }
+
+    private static void WriteNoticeCard(StringBuilder sb, Dictionary<string, object?> notice) {
+        var code = DS(notice, "code");
+        var kind = DS(notice, "kind");
+        var message = DS(notice, "message");
+        var occurredAt = Fmt(DS(notice, "occurredAt"));
+        var ackGuid = DS(notice, "ackGuid");
+        var exceptionType = DS(notice, "exceptionType");
+        var exceptionMessage = DS(notice, "exceptionMessage");
+        var dataText = DS(notice, "dataText");
+        var kindClass = kind.ToLowerInvariant() switch {
+            "warning" => "warning",
+            "error" => "error",
+            _ => "info"
+        };
+
+        sb.Append($"""
+            <article class="notice-card">
+              <div class="notice-head">
+                <div>
+                  <div class="notice-code">{E(code)}</div>
+                  <span class="notice-kind {kindClass}">{E(kind)}</span>
+                </div>
+                <div class="notice-time">{E(string.IsNullOrWhiteSpace(occurredAt) ? "—" : occurredAt)}</div>
+              </div>
+              <div class="notice-message">{E(message)}</div>
+              <div class="notice-meta">
+                {(!string.IsNullOrWhiteSpace(ackGuid) ? $"<div class=\"notice-meta-row\">ack_guid: {E(ackGuid)}</div>" : string.Empty)}
+                {(!string.IsNullOrWhiteSpace(exceptionType) ? $"<div class=\"notice-meta-row\">exception: {E(exceptionType)}</div>" : string.Empty)}
+                {(!string.IsNullOrWhiteSpace(exceptionMessage) ? $"<div class=\"notice-meta-row\">exception_message: {E(exceptionMessage)}</div>" : string.Empty)}
+              </div>
+              {(!string.IsNullOrWhiteSpace(dataText) ? $"<div class=\"notice-data\">{E(dataText)}</div>" : string.Empty)}
+            </article>
+""");
+    }
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static int CountLoops(List<JsonElement> items) {
@@ -866,6 +969,37 @@ internal static class ControlBoardTLR {
     private static bool B(JsonElement el, string key) {
         if (!el.TryGetProperty(key, out var v)) return false;
         return v.ValueKind == JsonValueKind.True;
+    }
+
+    private static string DS(Dictionary<string, object?> item, string key) {
+        if (!item.TryGetValue(key, out var value) || value == null) return string.Empty;
+        return value switch {
+            string s => s,
+            DateTime dt => dt.ToString("O"),
+            DateTimeOffset dto => dto.ToString("O"),
+            _ => Convert.ToString(value) ?? string.Empty
+        };
+    }
+
+    private static string FormatNoticeWindow(TimeSpan? retention) {
+        if (!retention.HasValue || retention.Value <= TimeSpan.Zero) return "current host lifetime";
+        var window = retention.Value;
+        if (window.TotalHours >= 1 && Math.Abs(window.TotalHours - Math.Round(window.TotalHours)) < 0.001) {
+            var hours = (int)Math.Round(window.TotalHours);
+            return hours == 1 ? "1 hour" : $"{hours} hours";
+        }
+
+        if (window.TotalMinutes >= 1 && Math.Abs(window.TotalMinutes - Math.Round(window.TotalMinutes)) < 0.001) {
+            var minutes = (int)Math.Round(window.TotalMinutes);
+            return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+        }
+
+        return window.ToString();
+    }
+
+    private static string FormatNoticeCap(int? noticeCap) {
+        if (!noticeCap.HasValue || noticeCap.Value <= 0) return "configured";
+        return noticeCap.Value.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string BuildPageTitle(JsonElement root) {

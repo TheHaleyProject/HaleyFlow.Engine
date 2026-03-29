@@ -5,6 +5,8 @@ using Haley.Utils;
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 
 namespace Haley.Services;
 
@@ -20,8 +22,6 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
     private IWorkFlowEngine? _engine;
     private bool _runtimeStarted;
     private bool _noticeSubscriptionAttached;
-
-    private const int MaxRecentNoticeCount = 500;
 
     public WorkFlowEngineService(EngineServiceOptions options, IAdapterGateway agw) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -44,10 +44,19 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         var json = await GetTimelineJsonAsync(envCode, defName, entityId, instanceGuid, detail, ct);
         if (string.IsNullOrWhiteSpace(json)) return null;
         var c = color?.Trim();
+        IReadOnlyList<Dictionary<string, object?>>? recentNotices = null;
+        if (design == HtmlTimelineDesign.ControlBoard) {
+            var resolvedInstanceGuid = !string.IsNullOrWhiteSpace(instanceGuid)
+                ? instanceGuid.Trim()
+                : TryExtractInstanceGuidFromTimelineJson(json);
+            if (!string.IsNullOrWhiteSpace(resolvedInstanceGuid)) {
+                recentNotices = await GetRecentNoticesAsync(null, null, resolvedInstanceGuid, null, 0, 24, ct);
+            }
+        }
         return design switch {
             HtmlTimelineDesign.FlowSteps    => FlowStepsTLR.Render(json, displayName?.Trim(), detail, c),
             HtmlTimelineDesign.AuditLog     => AuditLogTLR.Render(json, displayName?.Trim(), detail, c),
-            HtmlTimelineDesign.ControlBoard => ControlBoardTLR.Render(json, displayName?.Trim(), detail, c),
+            HtmlTimelineDesign.ControlBoard => ControlBoardTLR.Render(json, displayName?.Trim(), detail, c, recentNotices, GetRecentNoticeRetention(), GetRecentNoticeMaxCount()),
             _                               => LightGlassTLR.Render(json, displayName?.Trim(), detail, c),
         };
     }
@@ -91,6 +100,7 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
 
         List<EngineNoticeSnapshot> snapshot;
         lock (_noticeLock) {
+            PruneExpiredNoticesUnsafe();
             snapshot = _recentNotices.ToList();
         }
 
@@ -381,6 +391,7 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
         var exceptionMessage = notice.Exception?.Message;
 
         lock (_noticeLock) {
+            PruneExpiredNoticesUnsafe();
             _recentNotices.Add(new EngineNoticeSnapshot(
                 notice.OccurredAt,
                 notice.Kind.ToString(),
@@ -393,8 +404,9 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
                 ackGuid,
                 data == null ? null : new ReadOnlyDictionary<string, object?>(data)));
 
-            if (_recentNotices.Count > MaxRecentNoticeCount) {
-                _recentNotices.RemoveRange(0, _recentNotices.Count - MaxRecentNoticeCount);
+            var maxCount = GetRecentNoticeMaxCount();
+            if (_recentNotices.Count > maxCount) {
+                _recentNotices.RemoveRange(0, _recentNotices.Count - maxCount);
             }
         }
 
@@ -403,6 +415,23 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
 
     private static string? NormalizeFilter(string? value) {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private void PruneExpiredNoticesUnsafe() {
+        var cutoff = DateTimeOffset.UtcNow - GetRecentNoticeRetention();
+        _recentNotices.RemoveAll(x => x.OccurredAt < cutoff);
+    }
+
+    private TimeSpan GetRecentNoticeRetention() {
+        return _options.RecentNoticeRetention > TimeSpan.Zero
+            ? _options.RecentNoticeRetention
+            : TimeSpan.FromHours(2);
+    }
+
+    private int GetRecentNoticeMaxCount() {
+        return _options.RecentNoticeMaxCount > 0
+            ? _options.RecentNoticeMaxCount
+            : 1000;
     }
 
     private static Dictionary<string, object?> ToDictionary(EngineNoticeSnapshot notice) {
@@ -416,13 +445,47 @@ public class WorkFlowEngineService : IWorkFlowEngineService, IAsyncDisposable {
             ["ackGuid"] = notice.AckGuid,
             ["exceptionType"] = notice.ExceptionType,
             ["exceptionMessage"] = notice.ExceptionMessage,
-            ["data"] = notice.Data
+            ["data"] = notice.Data,
+            ["dataText"] = FormatNoticeData(notice.Data)
         };
+    }
+
+    private static string? TryExtractInstanceGuidFromTimelineJson(string timelineJson) {
+        try {
+            using var doc = JsonDocument.Parse(timelineJson);
+            if (!doc.RootElement.TryGetProperty("instance", out var instance)) return null;
+            if (!instance.TryGetProperty("guid", out var guid)) return null;
+            return guid.ValueKind == JsonValueKind.String ? guid.GetString()?.Trim() : null;
+        } catch {
+            return null;
+        }
     }
 
     private static string? TryGetString(IReadOnlyDictionary<string, object?>? data, string key) {
         if (data == null || !data.TryGetValue(key, out var value) || value == null) return null;
         return Convert.ToString(value)?.Trim();
+    }
+
+    private static string? FormatNoticeData(IReadOnlyDictionary<string, object?>? data) {
+        if (data == null || data.Count == 0) return null;
+        var sb = new StringBuilder();
+        foreach (var item in data) {
+            if (sb.Length > 0) sb.AppendLine();
+            sb.Append(item.Key);
+            sb.Append(": ");
+            sb.Append(FormatNoticeValue(item.Value));
+        }
+        return sb.ToString();
+    }
+
+    private static string FormatNoticeValue(object? value) {
+        if (value == null) return "null";
+        return value switch {
+            string s => s,
+            DateTime dt => dt.ToString("O"),
+            DateTimeOffset dto => dto.ToString("O"),
+            _ => value is ValueType ? Convert.ToString(value) ?? string.Empty : JsonSerializer.Serialize(value)
+        };
     }
 
     private sealed record EngineNoticeSnapshot(

@@ -803,7 +803,7 @@ SELECT COUNT(*) FROM hook h
     </div>
     <div class="callout tip">
       <div class="callout-title">Admin debugging</div>
-      The Admin API exposes the in-memory notice stream at <code>GET /api/admin/wf/engine/notices</code>. Filter by <code>code</code>, <code>kind</code>, <code>instanceGuid</code>, or <code>ackGuid</code> when you want to inspect the new Validation / Complete orchestration path without querying raw runtime tables.
+      The Admin API exposes the in-memory notice stream at <code>GET /api/admin/wf/engine/notices</code>. Filter by <code>code</code>, <code>kind</code>, <code>instanceGuid</code>, or <code>ackGuid</code> when you want to inspect the new Validation / Complete orchestration path without querying raw runtime tables. The stream is intentionally bounded by configurable retention and count limits, and it is not persisted. The ControlBoard HTML timeline renders the same recent instance-scoped stream beside the lifecycle entries.
     </div>
   </section>
 
