@@ -385,7 +385,7 @@ internal static class LightGlassTLR {
         item.TryGetProperty("activities", out var acts);
         item.TryGetProperty("hooks", out var hooks);
         var actCount  = acts.ValueKind  == JsonValueKind.Array ? acts.GetArrayLength()  : 0;
-        var hookCount = hooks.ValueKind == JsonValueKind.Array ? hooks.GetArrayLength() : 0;
+        var hookCount = CountVisibleHooks(hooks);
 
         var dotCls = isInitial ? "dot-start" : isTerminal ? "dot-end" : isReopen ? "dot-reopen" : "dot-normal";
 
@@ -521,11 +521,22 @@ internal static class LightGlassTLR {
     private static void WriteHooks(StringBuilder sb, JsonElement hooks) {
         if (hooks.ValueKind != JsonValueKind.Array || hooks.GetArrayLength() == 0) return;
 
+        var anyDispatched = false;
+        foreach (var h in hooks.EnumerateArray()) {
+            if (IsMainTimelineHookVisible(h)) {
+                anyDispatched = true;
+                break;
+            }
+        }
+        if (!anyDispatched) return;
+
         sb.Append("""
         <div class="hooks-hdr">Hooks / Emits</div>
 """);
 
         foreach (var h in OrderHooks(hooks)) {
+            if (!IsMainTimelineHookVisible(h)) continue;
+
             var route        = S(h, "route");
             var label        = S(h, "label");
             var display      = !string.IsNullOrWhiteSpace(label) ? label : route;
@@ -625,6 +636,24 @@ internal static class LightGlassTLR {
         return int.TryParse(value.ToString(), out var parsedText) && parsedText > 0
             ? parsedText
             : int.MaxValue;
+    }
+
+    private static int CountVisibleHooks(JsonElement hooks) {
+        if (hooks.ValueKind != JsonValueKind.Array) return 0;
+        var total = 0;
+        foreach (var hook in hooks.EnumerateArray()) {
+            if (IsMainTimelineHookVisible(hook)) total++;
+        }
+        return total;
+    }
+
+    private static bool IsMainTimelineHookVisible(JsonElement hook) =>
+        B(hook, "dispatched") && HookStatusInt(hook) != 2;
+
+    private static int HookStatusInt(JsonElement hook) {
+        if (!hook.TryGetProperty("hook_status", out var value)) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsed)) return parsed;
+        return int.TryParse(value.ToString(), out var fallback) ? fallback : 0;
     }
 
     private static string E(string s) => WebUtility.HtmlEncode(s);

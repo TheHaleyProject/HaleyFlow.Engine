@@ -230,6 +230,7 @@ internal static class ControlBoardTLR {
     .drawer-chip.warn { background: var(--amber-soft); color: var(--amber-text); }
     .drawer-chip.fail { background: var(--red-soft); color: var(--red-text); }
     .drawer-chip.info { background: var(--blue-soft); color: var(--blue-text); }
+    .drawer-chip.skip { background: #fde8e8; color: #b42318; border-color: rgba(180,35,24,.25); }
     .drawer-group { border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, #ffffff, var(--panel-soft)); padding: 14px; display: grid; gap: 12px; }
     .drawer-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .drawer-group-title { font-size: 13px; font-weight: 900; color: var(--text); }
@@ -315,6 +316,7 @@ internal static class ControlBoardTLR {
     .mini-badge.warn { background: var(--amber-soft);  color: var(--amber-text); border-color: rgba(150,100,0,.22); }
     .mini-badge.fail { background: var(--red-soft);    color: var(--red-text);   border-color: rgba(180,35,24,.25); }
     .mini-badge.info { background: var(--blue-soft); color: var(--blue-text); border-color: rgba(36,84,181,.25); }
+    .mini-badge.skip { background: #fde8e8; color: #b42318; border-color: rgba(180,35,24,.25); }
     .complete-card { border-radius: 14px; padding: 12px 14px; display: grid; gap: 10px; border-color: rgba(36,84,181,.18); background: linear-gradient(180deg, rgba(223,234,255,.42), rgba(255,255,255,.92)); }
     .complete-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .complete-title { font-size: 12px; font-weight: 900; color: var(--blue-text); text-transform: uppercase; letter-spacing: .08em; }
@@ -681,7 +683,7 @@ internal static class ControlBoardTLR {
             <span class="drawer-chip warn">{pending} pending</span>
             <span class="drawer-chip">{acked} acked</span>
             <span class="drawer-chip fail">{failed} failed</span>
-            <span class="drawer-chip">{skipped} skipped</span>
+            <span class="drawer-chip skip">{skipped} skipped</span>
           </div>
         </div>
         <button class="drawer-close" type="button" onclick="closeLeftDrawer()" aria-label="Close hook inventory">×</button>
@@ -722,7 +724,7 @@ internal static class ControlBoardTLR {
               <span class="drawer-chip">{groupEmitted} emitted</span>
               <span class="drawer-chip info">{groupDispatched} dispatched</span>
               <span class="drawer-chip warn">{groupPending} pending</span>
-              <span class="drawer-chip">{groupSkipped} skipped</span>
+              <span class="drawer-chip skip">{groupSkipped} skipped</span>
             </div>
           </div>
           <div class="inventory-list">
@@ -770,11 +772,11 @@ internal static class ControlBoardTLR {
         item.TryGetProperty("activities", out var acts);
         item.TryGetProperty("hooks", out var hooks);
         var actCount  = acts.ValueKind == JsonValueKind.Array ? acts.GetArrayLength() : 0;
-        var hookCount = hooks.ValueKind == JsonValueKind.Array ? hooks.GetArrayLength() : 0;
+        var dispatchedHookCount = CountHooks(hooks, IsMainTimelineHookVisible);
         var hasActs = actCount > 0;
-        var hasHooks = hookCount > 0;
-        var showHookPanel = hasHooks || (detail < TimelineDetail.Admin && isValidation);
-        var hookDisplay = detail >= TimelineDetail.Admin ? hookCount.ToString() : isValidation ? "engine-managed" : "0";
+        var hasHooks = dispatchedHookCount > 0;
+        var showHookPanel = hasHooks;
+        var hookDisplay = detail >= TimelineDetail.Admin ? dispatchedHookCount.ToString() : isValidation ? "engine-managed" : "0";
         var edge      = isInitial || isTerminal;
 
         var tags = new StringBuilder();
@@ -783,10 +785,10 @@ internal static class ControlBoardTLR {
         if (isLoop) tags.Append("<span class=\"entry-tag tag-loop\">Loop</span>");
         if (isValidation) tags.Append("<span class=\"entry-tag tag-hook\">Validation</span>");
         if (hasComplete) tags.Append("<span class=\"entry-tag tag-terminal\">Complete</span>");
-        if (hookCount > 0) tags.Append($"<span class=\"entry-tag tag-hook\">{hookCount} hook{(hookCount == 1 ? string.Empty : "s")}</span>");
+        if (dispatchedHookCount > 0) tags.Append($"<span class=\"entry-tag tag-hook\">{dispatchedHookCount} hook{(dispatchedHookCount == 1 ? string.Empty : "s")}</span>");
 
         sb.Append($"""
-        <article class="entry" id="entry-{idx}" data-hooks="{(isValidation ? 1 : 0)}" data-validation="{(isValidation ? 1 : 0)}" data-complete="{(hasComplete ? 1 : 0)}" data-loop="{(isLoop ? 1 : 0)}" data-edge="{(edge ? 1 : 0)}">
+        <article class="entry" id="entry-{idx}" data-hooks="{(hasHooks ? 1 : 0)}" data-validation="{(isValidation ? 1 : 0)}" data-complete="{(hasComplete ? 1 : 0)}" data-loop="{(isLoop ? 1 : 0)}" data-edge="{(edge ? 1 : 0)}">
           <div class="entry-wrap">
             <div class="entry-index" onclick="toggleControlBoardEntry({idx}, event)">
               <div class="entry-no">{idx + 1}</div>
@@ -848,7 +850,7 @@ internal static class ControlBoardTLR {
                 if (detail >= TimelineDetail.Admin && hasHooks) {
                     WriteHookCards(sb, hooks);
                 } else {
-                    WriteHookDetailNote(sb, hookCount, isValidation);
+                    WriteHookDetailNote(sb, dispatchedHookCount, isValidation);
                 }
 
                 sb.Append("""
@@ -916,7 +918,11 @@ internal static class ControlBoardTLR {
             return;
         }
 
+        var anyDispatched = false;
         foreach (var h in OrderHooks(hooks)) {
+            if (!IsMainTimelineHookVisible(h)) continue;
+            anyDispatched = true;
+
             var route      = S(h, "route");
             var label      = S(h, "label");
             var display    = !string.IsNullOrWhiteSpace(label) ? label : route;
@@ -966,6 +972,10 @@ internal static class ControlBoardTLR {
                       </div>
                     </div>
 """);
+        }
+
+        if (!anyDispatched) {
+            sb.Append("                    <div class=\"empty\">No hooks have been dispatched for this lifecycle step yet.</div>\n");
         }
     }
 
@@ -1064,7 +1074,7 @@ internal static class ControlBoardTLR {
                 <div class="inventory-meta">
                   <span class="mini-badge {(isGate ? "warn" : string.Empty)}">{(isGate ? "gate" : "effect")}</span>
                   <span class="mini-badge {statusCls}">{E(statusText)}</span>
-                  <span class="mini-badge {(dispatched ? "info" : string.Empty)}">{(dispatched ? "dispatched" : hookStatus == 2 ? "closed" : "queued")}</span>
+                  <span class="mini-badge {(dispatched ? "info" : hookStatus == 2 ? "skip" : string.Empty)}">{(dispatched ? "dispatched" : hookStatus == 2 ? "skipped" : "queued")}</span>
                   <span class="mini-badge {(processedAcks >= totalAcks && totalAcks > 0 ? "ok" : failedAcks > 0 ? "fail" : string.Empty)}">acked {processedAcks}/{totalAcks}</span>
                   <span class="mini-badge {(totalDispatches > 0 ? "ok" : string.Empty)}">{totalDispatches} sent</span>
                 </div>
@@ -1217,6 +1227,9 @@ internal static class ControlBoardTLR {
         return int.TryParse(value.ToString(), out var fallback) ? fallback : 0;
     }
 
+    private static bool IsMainTimelineHookVisible(JsonElement hook) =>
+        B(hook, KEY_DISPATCHED) && HookStatusInt(hook) != 2;
+
     private static string HookStatusText(JsonElement hook) {
         var status = HookStatusInt(hook);
         var dispatched = B(hook, KEY_DISPATCHED);
@@ -1234,7 +1247,7 @@ internal static class ControlBoardTLR {
 
     private static string HookStatusClass(JsonElement hook) => HookStatusText(hook) switch {
         "Acked" => "ok",
-        "Skipped" => "info",
+        "Skipped" => "skip",
         "Failed" => "fail",
         "Partial" => "warn",
         "Dispatched" => "info",

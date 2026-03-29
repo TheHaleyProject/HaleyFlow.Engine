@@ -102,7 +102,8 @@ namespace Haley.Internal {
                    ))
                  );";
 
-        // Find the next order_seq that has undispatched hook_lc rows for this lifecycle entry.
+        // Find the next order_seq that still has queued hook_lc rows for this lifecycle entry.
+        // Skipped rows (status=2) are already closed and must not be treated as pending dispatch work.
         public const string GET_MIN_UNDISPATCHED_ORDER =
             $@"SELECT MIN(h.order_seq) AS next_order
                FROM hook h
@@ -111,9 +112,10 @@ namespace Haley.Internal {
                  AND h.state_id = {STATE_ID}
                  AND h.via_event = {EVENT_ID}
                  AND h.on_entry = {ON_ENTRY}
-                 AND hl.dispatched = 0;";
+                 AND hl.dispatched = 0
+                 AND hl.status <> 2;";
 
-        // List all undispatched hooks for a specific order_seq scope for this lifecycle entry.
+        // List all queued hooks for a specific order_seq scope for this lifecycle entry.
         // Returns hook_lc_id so callers can use it for CreateHookAckAsync + MarkDispatchedAsync.
         public const string LIST_UNDISPATCHED_BY_ORDER =
             $@"SELECT h.id, h.type, h.ack_mode, h.group_id, h.on_entry,
@@ -128,7 +130,8 @@ namespace Haley.Internal {
                  AND h.via_event = {EVENT_ID}
                  AND h.on_entry = {ON_ENTRY}
                  AND h.order_seq = {ORDER_SEQ}
-                 AND hl.dispatched = 0;";
+                 AND hl.dispatched = 0
+                 AND hl.status <> 2;";
 
         public const string LIST_UNDISPATCHED_BY_ORDER_AND_TYPE =
             $@"SELECT h.id, h.type, h.ack_mode, h.send_mode, h.group_id, h.on_entry,
@@ -145,6 +148,7 @@ namespace Haley.Internal {
                  AND h.order_seq = {ORDER_SEQ}
                  AND h.type = {HOOK_TYPE}
                  AND hl.dispatched = 0
+                 AND hl.status <> 2
                ORDER BY h.id ASC;";
 
         // Gate hook gate — instance-wide checks scoped only to (instanceId, lcId).
@@ -176,15 +180,16 @@ namespace Haley.Internal {
                    ))
                  );";
 
-        // Count gate hooks for the current lifecycle entry that have not been dispatched yet
-        // (hook_lc rows with dispatched=0). These hooks are queued but consumers haven't received them.
+        // Count queued gate hooks for the current lifecycle entry that have not been dispatched yet.
+        // Skipped rows remain dispatched=0, status=2 and must not be treated as queued work.
         public const string COUNT_UNDISPATCHED_BLOCKING_HOOKS =
             $@"SELECT COUNT(*) AS cnt
                FROM hook h
                JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
                WHERE h.instance_id = {INSTANCE_ID}
                  AND h.type = 1
-                 AND hl.dispatched = 0;";
+                 AND hl.dispatched = 0
+                 AND hl.status <> 2;";
 
         // Timeout cancellation: bulk-set all non-terminal ack_consumer rows for gate hooks in this
         // lifecycle entry to Cancelled (status = @ACK_STATUS = 5), clearing next_due.
@@ -213,25 +218,27 @@ namespace Haley.Internal {
                SET ac.status = {ACK_STATUS}, ac.next_due = NULL
                WHERE ac.status NOT IN (3, 4, 5);";
 
-        // Gate-success drain: mark all undispatched gate hook_lc rows as Skipped (status=2, dispatched=1)
-        // so they never get dispatched. Called by AckOutcomeOrchestrator when a gate ACKs success with
+        // Gate-success drain: mark all queued gate hook_lc rows as Skipped (status=2) so they never
+        // get dispatched. A row is marked dispatched only when ACK rows are created and the event is sent.
+        // Called by AckOutcomeOrchestrator when a gate ACKs success with
         // an OnSuccessEvent, before draining the remaining effect hooks.
         public const string SKIP_UNDISPATCHED_GATE_HOOKS =
             $@"UPDATE hook_lc hl
                JOIN hook h ON h.id = hl.hook_id
-               SET hl.dispatched = 1, hl.status = 2
+               SET hl.status = 2
                WHERE h.instance_id = {INSTANCE_ID}
                  AND h.state_id    = {STATE_ID}
                  AND h.via_event   = {EVENT_ID}
                  AND h.on_entry    = {ON_ENTRY}
                  AND hl.lc_id      = {LC_ID}
                  AND h.type        = 1
-                 AND hl.dispatched = 0;";
+                 AND hl.dispatched = 0
+                 AND hl.status <> 2;";
 
         public const string SKIP_UNDISPATCHED_NON_ALWAYS_EFFECTS_AFTER_ORDER =
             $@"UPDATE hook_lc hl
                JOIN hook h ON h.id = hl.hook_id
-               SET hl.dispatched = 1, hl.status = 2
+               SET hl.status = 2
                WHERE h.instance_id = {INSTANCE_ID}
                  AND h.state_id    = {STATE_ID}
                  AND h.via_event   = {EVENT_ID}
@@ -240,7 +247,8 @@ namespace Haley.Internal {
                  AND h.type        = 0
                  AND h.send_mode   = 0
                  AND h.order_seq   > {ORDER_SEQ}
-                 AND hl.dispatched = 0;";
+                 AND hl.dispatched = 0
+                 AND hl.status <> 2;";
 
         // After effect drain completes, check if there is a skipped gate in scope (status=2).
         // Returns (route, state_id, via_event, on_entry) so caller can re-resolve OnSuccessEvent from policy.

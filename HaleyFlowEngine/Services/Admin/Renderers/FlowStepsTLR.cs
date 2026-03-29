@@ -372,7 +372,7 @@ internal static class FlowStepsTLR {
         item.TryGetProperty("activities", out var acts);
         item.TryGetProperty("hooks",      out var hooks);
         var actCount  = acts.ValueKind  == JsonValueKind.Array ? acts.GetArrayLength()  : 0;
-        var hookCount = hooks.ValueKind == JsonValueKind.Array ? hooks.GetArrayLength() : 0;
+        var hookCount = CountVisibleHooks(hooks);
 
         var numCls = isInitial ? "s-start" : isTerminal ? "s-end" : isReopen ? "s-reopen" : "";
         var tag = (isInitial, isTerminal, isReopen) switch {
@@ -486,12 +486,23 @@ internal static class FlowStepsTLR {
     private static void WriteHooks(StringBuilder sb, JsonElement hooks) {
         if (hooks.ValueKind != JsonValueKind.Array || hooks.GetArrayLength() == 0) return;
 
+        var anyDispatched = false;
+        foreach (var h in hooks.EnumerateArray()) {
+            if (IsMainTimelineHookVisible(h)) {
+                anyDispatched = true;
+                break;
+            }
+        }
+        if (!anyDispatched) return;
+
         sb.Append("""
       <table class="hooks-table">
         <thead><tr><th>Hook / Emit</th><th>Status</th><th>Flags</th></tr></thead>
         <tbody>
 """);
         foreach (var h in hooks.EnumerateArray()) {
+            if (!IsMainTimelineHookVisible(h)) continue;
+
             var route      = S(h, "route");
             var label      = S(h, "label");
             var display    = !string.IsNullOrWhiteSpace(label) ? label : route;
@@ -561,6 +572,24 @@ internal static class FlowStepsTLR {
         if (!root.TryGetProperty("instance", out var inst)) return "WFE-TL-UNKNOWN";
         var guid = S(inst, "guid");
         return string.IsNullOrWhiteSpace(guid) ? "WFE-TL-UNKNOWN" : $"WFE-TL-{guid}";
+    }
+
+    private static int CountVisibleHooks(JsonElement hooks) {
+        if (hooks.ValueKind != JsonValueKind.Array) return 0;
+        var total = 0;
+        foreach (var hook in hooks.EnumerateArray()) {
+            if (IsMainTimelineHookVisible(hook)) total++;
+        }
+        return total;
+    }
+
+    private static bool IsMainTimelineHookVisible(JsonElement hook) =>
+        B(hook, "dispatched") && HookStatusInt(hook) != 2;
+
+    private static int HookStatusInt(JsonElement hook) {
+        if (!hook.TryGetProperty("hook_status", out var value)) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsed)) return parsed;
+        return int.TryParse(value.ToString(), out var fallback) ? fallback : 0;
     }
 
     private static string E(string s) => WebUtility.HtmlEncode(s);

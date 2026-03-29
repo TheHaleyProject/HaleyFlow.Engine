@@ -12,17 +12,21 @@ namespace Haley.Internal {
         // Mark a specific hook_lc row as dispatched (ACK rows created, event fired).
         public const string MARK_DISPATCHED = $@"UPDATE hook_lc SET dispatched = 1 WHERE id = {HOOK_LC_ID};";
 
+        // Count queued hook_lc rows that still need real dispatch.
+        // Skipped rows remain status=2, dispatched=0 and must not be counted here.
         public const string COUNT_UNDISPATCHED_BY_LC_ID =
             $@"SELECT COUNT(*) AS cnt
                FROM hook_lc
                WHERE lc_id = {LC_ID}
-                 AND dispatched = 0;";
+                 AND dispatched = 0
+                 AND status <> 2;";
 
         public const string SKIP_UNDISPATCHED_BY_LC_ID =
             $@"UPDATE hook_lc
-               SET dispatched = 1, status = 2
+               SET status = 2
                WHERE lc_id = {LC_ID}
-                 AND dispatched = 0;";
+                 AND dispatched = 0
+                 AND status <> 2;";
 
         // Count how many times this hook has been fully dispatched across all lifecycle entries.
         // Used to populate RunCount on ILifeCycleHookEvent so consumers can detect reruns.
