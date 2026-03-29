@@ -63,7 +63,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         [HookHandler("APP.CHANGE.IMPACT.ASSESS")]
         private Task<AckOutcome> OnImpactAssessmentAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Impact assessment approved?",
@@ -81,7 +81,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         [HookHandler("APP.CHANGE.COST.REVIEW")]
         private Task<AckOutcome> OnCostReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Cost review approved?",
@@ -99,7 +99,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         [HookHandler("APP.CHANGE.SCHEDULE.REVIEW")]
         private Task<AckOutcome> OnScheduleReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Schedule review approved?",
@@ -117,7 +117,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         [HookHandler("APP.CHANGE.STEERING.DECIDE")]
         private Task<AckOutcome> OnSteeringDecisionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Steering decision approved?",
@@ -135,7 +135,7 @@ namespace WFE.Test.UseCases.ChangeRequest {
 
         [HookHandler("APP.CHANGE.REWORK.REQUEST")]
         private Task<AckOutcome> OnReworkRequestedAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Submit rework now?",

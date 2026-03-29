@@ -49,7 +49,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.COMPLIANCE")]
         private Task<AckOutcome> OnComplianceReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Compliance review approved?",
@@ -58,7 +58,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.STRUCTURAL")]
         private Task<AckOutcome> OnStructuralReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Structural review approved?",
@@ -67,7 +67,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.MEP")]
         private Task<AckOutcome> OnMepReviewAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "MEP review approved?",
@@ -76,7 +76,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.COMMENTS.CONSOLIDATE")]
         private Task<AckOutcome> OnCommentConsolidationAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Comments consolidated?",
@@ -85,7 +85,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.GRADING")]
         private Task<AckOutcome> OnGradingAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Final grading passed?",
@@ -94,7 +94,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.REVISION.NOTIFY")]
         private Task<AckOutcome> OnRevisionNotifiedAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Consultant notified and ready to resubmit?",
@@ -103,7 +103,7 @@ namespace WFE.Test.UseCases.PaperlessReview {
 
         [HookHandler("APP.REVIEW.RESUBMISSION.RECEIVED")]
         private Task<AckOutcome> OnResubmissionReceivedAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Resubmission received and restart review?",

@@ -49,7 +49,7 @@ namespace WFE.Test.UseCases.LoanApproval {
 
         [HookHandler("APP.LOAN.KYC.CHECK")]
         private Task<AckOutcome> OnKycCheckAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "KYC passed?",
@@ -58,7 +58,7 @@ namespace WFE.Test.UseCases.LoanApproval {
 
         [HookHandler("APP.LOAN.CREDIT.CHECK")]
         private Task<AckOutcome> OnCreditCheckAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Credit assessment accepted?",
@@ -67,7 +67,7 @@ namespace WFE.Test.UseCases.LoanApproval {
 
         [HookHandler("APP.LOAN.RISK.CHECK")]
         private Task<AckOutcome> OnRiskCheckAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Risk review accepted?",
@@ -76,7 +76,7 @@ namespace WFE.Test.UseCases.LoanApproval {
 
         [HookHandler("APP.LOAN.MANAGER.DECISION")]
         private Task<AckOutcome> OnManagerDecisionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Manager approved loan?",

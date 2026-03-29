@@ -29,7 +29,7 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
     protected virtual Task AfterDecisionAsync(ILifeCycleHookEvent evt, bool yes, bool hasFailurePath, CancellationToken ct)
         => Task.CompletedTask;
 
-    protected async Task<AckOutcome> ConfirmAndTriggerAsync(
+    protected async Task<AckOutcome> ConfirmAndAcknowledgeAsync(
         ILifeCycleHookEvent evt,
         ConsumerContext ctx,
         string decisionMessage,
@@ -72,37 +72,17 @@ public abstract class InteractiveHookWrapperBase : LifeCycleWrapper {
         await AfterDecisionAsync(evt, yes, hasFailurePath, ctx.CancellationToken);
 
         if (yes) {
-            return await TriggerNextAsync(evt, ctx, yesEventCode);
+            Console.WriteLine($"[CONSUMER] route={evt.Route} -> decision=YES ack=Processed. Engine will resolve the next step.");
+            return AckOutcome.Processed;
         }
 
         if (hasFailurePath) {
-            return await TriggerNextAsync(evt, ctx, noEventCode!);
+            Console.WriteLine($"[CONSUMER] route={evt.Route} -> decision=NO ack=Failed. Engine will resolve the failure route.");
+            return AckOutcome.Failed;
         }
 
         Console.WriteLine($"[CONSUMER] route={evt.Route} -> user chose NO, leaving ack as RETRY.");
         return AckOutcome.Retry;
-    }
-
-    protected async Task<AckOutcome> TriggerNextAsync(ILifeCycleHookEvent evt, ConsumerContext ctx, string nextEventCode) {
-        if (!int.TryParse(nextEventCode, out _)) {
-            Console.WriteLine($"[CONSUMER] route={evt.Route} has non-numeric next event '{nextEventCode}', skipping trigger.");
-            return AckOutcome.Processed;
-        }
-
-        var request = new LifeCycleTriggerRequest {
-            EnvCode = Options.EnvCode,
-            DefName = DefinitionName,
-            EntityId = evt.EntityId,
-            Event = nextEventCode,
-            Actor = "wfe.test.consumer",
-            Payload = new Dictionary<string, object> {
-                ["fromRoute"] = evt.Route
-            }
-        };
-
-        var result = await Engine.TriggerAsync(request, ctx.CancellationToken);
-        Console.WriteLine($"[CONSUMER] route={evt.Route} -> event={nextEventCode} applied={result.Applied} reason={result.Reason}");
-        return AckOutcome.Processed;
     }
 
     protected static async Task<bool> AskConfirmationAsync(

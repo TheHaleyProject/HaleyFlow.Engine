@@ -49,7 +49,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.CHECK.VENDOR_REGISTERED")]
         private Task<AckOutcome> OnCheckVendorRegisteredAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Vendor already registered?",
@@ -58,7 +58,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.CHECK.RECENT_SUBMISSION")]
         private Task<AckOutcome> OnCheckRecentSubmissionAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Recent submission found?",
@@ -67,7 +67,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.PQ.VALIDATION.START")]
         private Task<AckOutcome> OnValidationStartAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Begin PQ validation now?",
@@ -76,7 +76,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.PQ.VALIDATION.REQUIRED")]
         private Task<AckOutcome> OnValidationRequiredAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Company is valid?",
@@ -85,7 +85,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.PQ.OVERDUE.ENTER")]
         private Task<AckOutcome> OnOverdueEnterAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Overdue entered. Resume validation now?",
@@ -94,7 +94,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.PQ.OVERDUE.REMIND")]
         private Task<AckOutcome> OnOverdueRemindAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Overdue reminder received. Resume validation now?",
@@ -103,7 +103,7 @@ namespace WFE.Test.UseCases.VendorRegistration {
 
         [HookHandler("APP.REG.VENDOR_CREATE")]
         private Task<AckOutcome> OnVendorCreateAsync(ILifeCycleHookEvent evt, ConsumerContext ctx)
-            => ConfirmAndTriggerAsync(
+            => ConfirmAndAcknowledgeAsync(
                 evt,
                 ctx,
                 "Vendor creation successful?",
