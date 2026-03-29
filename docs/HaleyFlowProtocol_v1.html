@@ -813,8 +813,10 @@
   <h2 id="pol-timeouts">Policy JSON — Timeouts</h2>
 
   <p>
-    The optional <code>timeouts</code> array defines automatic event firing when an entity remains in
-    a state beyond a specified duration. Two forms of duration are supported — use whichever is more readable:
+    The optional <code>timeouts</code> array defines timeout handling when an entity remains in
+    a state beyond a specified duration. A timeout may either auto-trigger a workflow event or
+    act as an advisory timeout tracked by the interpreter. Two forms of duration are supported —
+    use whichever is more readable:
   </p>
 
 <pre><code><span class="k">"timeouts"</span>: [
@@ -823,6 +825,9 @@
 
   <span class="c">// ISO 8601 duration — repeat mode (fires again each period until state changes)</span>
   { <span class="k">"state"</span>: <span class="s">"ManagerApproval"</span>, <span class="k">"timeout"</span>: <span class="s">"P1D"</span>, <span class="k">"timeout_event"</span>: <span class="n">2009</span>, <span class="k">"timeout_mode"</span>: <span class="s">"repeat"</span> },
+
+  <span class="c">// Advisory timeout — no event is fired; interpreter tracks timeout handling locally</span>
+  { <span class="k">"state"</span>: <span class="s">"ConsultantResponse"</span>, <span class="k">"timeout"</span>: <span class="s">"P7D"</span>, <span class="k">"timeout_mode"</span>: <span class="s">"repeat"</span>, <span class="k">"max_retry"</span>: <span class="n">3</span> },
 
   <span class="c">// Minutes shorthand — repeat with a cap on retries</span>
   { <span class="k">"state"</span>: <span class="s">"ReworkRequired"</span>, <span class="k">"timeout_minutes"</span>: <span class="n">2</span>, <span class="k">"timeout_event"</span>: <span class="n">4010</span>, <span class="k">"timeout_mode"</span>: <span class="s">"repeat"</span>, <span class="k">"max_retry"</span>: <span class="n">4</span> }
@@ -843,16 +848,16 @@
       <td>Duration in minutes as a plain integer. Convenience alternative to <code>timeout</code> for short durations. e.g. <code>2</code> means 2 minutes. Mutually exclusive with <code>timeout</code>.</td>
     </tr>
     <tr>
-      <td><code>timeout_event</code></td><td>integer</td><td><span class="badge required">required</span></td>
-      <td>The event code fired when the timeout elapses. Must be a valid event code in the definition.</td>
+      <td><code>timeout_event</code></td><td>integer</td><td><span class="badge optional">optional</span></td>
+      <td>The event code fired when the timeout elapses. Must be a valid event code in the definition. If omitted, the timeout becomes advisory and the interpreter may raise notices, schedule retries, or suspend/fail the instance according to its runtime policy without auto-triggering a workflow event.</td>
     </tr>
     <tr>
       <td><code>timeout_mode</code></td><td>string</td><td><span class="badge optional">optional</span></td>
-      <td>Default: <code>"once"</code>. <code>"once"</code> — fires the event exactly once, then stops. <code>"repeat"</code> — fires the event repeatedly, once per period, until the entity leaves the state or <code>max_retry</code> is reached.</td>
+      <td>Default: <code>"once"</code>. <code>"once"</code> — timeout handling occurs once. <code>"repeat"</code> — timeout handling repeats on the interpreter's cadence until the entity leaves the state or <code>max_retry</code> is reached. If <code>timeout_event</code> is present, this governs repeated event firing. If <code>timeout_event</code> is omitted, this governs repeated advisory timeout processing.</td>
     </tr>
     <tr>
       <td><code>max_retry</code></td><td>integer</td><td><span class="badge optional">optional</span></td>
-      <td>Maximum number of times the timeout event may fire. Only meaningful with <code>"repeat"</code> mode. If omitted, repeat mode fires indefinitely until state changes.</td>
+      <td>Maximum number of repeated timeout actions. Only meaningful with <code>"repeat"</code> mode. If <code>timeout_event</code> is present, this caps repeated event firing. If <code>timeout_event</code> is omitted, this caps repeated advisory timeout handling before the interpreter's timeout policy decides what to do next.</td>
     </tr>
   </table>
 
@@ -862,6 +867,14 @@
     <code>via</code>-specific rule targeting exactly that event. This is the standard pattern for
     reminder/escalation cycles: the timeout fires a self-loop event, the <code>via</code> rule on that
     event triggers reminder hooks, and <code>repeat</code> mode keeps firing until the entity moves on.
+  </div>
+
+  <div class="callout neutral">
+    <strong>Advisory timeout mode is valid</strong>
+    When <code>timeout_event</code> is omitted, the timeout rule is still valid. Interpreters commonly
+    persist timeout processing state in a runtime marker table such as <code>lc_timeout</code> so first-fire
+    and repeat handling remain idempotent across restarts. In this mode, the timeout does not auto-move
+    the workflow unless the interpreter's own timeout policy chooses to suspend, fail, or otherwise act.
   </div>
 
   <h2 id="pol-example">Policy JSON — Full Example</h2>
@@ -1437,4 +1450,3 @@
 </div>
 </body>
 </html>
-
