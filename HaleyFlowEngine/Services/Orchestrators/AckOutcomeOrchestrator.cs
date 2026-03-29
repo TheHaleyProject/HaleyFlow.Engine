@@ -13,7 +13,7 @@ namespace Haley.Services.Orchestrators {
     // - AckMode=Any sibling fan-out
     // - hook-group completion checks
     // - ordered gate/effect hook advancement
-    // - gate-success drain: skip remaining gates, drain effects in order, then dispatch Complete
+    // - gate-success drain: skip later gates, run same-order effects, keep later send=always effects, then dispatch Complete
     // - failure branches triggered directly by engine when validation/gate failure resolves a route
     internal sealed class AckOutcomeOrchestrator {
         private readonly IWorkFlowDAL _dal;

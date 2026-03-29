@@ -425,6 +425,10 @@
 			<column name="instance_id" type="BIGINT" mandatory="y" >
 				<comment><![CDATA[Workflow instance identifier (FK to instance.id).]]></comment>
 			</column>
+			<column name="send_mode" type="TINYINT" mandatory="y" >
+				<defo><![CDATA[0]]></defo>
+				<comment><![CDATA[Effect carry-forward mode: 0=No, 1=Always. Relevant only for effect hooks]]></comment>
+			</column>
 			<index name="pk_hook" unique="PRIMARY_KEY" >
 				<column name="id" />
 			</index>
@@ -1050,7 +1054,7 @@
 			<entity schema="lcstate" name="hook_route" color="FFFF00" x="494" y="532" />
 			<entity schema="lcstate" name="instance" color="FFFF00" x="475" y="798" />
 			<entity schema="lcstate" name="lc_ack" color="FF00FF" x="57" y="266" />
-			<entity schema="lcstate" name="lc_data" color="FFFF00" x="285" y="779" />
+			<entity schema="lcstate" name="lc_data" color="FFFF00" x="285" y="798" />
 			<entity schema="lcstate" name="lc_next" color="FFFF00" x="76" y="703" />
 			<entity schema="lcstate" name="lc_timeout" color="FFFF00" x="57" y="950" />
 			<entity schema="lcstate" name="lcn_ack" color="FF00FF" x="57" y="133" />

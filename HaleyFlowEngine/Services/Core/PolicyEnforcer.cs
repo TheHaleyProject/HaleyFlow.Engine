@@ -15,15 +15,15 @@ using System.Threading.Tasks;
 namespace Haley.Services {
 
     // PolicyEnforcer reads and evaluates the policy JSON to answer two questions:
-    //   1. "Which hooks should fire for this transition?" → EmitHooksAsync
-    //   2. "What params and completion event codes does the consumer need?" → ResolveRuleContextFromJson
+    //   1. "Which hooks should fire for this transition, and in which order/phase?" → EmitHooksAsync
+    //   2. "What params and completion event codes does the engine need to resolve progression?" → ResolveRuleContextFromJson
     //
     // A policy is a JSON document containing:
     //   - rules: array of { state, via?, blocking?, emit[], params[], complete{} }
     //   - params: catalog of named param sets that rules/emits can reference by code
     //
     // Each rule matches a (targetState, optionalEvent) pair. The emit[] array says which hooks fire.
-    // The complete{} block tells the consumer what to trigger next on success/failure.
+    // The complete{} block is engine-owned routing metadata for success/failure resolution.
     // The params[] field specifies which param sets from the catalog to include in the event.
     //
     // Policy JSON is parsed ONCE per policyId and stored in _policyCache as a ParsedPolicy.
