@@ -13,16 +13,16 @@ namespace Haley.Internal {
         public const string LIST_BY_INSTANCE_STATE_ENTRY = $@"SELECT * FROM hook WHERE instance_id = {INSTANCE_ID} AND state_id = {STATE_ID} AND on_entry = {ON_ENTRY} ORDER BY created DESC, id DESC;";
 
         // dispatched column removed from hook — it now lives on hook_lc.
-        public const string INSERT = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route_id, type, group_id, order_seq, ack_mode) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE_ID}, {HOOK_TYPE}, {GROUP_ID}, {ORDER_SEQ}, {ACK_MODE}); SELECT LAST_INSERT_ID() AS id;";
+        public const string INSERT = $@"INSERT INTO hook (instance_id, state_id, via_event, on_entry, route_id, type, group_id, order_seq, ack_mode, send_mode) VALUES ({INSTANCE_ID}, {STATE_ID}, {EVENT_ID}, {ON_ENTRY}, {ROUTE_ID}, {HOOK_TYPE}, {GROUP_ID}, {ORDER_SEQ}, {ACK_MODE}, {SEND_MODE}); SELECT LAST_INSERT_ID() AS id;";
 
         // group_id, type, order_seq and ack_mode are updated on re-emit so that policy changes are reflected.
-        public const string UPDATE_TYPE_AND_GROUP = $@"UPDATE hook SET type = {HOOK_TYPE}, group_id = {GROUP_ID}, order_seq = {ORDER_SEQ}, ack_mode = {ACK_MODE} WHERE id = {ID};";
+        public const string UPDATE_TYPE_AND_GROUP = $@"UPDATE hook SET type = {HOOK_TYPE}, group_id = {GROUP_ID}, order_seq = {ORDER_SEQ}, ack_mode = {ACK_MODE}, send_mode = {SEND_MODE} WHERE id = {ID};";
 
         // Context query for post-ACK logic (any hook, grouped or not).
         // hook_ack.hook_id now references hook_lc.id — join chain: ack → hook_ack → hook_lc → hook.
         public const string GET_CONTEXT_BY_ACK_GUID =
             $@"SELECT h.id, h.instance_id, h.state_id, h.via_event, h.on_entry,
-                      h.type, h.ack_mode, h.order_seq, h.group_id, ha.ack_id,
+                      h.type, h.ack_mode, h.send_mode, h.order_seq, h.group_id, ha.ack_id,
                       hl.id AS hook_lc_id, hl.lc_id,
                       i.guid AS instance_guid, i.def_version AS def_version_id,
                       i.metadata AS metadata,
@@ -41,7 +41,7 @@ namespace Haley.Internal {
 
         public const string GET_CONTEXT_BY_LC_ID =
             $@"SELECT h.id, h.instance_id, h.state_id, h.via_event, h.on_entry,
-                      h.type, h.ack_mode, h.order_seq, h.group_id,
+                      h.type, h.ack_mode, h.send_mode, h.order_seq, h.group_id,
                       hl.id AS hook_lc_id, hl.lc_id,
                       i.guid AS instance_guid, i.def_version AS def_version_id,
                       i.metadata AS metadata,
@@ -75,6 +75,33 @@ namespace Haley.Internal {
                  AND hl.dispatched = 1
                  AND ac.status NOT IN (3, 4, 5);";
 
+        // Count all dispatched hooks in a given order for the current lifecycle entry that still have
+        // non-terminal ack_consumer work. This is used for effect-batch advancement so an order moves on
+        // only after the whole dispatched batch becomes terminal.
+        public const string COUNT_INCOMPLETE_IN_ORDER =
+            $@"SELECT COUNT(DISTINCT h.id) AS cnt
+               FROM hook h
+               JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.state_id = {STATE_ID}
+                 AND h.via_event = {EVENT_ID}
+                 AND h.on_entry = {ON_ENTRY}
+                 AND h.order_seq = {ORDER_SEQ}
+                 AND hl.dispatched = 1
+                 AND (
+                   (h.ack_mode = 0 AND EXISTS (
+                     SELECT 1 FROM hook_ack ha
+                     JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
+                     WHERE ha.hook_id = hl.id AND ac.status NOT IN (3, 4, 5)
+                   ))
+                   OR
+                   (h.ack_mode = 1 AND NOT EXISTS (
+                     SELECT 1 FROM hook_ack ha
+                     JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
+                     WHERE ha.hook_id = hl.id AND ac.status = 3
+                   ))
+                 );";
+
         // Find the next order_seq that has undispatched hook_lc rows for this lifecycle entry.
         public const string GET_MIN_UNDISPATCHED_ORDER =
             $@"SELECT MIN(h.order_seq) AS next_order
@@ -102,6 +129,23 @@ namespace Haley.Internal {
                  AND h.on_entry = {ON_ENTRY}
                  AND h.order_seq = {ORDER_SEQ}
                  AND hl.dispatched = 0;";
+
+        public const string LIST_UNDISPATCHED_BY_ORDER_AND_TYPE =
+            $@"SELECT h.id, h.type, h.ack_mode, h.send_mode, h.group_id, h.on_entry,
+                      hl.id AS hook_lc_id,
+                      hr.name AS route, hg.name AS group_name
+               FROM hook h
+               JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
+               JOIN hook_route hr ON hr.id = h.route_id
+               LEFT JOIN hook_group hg ON hg.id = h.group_id
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.state_id = {STATE_ID}
+                 AND h.via_event = {EVENT_ID}
+                 AND h.on_entry = {ON_ENTRY}
+                 AND h.order_seq = {ORDER_SEQ}
+                 AND h.type = {HOOK_TYPE}
+                 AND hl.dispatched = 0
+               ORDER BY h.id ASC;";
 
         // Gate hook gate — instance-wide checks scoped only to (instanceId, lcId).
         // Used by InstanceOrchestrator to prevent state transitions when gate hooks are unresolved.
@@ -184,6 +228,20 @@ namespace Haley.Internal {
                  AND h.type        = 1
                  AND hl.dispatched = 0;";
 
+        public const string SKIP_UNDISPATCHED_NON_ALWAYS_EFFECTS_AFTER_ORDER =
+            $@"UPDATE hook_lc hl
+               JOIN hook h ON h.id = hl.hook_id
+               SET hl.dispatched = 1, hl.status = 2
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.state_id    = {STATE_ID}
+                 AND h.via_event   = {EVENT_ID}
+                 AND h.on_entry    = {ON_ENTRY}
+                 AND hl.lc_id      = {LC_ID}
+                 AND h.type        = 0
+                 AND h.send_mode   = 0
+                 AND h.order_seq   > {ORDER_SEQ}
+                 AND hl.dispatched = 0;";
+
         // After effect drain completes, check if there is a skipped gate in scope (status=2).
         // Returns (route, state_id, via_event, on_entry) so caller can re-resolve OnSuccessEvent from policy.
         // The first skipped gate by order_seq is the one whose success code should be fired.
@@ -198,6 +256,24 @@ namespace Haley.Internal {
                  AND hl.status     = 2
                ORDER BY h.order_seq ASC
                LIMIT 1;";
+
+        public const string LIST_PROCESSED_GATE_ROUTES_IN_ORDER =
+            $@"SELECT hr.name AS route
+               FROM hook h
+               JOIN hook_lc hl ON hl.hook_id = h.id AND hl.lc_id = {LC_ID}
+               JOIN hook_route hr ON hr.id = h.route_id
+               WHERE h.instance_id = {INSTANCE_ID}
+                 AND h.state_id    = {STATE_ID}
+                 AND h.via_event   = {EVENT_ID}
+                 AND h.on_entry    = {ON_ENTRY}
+                 AND h.order_seq   = {ORDER_SEQ}
+                 AND h.type        = 1
+                 AND EXISTS (
+                     SELECT 1 FROM hook_ack ha
+                     JOIN ack_consumer ac ON ac.ack_id = ha.ack_id
+                     WHERE ha.hook_id = hl.id AND ac.status = 3
+                 )
+               ORDER BY h.id ASC;";
 
         public const string DELETE = $@"DELETE FROM hook WHERE id = {ID};";
         public const string DELETE_BY_INSTANCE = $@"DELETE FROM hook WHERE instance_id = {INSTANCE_ID};";

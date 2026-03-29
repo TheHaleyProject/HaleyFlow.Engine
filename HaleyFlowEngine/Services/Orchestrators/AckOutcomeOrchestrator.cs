@@ -38,8 +38,8 @@ namespace Haley.Services.Orchestrators {
         }
 
         // Called by the monitor when an effect hook has been pending longer than EffectTimeoutSeconds.
-        // Marks the ack_consumer as Failed, fires EFFECT_HOOK_ABANDONED, and advances hook ordering.
-        // Effect hooks are fire-and-forget within their window — if no ACK arrives in time, move on.
+        // Marks the ack_consumer as Failed, fires EFFECT_HOOK_ABANDONED, and advances ordering only
+        // when the whole dispatched effect batch for that order has become terminal.
         public async Task AbandonEffectHookAsync(long ackId, long consumerId, string ackGuid, string instanceGuid, string hookRoute, CancellationToken ct = default) {
             var load = new DbExecutionLoad(ct);
             await _dal.AckConsumer.SetStatusAndDueAsync(ackId, consumerId, (int)AckStatus.Failed, null, null, load);
@@ -52,7 +52,12 @@ namespace Haley.Services.Orchestrators {
             if (hookCtx == null) return;
 
             try {
-                await AdvanceAndCheckCompletionAsync(hookCtx, ct);
+                var incomplete = await _dal.Hook.CountIncompleteInOrderAsync(
+                    hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
+                    hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
+                    hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
+                if (incomplete == 0)
+                    await AdvanceAndCheckCompletionAsync(hookCtx, ct);
             } catch (Exception ex) {
                 _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
                     $"Order advancement failed after effect abandon. ack={ackGuid}: {ex.Message}"));
@@ -185,15 +190,15 @@ namespace Haley.Services.Orchestrators {
                 return;
             }
 
-            // Effect hooks drive progression only when all gate hooks at the same order are resolved.
-            // If a gate shares order_seq with this effect, it must ACK first — the gate path owns advancement.
+            // Effect hooks advance ordering only when the whole dispatched effect batch for that order
+            // becomes terminal. This keeps effect batches ordered instead of letting the first ACK move on.
             if (hookType == HookType.Effect) {
                 try {
-                    var incompleteGates = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
+                    var incomplete = await _dal.Hook.CountIncompleteInOrderAsync(
                         hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
                         hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
                         hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), load);
-                    if (incompleteGates == 0)
+                    if (incomplete == 0)
                         await AdvanceAndCheckCompletionAsync(hookCtx, ct);
                 } catch (Exception ex) {
                     _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
@@ -258,11 +263,11 @@ namespace Haley.Services.Orchestrators {
 
         private async Task HandleEffectTerminalAsync(DbRow hookCtx, string ackGuid, CancellationToken ct) {
             try {
-                var incompleteGates = await _dal.Hook.CountIncompleteBlockingInOrderAsync(
+                var incomplete = await _dal.Hook.CountIncompleteInOrderAsync(
                     hookCtx.GetLong(KEY_INSTANCE_ID), hookCtx.GetLong(KEY_STATE_ID),
                     hookCtx.GetLong(KEY_VIA_EVENT), hookCtx.GetBool(KEY_ON_ENTRY),
                     hookCtx.GetLong(KEY_LC_ID), hookCtx.GetInt(KEY_ORDER_SEQ), new DbExecutionLoad(ct));
-                if (incompleteGates == 0)
+                if (incomplete == 0)
                     await AdvanceAndCheckCompletionAsync(hookCtx, ct);
             } catch (Exception ex) {
                 _fireNotice(LifeCycleNotice.Warn("HOOK_ORDER_ADVANCE_ERROR", "HOOK_ORDER_ADVANCE_ERROR",
@@ -343,16 +348,15 @@ namespace Haley.Services.Orchestrators {
                 }));
         }
 
-        // If the current gate hook has an OnSuccessEvent in policy, skip all remaining undispatched gates
-        // so only effect hooks remain to be drained. Idempotent — gates already dispatched are unaffected.
+        // If the current gate order resolved a success code, skip all remaining undispatched gates and
+        // later non-always effects. Same-order effects are preserved and still run in the order's effect phase.
         private async Task TrySkipRemainingGatesIfSuccessCodeAsync(DbRow hookCtx, CancellationToken ct) {
             var defVersionId = hookCtx.GetLong(KEY_DEF_VERSION_ID);
             var policyId = hookCtx.GetLong(KEY_POLICY_ID);
             var stateId = hookCtx.GetLong(KEY_STATE_ID);
             var viaEventId = hookCtx.GetLong(KEY_VIA_EVENT);
             var lcId = hookCtx.GetLong(KEY_LC_ID);
-            var route = hookCtx.GetString(KEY_ROUTE) ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(route)) return;
+            var orderSeq = hookCtx.GetInt(KEY_ORDER_SEQ);
 
             var policy = await _policyEnforcer.ResolvePolicyByIdAsync(policyId, new DbExecutionLoad(ct));
             if (string.IsNullOrWhiteSpace(policy.PolicyJson)) return;
@@ -362,14 +366,32 @@ namespace Haley.Services.Orchestrators {
             bp.EventsById.TryGetValue(viaEventId, out var viaEvent);
             if (toState == null) return;
 
-            var hctx = _policyEnforcer.ResolveHookContextFromJson(policy.PolicyJson!, toState, viaEvent, route, ct, policyId);
-            if (string.IsNullOrWhiteSpace(hctx.OnSuccessEvent)) return;
-            if (!int.TryParse(hctx.OnSuccessEvent, out var resolvedNextEvent) || resolvedNextEvent <= 0) return;
+            var processedRoutes = await _dal.Hook.ListProcessedGateRoutesInOrderAsync(
+                hookCtx.GetLong(KEY_INSTANCE_ID), stateId, viaEventId,
+                hookCtx.GetBool(KEY_ON_ENTRY), lcId, orderSeq, new DbExecutionLoad(ct));
 
-            // This gate has a success code — skip all remaining undispatched gates in scope.
+            var resolvedNextEvent = 0;
+            for (var i = 0; i < processedRoutes.Count; i++) {
+                var route = processedRoutes[i].GetString(KEY_ROUTE) ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(route)) continue;
+
+                var hctx = _policyEnforcer.ResolveHookContextFromJson(policy.PolicyJson!, toState, viaEvent, route, ct, policyId);
+                if (!int.TryParse(hctx.OnSuccessEvent, out resolvedNextEvent) || resolvedNextEvent <= 0) {
+                    resolvedNextEvent = 0;
+                    continue;
+                }
+                break;
+            }
+            if (resolvedNextEvent <= 0) return;
+
+            // This order resolved a success code — prune later gates and non-always effects, but keep
+            // same-order effects so they still run before the completion handoff.
             await _dal.Hook.SkipUndispatchedGateHooksAsync(
                 hookCtx.GetLong(KEY_INSTANCE_ID), stateId, viaEventId,
                 hookCtx.GetBool(KEY_ON_ENTRY), hookCtx.GetLong(KEY_LC_ID), new DbExecutionLoad(ct));
+            await _dal.Hook.SkipUndispatchedNonAlwaysEffectsAfterOrderAsync(
+                hookCtx.GetLong(KEY_INSTANCE_ID), stateId, viaEventId,
+                hookCtx.GetBool(KEY_ON_ENTRY), hookCtx.GetLong(KEY_LC_ID), orderSeq, new DbExecutionLoad(ct));
 
             // Persist the winning next code now so later effect ACKs keep the same completion result.
             await _dal.LcNext.InsertAsync(lcId, resolvedNextEvent, hookCtx.GetLong(KEY_ACK_ID), new DbExecutionLoad(ct));
@@ -472,11 +494,10 @@ namespace Haley.Services.Orchestrators {
                 new Dictionary<string, object?> { ["instanceGuid"] = instanceGuid, ["nextEvent"] = resolvedNextEvent }));
         }
 
-        // Dispatches the next undispatched hook order for the given lifecycle scope.
-        // Returns true when no more undispatched orders remain (all done), false when a batch was dispatched
-        // and progression should pause until the batch resolves.
-        // This applies to both gate and effect orders — effects are still dispatched in order, one batch at a time.
-        // Effect ACKs do not control business routing, but they still participate in batch advancement timing.
+        // Dispatches the next undispatched phase for the current order.
+        // Gate phase always runs before effect phase within an order.
+        // Returns true when no more undispatched phases remain (all done), false when a batch was dispatched
+        // and progression should pause until that batch becomes terminal.
         private async Task<bool> AdvanceNextHookOrderAsync(DbRow hookCtx, CancellationToken ct) {
             var instanceId = hookCtx.GetLong(KEY_INSTANCE_ID);
             var stateId = hookCtx.GetLong(KEY_STATE_ID);
@@ -508,16 +529,12 @@ namespace Haley.Services.Orchestrators {
             if (nextOrderRaw == null) return true;  // all done
             var nextOrder = nextOrderRaw.Value;
 
-            var nextHooks = await _dal.Hook.ListUndispatchedByOrderAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, scanLoad);
+            var gateHooks = await _dal.Hook.ListUndispatchedByOrderAndTypeAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, HookType.Gate, scanLoad);
+            var dispatchType = gateHooks.Count > 0 ? HookType.Gate : HookType.Effect;
+            var nextHooks = gateHooks.Count > 0
+                ? gateHooks
+                : await _dal.Hook.ListUndispatchedByOrderAndTypeAsync(instanceId, stateId, viaEvent, onEntry, lcId, nextOrder, HookType.Effect, scanLoad);
             if (nextHooks.Count == 0) return true;  // all done
-
-            var hasGate = false;
-            for (var j = 0; j < nextHooks.Count; j++) {
-                if ((HookType)nextHooks[j].GetInt(KEY_HOOK_TYPE) == HookType.Gate) {
-                    hasGate = true;
-                    break;
-                }
-            }
 
             // Keep hook_lc dispatched marking and ack rows in a single atomic unit.
             var toDispatch = new List<ILifeCycleEvent>(nextHooks.Count * normConsumers.Count);
@@ -570,7 +587,7 @@ namespace Haley.Services.Orchestrators {
                 new Dictionary<string, object?> {
                     ["orderSeq"] = nextOrder,
                     ["instanceGuid"] = instanceGuid,
-                    ["containsGate"] = hasGate
+                    ["containsGate"] = dispatchType == HookType.Gate
                 }));
 
             // Always pause after dispatching one ordered batch.

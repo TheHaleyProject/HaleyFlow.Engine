@@ -47,6 +47,7 @@ namespace Haley.Internal {
         public const string KEY_NEXT_ORDER = "next_order";
         public const string KEY_POLICY_ID = "policy_id";
         public const string KEY_ACK_MODE = "ack_mode";
+        public const string KEY_SEND_MODE = "send_mode";
         public const string KEY_INSTANCE_ID = "instance_id";
         public const string KEY_GROUP_ID = "group_id";
         public const string KEY_CONTEXT = "context";
@@ -129,6 +130,7 @@ namespace Haley.Internal {
         public const string KEY_VIA = "via";
         public const string KEY_EMIT = "emit";
         public const string KEY_GROUP = "group";
+        public const string KEY_SEND = "send";
         public const string KEY_ORDER = "order";
         public const string KEY_COMPLETE = "complete";
         public const string KEY_SUCCESS = "success";

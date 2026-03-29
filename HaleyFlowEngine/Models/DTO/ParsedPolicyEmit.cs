@@ -14,6 +14,7 @@ namespace Haley.Models {
         public string? Group { get; init; }
         public int OrderSeq { get; init; } = 1;
         public int AckMode { get; init; }           // 0 = all, 1 = any
+        public bool SendAlways { get; init; }      // effect-only carry-forward on success path
         public string? OnSuccess { get; init; }     // already collapsed from rule fallback
         public string? OnFailure { get; init; }
         public IReadOnlyList<string> ParamCodes { get; init; } = Array.Empty<string>();

@@ -83,6 +83,7 @@ namespace Haley.Internal {
         public const string ORDER_SEQ = "@ORDER_SEQ";
         public const string DISPATCHED = "@DISPATCHED";
         public const string ACK_MODE = "@ACK_MODE";
+        public const string SEND_MODE = "@SEND_MODE";
         public const string LC_STATUS = "@LC_STATUS";
 
         public const string TRIGGER_COUNT = "@TRIGGER_COUNT";

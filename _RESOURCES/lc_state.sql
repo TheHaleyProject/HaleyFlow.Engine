@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS `hook` (
   `type` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Decides if a hook is bloking or not\n1 - Gate : requires successful hook completion before progression.\n0 - Effect : if fails, nothing happens.',
   `order_seq` smallint(6) NOT NULL DEFAULT 1 COMMENT 'Dispatch order sequence; lower numbers are dispatched first.',
   `ack_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT 'ACK aggregation mode: 0=AllConsumersMustProcess, 1=AnyConsumerMaySatisfy.',
+  `send_mode` tinyint(4) NOT NULL DEFAULT 0 COMMENT 'Effect carry-forward mode: 0=No, 1=Always. Relevant only for effect hooks.',
   `route_id` bigint(20) NOT NULL COMMENT 'Route identifier to invoke for this hook (FK to hook_route.id).',
   `group_id` bigint(20) DEFAULT NULL COMMENT 'Optional grouping identifier for related hooks (FK to hook_group.id).',
   PRIMARY KEY (`id`),

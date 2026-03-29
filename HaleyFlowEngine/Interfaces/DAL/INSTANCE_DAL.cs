@@ -50,7 +50,7 @@ namespace Haley.Abstractions {
         Task<DbRow?> GetByIdAsync(long hookId, DbExecutionLoad load = default);
         Task<DbRow?> GetByKeyAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, DbExecutionLoad load = default);
         // dispatched param removed — dispatch state now lives on hook_lc rows.
-        Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, HookType hookType, string? groupName = null, int orderSeq = 1, int ackMode = 0, DbExecutionLoad load = default);
+        Task<long> UpsertByKeyReturnIdAsync(long instanceId, long stateId, long viaEventId, bool onEntry, string route, HookType hookType, string? groupName = null, int orderSeq = 1, int ackMode = 0, bool sendAlways = false, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAsync(long instanceId, DbExecutionLoad load = default);
         Task<DbRows> ListByInstanceAndStateAsync(long instanceId, long stateId, DbExecutionLoad load = default);
         Task<int> DeleteAsync(long hookId, DbExecutionLoad load = default);
@@ -60,8 +60,10 @@ namespace Haley.Abstractions {
         Task<DbRow?> GetContextByAckGuidAsync(string ackGuid, DbExecutionLoad load = default);
         Task<DbRow?> GetContextByLcIdAsync(long lcId, DbExecutionLoad load = default);
         Task<int>    CountIncompleteBlockingInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
+        Task<int>    CountIncompleteInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
         Task<int?>   GetMinUndispatchedOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default);
         Task<DbRows> ListUndispatchedByOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
+        Task<DbRows> ListUndispatchedByOrderAndTypeAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, HookType hookType, DbExecutionLoad load = default);
 
         // Blocking hook gate — instance-wide checks used by InstanceOrchestrator before accepting a new transition.
         /// <summary>Count dispatched blocking hooks for the given lifecycle entry whose ack_consumer rows are not yet terminal (ack_mode-aware).</summary>
@@ -87,6 +89,11 @@ namespace Haley.Abstractions {
         /// so remaining gates are bypassed and only effect hooks run before firing the success code.
         /// </summary>
         Task<int> SkipUndispatchedGateHooksAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, DbExecutionLoad load = default);
+        /// <summary>
+        /// Marks later undispatched non-always effect hooks as Skipped after a terminal gate success.
+        /// Same-order effects are preserved; later effects marked send=always are preserved.
+        /// </summary>
+        Task<int> SkipUndispatchedNonAlwaysEffectsAfterOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int afterOrderSeq, DbExecutionLoad load = default);
 
         /// <summary>
         /// Returns route, state_id, via_event, on_entry for the first (lowest order_seq) skipped gate
@@ -94,6 +101,11 @@ namespace Haley.Abstractions {
         /// Returns null if no skipped gate exists (normal flow, no gate-success drain in progress).
         /// </summary>
         Task<DbRow?> GetFirstSkippedGateRouteAsync(long instanceId, long lcId, DbExecutionLoad load = default);
+        /// <summary>
+        /// Returns processed gate routes for a specific order, ordered by hook id, so orchestration can
+        /// resolve the first terminal success code for that gate phase.
+        /// </summary>
+        Task<DbRows> ListProcessedGateRoutesInOrderAsync(long instanceId, long stateId, long viaEventId, bool onEntry, long lcId, int orderSeq, DbExecutionLoad load = default);
     }
 
     internal interface IHookLcDAL {

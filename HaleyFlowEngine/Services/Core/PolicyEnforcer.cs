@@ -99,6 +99,8 @@ namespace Haley.Services {
             // Build rule list. Completion events are collapsed at parse time:
             // emit.OnSuccess/OnFailure already fall back to rule-level values here so callers
             // don't need to carry both and merge at evaluation time.
+            // send is parsed here as a runtime hint only; semantic validation stays in the
+            // dedicated protocol/policy validation layer.
             var rules = new List<ParsedPolicyRule>();
             if (root.TryGetProperty(KEY_RULES, out var rulesEl) && rulesEl.ValueKind == JsonValueKind.Array) {
                 foreach (var ruleEl in rulesEl.EnumerateArray()) {
@@ -123,6 +125,7 @@ namespace Haley.Services {
                             var orderSeq = e.TryGetProperty(KEY_ORDER, out var orderEl) && orderEl.TryGetInt32(out var oVal) && oVal > 0 ? oVal : 999;
                             var ackModeStr = e.GetString(KEY_ACK_MODE);
                             var groupRaw = e.GetString(KEY_GROUP);
+                            var sendStr = e.GetString(KEY_SEND);
 
                             emits.Add(new ParsedPolicyEmit {
                                 Route = hookRoute!,
@@ -130,6 +133,7 @@ namespace Haley.Services {
                                 Group = string.IsNullOrWhiteSpace(groupRaw) ? null : groupRaw,
                                 OrderSeq = orderSeq,
                                 AckMode = string.Equals(ackModeStr, "any", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
+                                SendAlways = string.Equals(sendStr, "always", StringComparison.OrdinalIgnoreCase),
                                 // Collapse completion fallback at parse time: emit wins, else rule's value.
                                 OnSuccess = !string.IsNullOrWhiteSpace(emitSuccess) ? emitSuccess : ruleSuccess,
                                 OnFailure = !string.IsNullOrWhiteSpace(emitFailure) ? emitFailure : ruleFailure,
@@ -188,8 +192,8 @@ namespace Haley.Services {
             var parsed = GetOrAddCached(policyId, policyJson!);
             if (parsed.Rules.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
 
-            // Collect all emit specs so we can compute minOrder across all matched rules.
-            var specs = new List<(string hookCode, HookType hookType, string? emitGroup, int orderSeq, int ackMode,
+            // Collect all emit specs so we can compute the first dispatchable phase.
+            var specs = new List<(string hookCode, HookType hookType, string? emitGroup, int orderSeq, int ackMode, bool sendAlways,
                                   string? onSuccess, string? onFailure,
                                   DateTimeOffset? notBefore, DateTimeOffset? deadline,
                                   IReadOnlyList<LifeCycleParamItem>? resolvedParams)>();
@@ -213,7 +217,7 @@ namespace Haley.Services {
                     var effectiveCodes = emit.ParamCodes.Count > 0 ? emit.ParamCodes : ruleParamCodes;
                     var resolvedParams = ResolveParams(parsed.ParamCatalog, effectiveCodes);
 
-                    specs.Add((emit.Route, emitType, emit.Group, emit.OrderSeq, emit.AckMode,
+                    specs.Add((emit.Route, emitType, emit.Group, emit.OrderSeq, emit.AckMode, emit.SendAlways,
                                emit.OnSuccess, emit.OnFailure,
                                emit.NotBefore, emit.Deadline,
                                resolvedParams));
@@ -223,6 +227,9 @@ namespace Haley.Services {
             if (specs.Count == 0) return Array.Empty<ILifeCycleHookEmission>();
 
             var minOrder = specs.Min(s => s.orderSeq);
+            var dispatchType = specs.Any(s => s.orderSeq == minOrder && s.hookType == HookType.Gate)
+                ? HookType.Gate
+                : HookType.Effect;
 
             // applied.LifeCycleId is always set when EmitHooksAsync is called after a successful transition.
             var lcId = applied.LifeCycleId ?? 0;
@@ -234,17 +241,17 @@ namespace Haley.Services {
                 var hookId = await _dal.Hook.UpsertByKeyReturnIdAsync(
                     instanceId, applied.ToStateId, applied.EventId, true,
                     s.hookCode, s.hookType, s.emitGroup,
-                    s.orderSeq, s.ackMode, load);
+                    s.orderSeq, s.ackMode, s.sendAlways, load);
 
                 // Create a hook_lc row for this hook + lifecycle entry (dispatched=0 initially).
                 // All hooks (min-order and higher-order) get a hook_lc row so the order-advance
                 // queries can find undispatched hooks for this lifecycle entry.
                 var hookLcId = await _dal.HookLc.InsertReturnIdAsync(hookId, lcId, load);
 
-                // Higher-order hooks: hook_lc row created with dispatched=0, not returned yet.
-                // They will be dispatched by AdvanceNextHookOrderAsync once prior orders complete.
-                var minOrderHook = s.orderSeq == minOrder;
-                if (!minOrderHook) continue;
+                // Gate phase comes first for the first reached order. Same-order effects stay queued
+                // until that order's gates are resolved; later orders stay queued until reached.
+                var dispatchNow = s.orderSeq == minOrder && s.hookType == dispatchType;
+                if (!dispatchNow) continue;
 
                 emissions.Add(new LifeCycleHookEmission {
                     HookId = hookId,
